@@ -32,7 +32,7 @@ impl<'a> RopeGraphemes<'a> {
             chunks: chunks,
             cur_chunk: first_chunk,
             cur_chunk_start: 0,
-            cursor: GraphemeCursor::new(0, slice.len_bytes(), true),
+            cursor: GraphemeCursor::new(0, slice.total_len(), true),
         }
     }
 }
@@ -60,7 +60,7 @@ impl<'a> Iterator for RopeGraphemes<'a> {
                     self.cur_chunk = self.chunks.next().unwrap_or("");
                 }
                 Err(GraphemeIncomplete::PreContext(idx)) => {
-                    let (chunk, byte_idx, _, _) = self.text.chunk_at_byte(idx.saturating_sub(1));
+                    let (chunk, byte_idx, _, _) = self.text.chunk_at_index(idx.saturating_sub(1));
                     self.cursor.provide_context(chunk, byte_idx);
                 }
                 _ => unreachable!(),
@@ -68,8 +68,8 @@ impl<'a> Iterator for RopeGraphemes<'a> {
         }
 
         if a < self.cur_chunk_start {
-            let a_char = self.text.byte_to_char(a);
-            let b_char = self.text.byte_to_char(b);
+            let a_char = self.text.idx_to_width(a);
+            let b_char = self.text.idx_to_width(b);
 
             Some(self.text.slice(a_char..b_char))
         } else {

@@ -1,10 +1,10 @@
-use std::fmt;
+use std::fmt::{self, Debug};
 use std::iter::{Iterator, Zip};
 use std::slice;
 use std::sync::Arc;
 
-use crate::crlf;
-use crate::tree::{self, Node, TextInfo, MAX_BYTES};
+use crate::rope::Measurable;
+use crate::tree::{self, Node, SliceInfo, MAX_BYTES};
 
 const MAX_LEN: usize = tree::MAX_CHILDREN;
 
@@ -14,12 +14,17 @@ const MAX_LEN: usize = tree::MAX_CHILDREN;
 /// lower down in this file.
 #[derive(Clone)]
 #[repr(C)]
-pub(crate) struct NodeChildren(inner::NodeChildrenInternal);
+pub(crate) struct Branch<M>(inner::NodeChildrenInternal<M>)
+where
+    M: Measurable;
 
-impl NodeChildren {
+impl<M> Branch<M>
+where
+    M: Measurable,
+{
     /// Creates a new empty array.
     pub fn new() -> Self {
-        NodeChildren(inner::NodeChildrenInternal::new())
+        Branch(inner::NodeChildrenInternal::new())
     }
 
     /// Current length of the array.
@@ -33,40 +38,40 @@ impl NodeChildren {
     }
 
     /// Access to the nodes array.
-    pub fn nodes(&self) -> &[Arc<Node>] {
+    pub fn nodes(&self) -> &[Arc<Node<M>>] {
         self.0.nodes()
     }
 
     /// Mutable access to the nodes array.
-    pub fn nodes_mut(&mut self) -> &mut [Arc<Node>] {
+    pub fn nodes_mut(&mut self) -> &mut [Arc<Node<M>>] {
         self.0.nodes_mut()
     }
 
     /// Access to the info array.
-    pub fn info(&self) -> &[TextInfo] {
+    pub fn info(&self) -> &[SliceInfo] {
         self.0.info()
     }
 
     /// Mutable access to the info array.
-    pub fn info_mut(&mut self) -> &mut [TextInfo] {
+    pub fn info_mut(&mut self) -> &mut [SliceInfo] {
         self.0.info_mut()
     }
 
     /// Mutable access to both the info and nodes arrays simultaneously.
-    pub fn data_mut(&mut self) -> (&mut [TextInfo], &mut [Arc<Node>]) {
+    pub fn data_mut(&mut self) -> (&mut [SliceInfo], &mut [Arc<Node<M>>]) {
         self.0.data_mut()
     }
 
     /// Updates the text info of the child at `idx`.
     pub fn update_child_info(&mut self, idx: usize) {
         let (info, nodes) = self.0.data_mut();
-        info[idx] = nodes[idx].text_info();
+        info[idx] = nodes[idx].slice_info();
     }
 
     /// Pushes an item into the end of the array.
     ///
     /// Increases length by one.  Panics if already full.
-    pub fn push(&mut self, item: (TextInfo, Arc<Node>)) {
+    pub fn push(&mut self, item: (SliceInfo, Arc<Node<M>>)) {
         self.0.push(item)
     }
 
@@ -74,7 +79,7 @@ impl NodeChildren {
     /// returning the right half.
     ///
     /// This works even when the array is full.
-    pub fn push_split(&mut self, new_child: (TextInfo, Arc<Node>)) -> Self {
+    pub fn push_split(&mut self, new_child: (SliceInfo, Arc<Node<M>>)) -> Self {
         let r_count = (self.len() + 1) / 2;
         let l_count = (self.len() + 1) - r_count;
 
@@ -101,10 +106,10 @@ impl NodeChildren {
                 Node::Leaf(ref mut text1) => {
                     if let Node::Leaf(ref mut text2) = *node2 {
                         if (text1.len() + text2.len()) <= tree::MAX_BYTES {
-                            text1.push_str(text2);
+                            text1.push_slice(text2);
                             true
                         } else {
-                            let right = text1.push_str_split(text2);
+                            let right = text1.push_slice_split(text2);
                             *text2 = right;
                             false
                         }
@@ -113,8 +118,8 @@ impl NodeChildren {
                     }
                 }
 
-                Node::Internal(ref mut children1) => {
-                    if let Node::Internal(ref mut children2) = *node2 {
+                Node::Branch(ref mut children1) => {
+                    if let Node::Branch(ref mut children2) = *node2 {
                         if (children1.len() + children2.len()) <= MAX_LEN {
                             for _ in 0..children2.len() {
                                 children1.push(children2.remove(0));
@@ -163,25 +168,25 @@ impl NodeChildren {
 
         let mut i = 1;
         while i < self.len() {
-            if (self.nodes()[i - 1].leaf_text().len() + self.nodes()[i].leaf_text().len())
+            if (self.nodes()[i - 1].leaf_slice().len() + self.nodes()[i].leaf_slice().len())
                 <= MAX_BYTES
             {
                 // Scope to contain borrows
                 {
                     let ((_, node_l), (_, node_r)) = self.get_two_mut(i - 1, i);
-                    let text_l = Arc::make_mut(node_l).leaf_text_mut();
-                    let text_r = node_r.leaf_text();
-                    text_l.push_str(text_r);
+                    let text_l = Arc::make_mut(node_l).leaf_slice_mut();
+                    let text_r = node_r.leaf_slice();
+                    text_l.push_slice(text_r);
                 }
                 self.remove(i);
-            } else if self.nodes()[i - 1].leaf_text().len() < MAX_BYTES {
+            } else if self.nodes()[i - 1].leaf_slice().len() < MAX_BYTES {
                 // Scope to contain borrows
                 {
                     let ((_, node_l), (_, node_r)) = self.get_two_mut(i - 1, i);
-                    let text_l = Arc::make_mut(node_l).leaf_text_mut();
-                    let text_r = Arc::make_mut(node_r).leaf_text_mut();
-                    let split_idx_r = crlf::prev_break(MAX_BYTES - text_l.len(), text_r.as_bytes());
-                    text_l.push_str(&text_r[..split_idx_r]);
+                    let text_l = Arc::make_mut(node_l).leaf_slice_mut();
+                    let text_r = Arc::make_mut(node_r).leaf_slice_mut();
+                    let split_idx_r = MAX_BYTES - text_l.len();
+                    text_l.push_slice(&text_r[..split_idx_r]);
                     text_r.truncate_front(split_idx_r);
                 }
                 i += 1;
@@ -198,7 +203,7 @@ impl NodeChildren {
     /// Pops an item off the end of the array and returns it.
     ///
     /// Decreases length by one.  Panics if already empty.
-    pub fn pop(&mut self) -> (TextInfo, Arc<Node>) {
+    pub fn pop(&mut self) -> (SliceInfo, Arc<Node<M>>) {
         self.0.pop()
     }
 
@@ -206,7 +211,7 @@ impl NodeChildren {
     ///
     /// Increases length by one.  Panics if already full.  Preserves ordering
     /// of the other items.
-    pub fn insert(&mut self, idx: usize, item: (TextInfo, Arc<Node>)) {
+    pub fn insert(&mut self, idx: usize, item: (SliceInfo, Arc<Node<M>>)) {
         self.0.insert(idx, item)
     }
 
@@ -214,7 +219,7 @@ impl NodeChildren {
     /// the right half.
     ///
     /// This works even when the array is full.
-    pub fn insert_split(&mut self, idx: usize, item: (TextInfo, Arc<Node>)) -> Self {
+    pub fn insert_split(&mut self, idx: usize, item: (SliceInfo, Arc<Node<M>>)) -> Self {
         assert!(self.len() > 0);
         assert!(idx <= self.len());
         let extra = if idx < self.len() {
@@ -231,7 +236,7 @@ impl NodeChildren {
     /// Removes the item at the given index from the the array.
     ///
     /// Decreases length by one.  Preserves ordering of the other items.
-    pub fn remove(&mut self, idx: usize) -> (TextInfo, Arc<Node>) {
+    pub fn remove(&mut self, idx: usize) -> (SliceInfo, Arc<Node<M>>) {
         self.0.remove(idx)
     }
 
@@ -241,7 +246,7 @@ impl NodeChildren {
     pub fn split_off(&mut self, idx: usize) -> Self {
         assert!(idx <= self.len());
 
-        let mut other = NodeChildren::new();
+        let mut other = Branch::new();
         let count = self.len() - idx;
         for _ in 0..count {
             other.push(self.remove(idx));
@@ -259,8 +264,8 @@ impl NodeChildren {
         idx1: usize,
         idx2: usize,
     ) -> (
-        (&mut TextInfo, &mut Arc<Node>),
-        (&mut TextInfo, &mut Arc<Node>),
+        (&mut SliceInfo, &mut Arc<Node<M>>),
+        (&mut SliceInfo, &mut Arc<Node<M>>),
     ) {
         assert!(idx1 < idx2);
         assert!(idx2 < self.len());
@@ -277,14 +282,14 @@ impl NodeChildren {
     }
 
     /// Creates an iterator over the array's items.
-    pub fn iter(&self) -> Zip<slice::Iter<TextInfo>, slice::Iter<Arc<Node>>> {
+    pub fn iter(&self) -> Zip<slice::Iter<SliceInfo>, slice::Iter<Arc<Node<M>>>> {
         Iterator::zip(self.info().iter(), self.nodes().iter())
     }
 
     #[allow(clippy::needless_range_loop)]
-    pub fn combined_info(&self) -> TextInfo {
+    pub fn combined_info(&self) -> SliceInfo {
         let info = self.info();
-        let mut acc = TextInfo::new();
+        let mut acc = SliceInfo::new();
 
         // Doing this with an explicit loop is notably faster than
         // using an iterator in this case.
@@ -300,14 +305,14 @@ impl NodeChildren {
     ///
     /// If no child matches the predicate, the last child is returned.
     #[inline(always)]
-    pub fn search_by<F>(&self, pred: F) -> (usize, TextInfo)
+    pub fn search_by<F>(&self, pred: F) -> (usize, SliceInfo)
     where
         // (left-accumulated start info, left-accumulated end info)
-        F: Fn(TextInfo, TextInfo) -> bool,
+        F: Fn(SliceInfo, SliceInfo) -> bool,
     {
         debug_assert!(self.len() > 0);
 
-        let mut accum = TextInfo::new();
+        let mut accum = SliceInfo::new();
         let mut idx = 0;
         for info in self.info()[0..(self.len() - 1)].iter() {
             let next_accum = accum + *info;
@@ -325,11 +330,11 @@ impl NodeChildren {
     /// child that contains the given byte.
     ///
     /// One-past-the end is valid, and will return the last child.
-    pub fn search_byte_idx(&self, byte_idx: usize) -> (usize, TextInfo) {
-        let (idx, accum) = self.search_by(|_, end| byte_idx < end.bytes as usize);
+    pub fn search_byte_idx(&self, byte_idx: usize) -> (usize, SliceInfo) {
+        let (idx, accum) = self.search_by(|_, end| byte_idx < end.len as usize);
 
         debug_assert!(
-            byte_idx <= (accum.bytes + self.info()[idx].bytes) as usize,
+            byte_idx <= (accum.len + self.info()[idx].len) as usize,
             "Index out of bounds."
         );
 
@@ -340,31 +345,11 @@ impl NodeChildren {
     /// child that contains the given char.
     ///
     /// One-past-the end is valid, and will return the last child.
-    pub fn search_char_idx(&self, char_idx: usize) -> (usize, TextInfo) {
-        let (idx, accum) = self.search_by(|_, end| char_idx < end.chars as usize);
+    pub fn search_width(&self, width: usize) -> (usize, SliceInfo) {
+        let (idx, accum) = self.search_by(|_, end| width < end.width as usize);
 
         debug_assert!(
-            char_idx <= (accum.chars + self.info()[idx].chars) as usize,
-            "Index out of bounds."
-        );
-
-        (idx, accum)
-    }
-
-    /// Returns the child index and left-side-accumulated text info of the
-    /// child that contains the given utf16 code unit offset.
-    ///
-    /// One-past-the end is valid, and will return the last child.
-    pub fn search_utf16_code_unit_idx(&self, utf16_idx: usize) -> (usize, TextInfo) {
-        let (idx, accum) =
-            self.search_by(|_, end| utf16_idx < (end.chars + end.utf16_surrogates) as usize);
-
-        debug_assert!(
-            utf16_idx
-                <= (accum.chars
-                    + accum.utf16_surrogates
-                    + self.info()[idx].chars
-                    + self.info()[idx].utf16_surrogates) as usize,
+            width <= (accum.width + self.info()[idx].width) as usize,
             "Index out of bounds."
         );
 
@@ -378,45 +363,26 @@ impl NodeChildren {
     ///
     /// One-past-the end is valid, and will return the last child.
     #[inline(always)]
-    pub fn search_char_idx_only(&self, char_idx: usize) -> (usize, usize) {
+    pub fn search_width_only(&self, width: usize) -> (usize, usize) {
         debug_assert!(self.len() > 0);
 
-        let mut accum_char_idx = 0;
+        let mut accum_width = 0;
         let mut idx = 0;
         for info in self.info()[0..(self.len() - 1)].iter() {
-            let next_accum = accum_char_idx + info.chars as usize;
-            if char_idx < next_accum {
+            let next_accum = accum_width + info.width as usize;
+            if width < next_accum {
                 break;
             }
-            accum_char_idx = next_accum;
+            accum_width = next_accum;
             idx += 1;
         }
 
         debug_assert!(
-            char_idx <= (accum_char_idx + self.info()[idx].chars as usize) as usize,
+            width <= (accum_width + self.info()[idx].width as usize) as usize,
             "Index out of bounds."
         );
 
-        (idx, accum_char_idx)
-    }
-
-    /// Returns the child index and left-side-accumulated text info of the
-    /// child that contains the given line break.
-    ///
-    /// Beginning of the rope is considered index 0, although is not
-    /// considered a line break for the returned left-side-accumulated
-    /// text info.
-    ///
-    /// One-past-the end is valid, and will return the last child.
-    pub fn search_line_break_idx(&self, line_break_idx: usize) -> (usize, TextInfo) {
-        let (idx, accum) = self.search_by(|_, end| line_break_idx <= end.line_breaks as usize);
-
-        debug_assert!(
-            line_break_idx <= (accum.line_breaks + self.info()[idx].line_breaks + 1) as usize,
-            "Index out of bounds."
-        );
-
-        (idx, accum)
+        (idx, accum_width)
     }
 
     /// Returns the child indices at the start and end of the given char
@@ -430,7 +396,7 @@ impl NodeChildren {
     ///
     /// One-past-the end is valid, and corresponds to the last child.
     #[inline(always)]
-    pub fn search_char_idx_range(
+    pub fn search_width_range(
         &self,
         start_idx: usize,
         end_idx: usize,
@@ -443,7 +409,7 @@ impl NodeChildren {
 
         // Find left child and info
         for info in self.info()[..(self.len() - 1)].iter() {
-            let next_accum = accum_char_idx + info.chars as usize;
+            let next_accum = accum_char_idx + info.width as usize;
             if start_idx < next_accum {
                 break;
             }
@@ -455,7 +421,7 @@ impl NodeChildren {
 
         // Find right child and info
         for info in self.info()[idx..(self.len() - 1)].iter() {
-            let next_accum = accum_char_idx + info.chars as usize;
+            let next_accum = accum_char_idx + info.width as usize;
             if end_idx <= next_accum {
                 break;
             }
@@ -465,7 +431,7 @@ impl NodeChildren {
 
         #[cfg(any(test, debug_assertions))]
         assert!(
-            end_idx <= accum_char_idx + self.info()[idx].chars as usize,
+            end_idx <= accum_char_idx + self.info()[idx].width as usize,
             "Index out of bounds."
         );
 
@@ -475,7 +441,7 @@ impl NodeChildren {
     // Debug function, to help verify tree integrity
     pub fn is_info_accurate(&self) -> bool {
         for (info, node) in self.info().iter().zip(self.nodes().iter()) {
-            if *info != node.text_info() {
+            if *info != node.slice_info() {
                 return false;
             }
         }
@@ -483,7 +449,10 @@ impl NodeChildren {
     }
 }
 
-impl fmt::Debug for NodeChildren {
+impl<M> fmt::Debug for Branch<M>
+where
+    M: Measurable + fmt::Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("NodeChildren")
             .field("len", &self.len())
@@ -505,7 +474,9 @@ impl fmt::Debug for NodeChildren {
 /// accessing elements that are semantically out of bounds.  This happened once,
 /// and it was a pain to track down--as memory safety bugs often are.
 mod inner {
-    use super::{Node, TextInfo, MAX_LEN};
+    use crate::rope::Measurable;
+
+    use super::{Node, SliceInfo, MAX_LEN};
     use std::mem;
     use std::mem::MaybeUninit;
     use std::ptr;
@@ -515,20 +486,26 @@ mod inner {
     /// it actually containts _two_ arrays rather than just one, but which
     /// share a length.
     #[repr(C)]
-    pub(crate) struct NodeChildrenInternal {
+    pub(crate) struct NodeChildrenInternal<M>
+    where
+        M: Measurable,
+    {
         /// An array of the child nodes.
         /// INVARIANT: The nodes from 0..len must be initialized
-        nodes: [MaybeUninit<Arc<Node>>; MAX_LEN],
+        nodes: [MaybeUninit<Arc<Node<M>>>; MAX_LEN],
         /// An array of the child node text infos
         /// INVARIANT: The nodes from 0..len must be initialized
-        info: [MaybeUninit<TextInfo>; MAX_LEN],
+        info: [MaybeUninit<SliceInfo>; MAX_LEN],
         len: u8,
     }
 
-    impl NodeChildrenInternal {
+    impl<M> NodeChildrenInternal<M>
+    where
+        M: Measurable,
+    {
         /// Creates a new empty array.
         #[inline(always)]
-        pub fn new() -> NodeChildrenInternal {
+        pub fn new() -> Self {
             // SAFETY: Uninit data is valid for arrays of MaybeUninit.
             // len is zero, so it's ok for all of them to be uninit
             NodeChildrenInternal {
@@ -546,7 +523,7 @@ mod inner {
 
         /// Access to the nodes array.
         #[inline(always)]
-        pub fn nodes(&self) -> &[Arc<Node>] {
+        pub fn nodes(&self) -> &[Arc<Node<M>>] {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the nodes from 0..len are guaranteed to be initialized
             unsafe { mem::transmute(&self.nodes[..(self.len())]) }
@@ -554,7 +531,7 @@ mod inner {
 
         /// Mutable access to the nodes array.
         #[inline(always)]
-        pub fn nodes_mut(&mut self) -> &mut [Arc<Node>] {
+        pub fn nodes_mut(&mut self) -> &mut [Arc<Node<M>>] {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the nodes from 0..len are guaranteed to be initialized
             unsafe { mem::transmute(&mut self.nodes[..(self.len as usize)]) }
@@ -562,7 +539,7 @@ mod inner {
 
         /// Access to the info array.
         #[inline(always)]
-        pub fn info(&self) -> &[TextInfo] {
+        pub fn info(&self) -> &[SliceInfo] {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the info from 0..len are guaranteed to be initialized
             unsafe { mem::transmute(&self.info[..(self.len())]) }
@@ -570,7 +547,7 @@ mod inner {
 
         /// Mutable access to the info array.
         #[inline(always)]
-        pub fn info_mut(&mut self) -> &mut [TextInfo] {
+        pub fn info_mut(&mut self) -> &mut [SliceInfo] {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the info from 0..len are guaranteed to be initialized
             unsafe { mem::transmute(&mut self.info[..(self.len as usize)]) }
@@ -578,7 +555,7 @@ mod inner {
 
         /// Mutable access to both the info and nodes arrays simultaneously.
         #[inline(always)]
-        pub fn data_mut(&mut self) -> (&mut [TextInfo], &mut [Arc<Node>]) {
+        pub fn data_mut(&mut self) -> (&mut [SliceInfo], &mut [Arc<Node<M>>]) {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the info from 0..len are guaranteed to be initialized
             (
@@ -591,7 +568,7 @@ mod inner {
         ///
         /// Increases length by one.  Panics if already full.
         #[inline(always)]
-        pub fn push(&mut self, item: (TextInfo, Arc<Node>)) {
+        pub fn push(&mut self, item: (SliceInfo, Arc<Node<M>>)) {
             assert!(self.len() < MAX_LEN);
             self.info[self.len()] = MaybeUninit::new(item.0);
             self.nodes[self.len as usize] = MaybeUninit::new(item.1);
@@ -603,7 +580,7 @@ mod inner {
         ///
         /// Decreases length by one.  Panics if already empty.
         #[inline(always)]
-        pub fn pop(&mut self) -> (TextInfo, Arc<Node>) {
+        pub fn pop(&mut self) -> (SliceInfo, Arc<Node<M>>) {
             assert!(self.len() > 0);
             self.len -= 1;
             // SAFETY: before this, len was long enough to guarantee that both must be init
@@ -618,7 +595,7 @@ mod inner {
         /// Increases length by one.  Panics if already full.  Preserves ordering
         /// of the other items.
         #[inline(always)]
-        pub fn insert(&mut self, idx: usize, item: (TextInfo, Arc<Node>)) {
+        pub fn insert(&mut self, idx: usize, item: (SliceInfo, Arc<Node<M>>)) {
             assert!(idx <= self.len());
             assert!(self.len() < MAX_LEN);
 
@@ -645,7 +622,7 @@ mod inner {
         ///
         /// Decreases length by one.  Preserves ordering of the other items.
         #[inline(always)]
-        pub fn remove(&mut self, idx: usize) -> (TextInfo, Arc<Node>) {
+        pub fn remove(&mut self, idx: usize) -> (SliceInfo, Arc<Node<M>>) {
             assert!(self.len() > 0);
             assert!(idx < self.len());
 
@@ -674,7 +651,10 @@ mod inner {
         }
     }
 
-    impl Drop for NodeChildrenInternal {
+    impl<M> Drop for NodeChildrenInternal<M>
+    where
+        M: Measurable,
+    {
         fn drop(&mut self) {
             // The `.nodes` array contains `MaybeUninit` wrappers, which need
             // to be manually dropped if valid.  We drop only the valid ones
@@ -685,8 +665,11 @@ mod inner {
         }
     }
 
-    impl Clone for NodeChildrenInternal {
-        fn clone(&self) -> NodeChildrenInternal {
+    impl<M> Clone for NodeChildrenInternal<M>
+    where
+        M: Measurable,
+    {
+        fn clone(&self) -> Self {
             // Create an empty NodeChildrenInternal first, then fill it
             let mut clone_array = NodeChildrenInternal::new();
 
@@ -739,98 +722,98 @@ mod inner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tree::{Node, NodeText, TextInfo};
+    use crate::tree::{Leaf, Node, SliceInfo};
     use std::sync::Arc;
 
     #[test]
     fn search_char_idx_01() {
-        let mut children = NodeChildren::new();
+        let mut children = Branch::new();
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("Hello "))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("Hello "))),
         ));
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("there "))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("there "))),
         ));
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("world!"))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("world!"))),
         ));
 
         children.update_child_info(0);
         children.update_child_info(1);
         children.update_child_info(2);
 
-        assert_eq!(0, children.search_char_idx(0).0);
-        assert_eq!(0, children.search_char_idx(1).0);
-        assert_eq!(0, children.search_char_idx(0).1.chars);
-        assert_eq!(0, children.search_char_idx(1).1.chars);
+        assert_eq!(0, children.search_width(0).0);
+        assert_eq!(0, children.search_width(1).0);
+        assert_eq!(0, children.search_width(0).1.width);
+        assert_eq!(0, children.search_width(1).1.width);
 
-        assert_eq!(0, children.search_char_idx(5).0);
-        assert_eq!(1, children.search_char_idx(6).0);
-        assert_eq!(0, children.search_char_idx(5).1.chars);
-        assert_eq!(6, children.search_char_idx(6).1.chars);
+        assert_eq!(0, children.search_width(5).0);
+        assert_eq!(1, children.search_width(6).0);
+        assert_eq!(0, children.search_width(5).1.width);
+        assert_eq!(6, children.search_width(6).1.width);
 
-        assert_eq!(1, children.search_char_idx(11).0);
-        assert_eq!(2, children.search_char_idx(12).0);
-        assert_eq!(6, children.search_char_idx(11).1.chars);
-        assert_eq!(12, children.search_char_idx(12).1.chars);
+        assert_eq!(1, children.search_width(11).0);
+        assert_eq!(2, children.search_width(12).0);
+        assert_eq!(6, children.search_width(11).1.width);
+        assert_eq!(12, children.search_width(12).1.width);
 
-        assert_eq!(2, children.search_char_idx(17).0);
-        assert_eq!(2, children.search_char_idx(18).0);
-        assert_eq!(12, children.search_char_idx(17).1.chars);
-        assert_eq!(12, children.search_char_idx(18).1.chars);
+        assert_eq!(2, children.search_width(17).0);
+        assert_eq!(2, children.search_width(18).0);
+        assert_eq!(12, children.search_width(17).1.width);
+        assert_eq!(12, children.search_width(18).1.width);
     }
 
     #[test]
     #[should_panic]
     fn search_char_idx_02() {
-        let mut children = NodeChildren::new();
+        let mut children = Branch::new();
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("Hello "))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("Hello "))),
         ));
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("there "))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("there "))),
         ));
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("world!"))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("world!"))),
         ));
 
         children.update_child_info(0);
         children.update_child_info(1);
         children.update_child_info(2);
 
-        children.search_char_idx(19);
+        children.search_width(19);
     }
 
     #[test]
     fn search_char_idx_range_01() {
-        let mut children = NodeChildren::new();
+        let mut children = Branch::new();
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("Hello "))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("Hello "))),
         ));
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("there "))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("there "))),
         ));
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("world!"))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("world!"))),
         ));
 
         children.update_child_info(0);
         children.update_child_info(1);
         children.update_child_info(2);
 
-        let at_0_0 = children.search_char_idx_range(0, 0);
-        let at_6_6 = children.search_char_idx_range(6, 6);
-        let at_12_12 = children.search_char_idx_range(12, 12);
-        let at_18_18 = children.search_char_idx_range(18, 18);
+        let at_0_0 = children.search_width_range(0, 0);
+        let at_6_6 = children.search_width_range(6, 6);
+        let at_12_12 = children.search_width_range(12, 12);
+        let at_18_18 = children.search_width_range(18, 18);
 
         assert_eq!(0, (at_0_0.0).0);
         assert_eq!(0, (at_0_0.1).0);
@@ -852,9 +835,9 @@ mod tests {
         assert_eq!(12, (at_18_18.0).1);
         assert_eq!(12, (at_18_18.1).1);
 
-        let at_0_6 = children.search_char_idx_range(0, 6);
-        let at_6_12 = children.search_char_idx_range(6, 12);
-        let at_12_18 = children.search_char_idx_range(12, 18);
+        let at_0_6 = children.search_width_range(0, 6);
+        let at_6_12 = children.search_width_range(6, 12);
+        let at_12_18 = children.search_width_range(12, 18);
 
         assert_eq!(0, (at_0_6.0).0);
         assert_eq!(0, (at_0_6.1).0);
@@ -871,8 +854,8 @@ mod tests {
         assert_eq!(12, (at_12_18.0).1);
         assert_eq!(12, (at_12_18.1).1);
 
-        let at_5_7 = children.search_char_idx_range(5, 7);
-        let at_11_13 = children.search_char_idx_range(11, 13);
+        let at_5_7 = children.search_width_range(5, 7);
+        let at_11_13 = children.search_width_range(11, 13);
 
         assert_eq!(0, (at_5_7.0).0);
         assert_eq!(1, (at_5_7.1).0);
@@ -888,41 +871,41 @@ mod tests {
     #[test]
     #[should_panic]
     fn search_char_idx_range_02() {
-        let mut children = NodeChildren::new();
+        let mut children = Branch::new();
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("Hello "))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("Hello "))),
         ));
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("there "))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("there "))),
         ));
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("world!"))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("world!"))),
         ));
 
         children.update_child_info(0);
         children.update_child_info(1);
         children.update_child_info(2);
 
-        children.search_char_idx_range(18, 19);
+        children.search_width_range(18, 19);
     }
 
     #[test]
     fn search_line_break_idx_01() {
-        let mut children = NodeChildren::new();
+        let mut children = Branch::new();
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("Hello\n"))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("Hello\n"))),
         ));
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("\nthere\n"))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("\nthere\n"))),
         ));
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("world!\n"))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("world!\n"))),
         ));
 
         children.update_child_info(0);
@@ -950,18 +933,18 @@ mod tests {
 
     #[test]
     fn search_line_break_idx_02() {
-        let mut children = NodeChildren::new();
+        let mut children = Branch::new();
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("Hello\n"))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("Hello\n"))),
         ));
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("there"))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("there"))),
         ));
         children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str("world!"))),
+            SliceInfo::new(),
+            Arc::new(Node::Leaf(Leaf::from_str("world!"))),
         ));
 
         children.update_child_info(0);
@@ -980,11 +963,8 @@ mod tests {
 
     #[test]
     fn search_line_break_idx_03() {
-        let mut children = NodeChildren::new();
-        children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str(""))),
-        ));
+        let mut children = Branch::new();
+        children.push((SliceInfo::new(), Arc::new(Node::Leaf(Leaf::from_str("")))));
 
         children.update_child_info(0);
 
@@ -998,11 +978,8 @@ mod tests {
     #[test]
     #[should_panic]
     fn search_line_break_idx_04() {
-        let mut children = NodeChildren::new();
-        children.push((
-            TextInfo::new(),
-            Arc::new(Node::Leaf(NodeText::from_str(""))),
-        ));
+        let mut children = Branch::new();
+        children.push((SliceInfo::new(), Arc::new(Node::Leaf(Leaf::from_str("")))));
 
         children.update_child_info(0);
 

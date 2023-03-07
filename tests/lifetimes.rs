@@ -23,11 +23,11 @@ fn main() {
         // compile.
 
         let a = rope.slice(4..500).slice(4..400).slice(4..300);
-        let b = rope.slice(4..500).slice(4..400).as_str();
+        let b = rope.slice(4..500).slice(4..400).as_slice();
         let c = rope.slice(4..500).slice(4..400).line(1);
         let d = rope.line(1).slice(4..20).slice(4..10);
-        let e = rope.slice(4..500).slice(4..400).chunk_at_byte(50);
-        let f = rope.slice(4..500).slice(4..400).chunk_at_char(50);
+        let e = rope.slice(4..500).slice(4..400).chunk_at_index(50);
+        let f = rope.slice(4..500).slice(4..400).chunk_at_width(50);
         let g = rope.slice(4..500).slice(4..400).chunk_at_line_break(3);
 
         // Same for iterators.  In addition, the items _yielded_ by the
@@ -35,7 +35,7 @@ fn main() {
         // rope, not to the iterators or slices they came from.
 
         let mut count = 0;
-        for _ in rope.slice(4..500).slice(4..400).bytes() {
+        for _ in rope.slice(4..500).slice(4..400).iter() {
             count += 1;
         }
         for _ in rope.slice(4..500).slice(4..400).chars() {

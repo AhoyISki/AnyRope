@@ -16,7 +16,7 @@ fn index_convert(c: &mut Criterion) {
 
     group.bench_function("byte_to_char", |bench| {
         let rope = Rope::from_str(TEXT);
-        let len = rope.len_bytes();
+        let len = rope.total_len();
         bench.iter(|| {
             rope.byte_to_char(random::<usize>() % (len + 1));
         })
@@ -24,7 +24,7 @@ fn index_convert(c: &mut Criterion) {
 
     group.bench_function("byte_to_line", |bench| {
         let rope = Rope::from_str(TEXT);
-        let len = rope.len_bytes();
+        let len = rope.total_len();
         bench.iter(|| {
             rope.byte_to_line(random::<usize>() % (len + 1));
         })
@@ -68,7 +68,7 @@ fn get(c: &mut Criterion) {
 
     group.bench_function("byte", |bench| {
         let rope = Rope::from_str(TEXT);
-        let len = rope.len_bytes();
+        let len = rope.total_len();
         bench.iter(|| {
             rope.byte(random::<usize>() % len);
         })
@@ -92,7 +92,7 @@ fn get(c: &mut Criterion) {
 
     group.bench_function("chunk_at_byte", |bench| {
         let rope = Rope::from_str(TEXT);
-        let len = rope.len_bytes();
+        let len = rope.total_len();
         bench.iter(|| {
             rope.chunk_at_byte(random::<usize>() % (len + 1));
         })
@@ -101,9 +101,9 @@ fn get(c: &mut Criterion) {
     group.bench_function("chunk_at_byte_slice", |bench| {
         let rope = Rope::from_str(TEXT);
         let slice = rope.slice(324..(rope.len_chars() - 213));
-        let len = slice.len_bytes();
+        let len = slice.len_idx();
         bench.iter(|| {
-            slice.chunk_at_byte(random::<usize>() % (len + 1));
+            slice.chunk_at_index(random::<usize>() % (len + 1));
         })
     });
 
@@ -111,16 +111,16 @@ fn get(c: &mut Criterion) {
         let rope = Rope::from_str(TEXT);
         let len = rope.len_chars();
         bench.iter(|| {
-            rope.chunk_at_char(random::<usize>() % (len + 1));
+            rope.chunk_at_width(random::<usize>() % (len + 1));
         })
     });
 
     group.bench_function("chunk_at_char_slice", |bench| {
         let rope = Rope::from_str(TEXT);
         let slice = rope.slice(324..(rope.len_chars() - 213));
-        let len = slice.len_chars();
+        let len = slice.at_width();
         bench.iter(|| {
-            slice.chunk_at_char(random::<usize>() % (len + 1));
+            slice.chunk_at_width(random::<usize>() % (len + 1));
         })
     });
 

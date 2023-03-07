@@ -14,7 +14,7 @@ fn iter_prev(c: &mut Criterion) {
 
     group.bench_function("bytes", |bench| {
         let r = Rope::from_str(TEXT);
-        let itr_src = r.bytes_at(r.len_bytes());
+        let itr_src = r.iter_at(r.total_len());
         let mut itr = itr_src.clone();
         bench.iter(|| {
             if itr.prev().is_none() {
@@ -77,7 +77,7 @@ fn iter_next(c: &mut Criterion) {
 
     group.bench_function("bytes", |bench| {
         let r = Rope::from_str(TEXT);
-        let mut itr = r.bytes().cycle();
+        let mut itr = r.iter().cycle();
         bench.iter(|| {
             itr.next();
         })
@@ -126,7 +126,7 @@ fn iter_create(c: &mut Criterion) {
     group.bench_function("bytes", |bench| {
         let r = Rope::from_str(TEXT);
         bench.iter(|| {
-            r.bytes();
+            r.iter();
         })
     });
 
@@ -157,10 +157,10 @@ fn iter_create_at(c: &mut Criterion) {
 
     group.bench_function("bytes", |bench| {
         let r = Rope::from_str(TEXT);
-        let len = r.len_bytes();
+        let len = r.total_len();
         let mut i = 0;
         bench.iter(|| {
-            r.bytes_at(i % (len + 1));
+            r.iter_at(i % (len + 1));
             i += 1;
         })
     });
@@ -187,7 +187,7 @@ fn iter_create_at(c: &mut Criterion) {
 
     group.bench_function("chunks_at_byte", |bench| {
         let r = Rope::from_str(TEXT);
-        let len = r.len_bytes();
+        let len = r.total_len();
         let mut i = 0;
         bench.iter(|| {
             r.chunks_at_byte(i % (len + 1));

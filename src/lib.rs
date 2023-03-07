@@ -170,14 +170,13 @@
 extern crate smallvec;
 extern crate str_indices;
 
-mod crlf;
+mod slice_utils;
 mod rope;
 mod rope_builder;
 mod slice;
 mod tree;
 
 pub mod iter;
-pub mod str_utils;
 
 use std::ops::Bound;
 

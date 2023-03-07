@@ -421,7 +421,7 @@ proptest! {
         let text = string_slice(text, start, end);
         let s = r.slice(start..end);
 
-        for (idx, byte) in s.bytes().enumerate() {
+        for (idx, byte) in s.iter().enumerate() {
             assert_eq!(byte, text.as_bytes()[idx]);
         }
     }
@@ -438,7 +438,7 @@ proptest! {
         let r = Rope::from_str(TEXT);
         let s = r.slice(start..end);
 
-        let mut itr = s.bytes();
+        let mut itr = s.iter();
         let mut bytes = Vec::new();
         for i in directions {
             if *i == 0 {
@@ -614,7 +614,7 @@ proptest! {
     #[test]
     fn pt_bytes_at_01(idx in 0usize..TEXT.len()) {
         let r = Rope::from_str(TEXT);
-        let mut bytes_r = r.bytes_at(idx);
+        let mut bytes_r = r.iter_at(idx);
         let text_bytes = TEXT.as_bytes();
 
         #[allow(clippy::needless_range_loop)]
@@ -626,8 +626,7 @@ proptest! {
     #[test]
     fn pt_bytes_at_02(idx in 0usize..TEXT.len()) {
         let r = Rope::from_str(TEXT);
-        let mut bytes_r = r.bytes_at(idx + 1);
-        let text_bytes = TEXT.as_bytes();
+        let mut bytes_r = r.iter_ats();
 
         let mut i = idx + 1;
         while i > 0 {
@@ -666,9 +665,7 @@ proptest! {
         // Forward
         {
             let mut byte_count = s.len_bytes();
-            let mut bytes = s.bytes();
-
-            assert_eq!(byte_count, bytes.len());
+            let mut bytes = s.itern());
 
             while let Some(_) = bytes.next() {
                 byte_count -= 1;

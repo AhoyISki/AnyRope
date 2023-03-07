@@ -12,7 +12,7 @@ fn small_random_inserts() {
 
     // Do a bunch of random incoherent inserts
     for _ in 0..(1 << 10) {
-        let len = tree.len_chars().max(1);
+        let len = tree.len_width().max(1);
         tree.insert(rng.gen::<usize>() % len, "Hello ");
         tree.insert(rng.gen::<usize>() % len, "world! ");
         tree.insert(rng.gen::<usize>() % len, "How are ");

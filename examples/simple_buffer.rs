@@ -6,7 +6,7 @@ extern crate ropey;
 use std::fs::File;
 use std::io;
 
-use ropey::iter::{Bytes, Chars, Chunks, Lines};
+use ropey::iter::{Iter, Chars, Chunks, Lines};
 use ropey::{Rope, RopeSlice};
 
 struct TextBuffer {
@@ -29,8 +29,8 @@ impl TextBuffer {
         self.text.line(idx)
     }
 
-    fn bytes(&self) -> Bytes {
-        self.text.bytes()
+    fn bytes(&self) -> Iter {
+        self.text.iter()
     }
 
     fn chars(&self) -> Chars {

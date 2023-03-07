@@ -34,7 +34,7 @@ fn remove_small(c: &mut Criterion) {
             let end = (start + 1).min(len);
             rope.remove(start..end);
 
-            if rope.len_bytes() == TEXT.len() / 2 {
+            if rope.total_len() == TEXT.len() / 2 {
                 rope = Rope::from_str(&text);
             }
         })
@@ -50,7 +50,7 @@ fn remove_small(c: &mut Criterion) {
             let end = (start + 1).min(len);
             rope.remove(start..end);
 
-            if rope.len_bytes() == TEXT.len() / 2 {
+            if rope.total_len() == TEXT.len() / 2 {
                 rope = Rope::from_str(&text);
             }
         })
@@ -66,7 +66,7 @@ fn remove_small(c: &mut Criterion) {
             let end = (start + 1).min(len);
             rope.remove(start..end);
 
-            if rope.len_bytes() == TEXT.len() / 2 {
+            if rope.total_len() == TEXT.len() / 2 {
                 rope = Rope::from_str(&text);
             }
         })
@@ -82,7 +82,7 @@ fn remove_small(c: &mut Criterion) {
             let start = end - (1).min(len);
             rope.remove(start..end);
 
-            if rope.len_bytes() == TEXT.len() / 2 {
+            if rope.total_len() == TEXT.len() / 2 {
                 rope = Rope::from_str(&text);
             }
         })
@@ -104,7 +104,7 @@ fn remove_medium(c: &mut Criterion) {
             let end = (start + 15).min(len);
             rope.remove(start..end);
 
-            if rope.len_bytes() == TEXT.len() / 2 {
+            if rope.total_len() == TEXT.len() / 2 {
                 rope = Rope::from_str(&text);
             }
         })
@@ -120,7 +120,7 @@ fn remove_medium(c: &mut Criterion) {
             let end = (start + 15).min(len);
             rope.remove(start..end);
 
-            if rope.len_bytes() == TEXT.len() / 2 {
+            if rope.total_len() == TEXT.len() / 2 {
                 rope = Rope::from_str(&text);
             }
         })
@@ -136,7 +136,7 @@ fn remove_medium(c: &mut Criterion) {
             let end = (start + 15).min(len);
             rope.remove(start..end);
 
-            if rope.len_bytes() == TEXT.len() / 2 {
+            if rope.total_len() == TEXT.len() / 2 {
                 rope = Rope::from_str(&text);
             }
         })
@@ -152,7 +152,7 @@ fn remove_medium(c: &mut Criterion) {
             let start = end - (15).min(len);
             rope.remove(start..end);
 
-            if rope.len_bytes() == TEXT.len() / 2 {
+            if rope.total_len() == TEXT.len() / 2 {
                 rope = Rope::from_str(&text);
             }
         })
@@ -174,7 +174,7 @@ fn remove_large(c: &mut Criterion) {
             let end = (start + TEXT_SMALL.len()).min(len);
             rope.remove(start..end);
 
-            if rope.len_bytes() == 0 {
+            if rope.total_len() == 0 {
                 rope = Rope::from_str(&text);
             }
         })
@@ -190,7 +190,7 @@ fn remove_large(c: &mut Criterion) {
             let end = (start + TEXT_SMALL.len()).min(len);
             rope.remove(start..end);
 
-            if rope.len_bytes() == 0 {
+            if rope.total_len() == 0 {
                 rope = Rope::from_str(&text);
             }
         })
@@ -206,7 +206,7 @@ fn remove_large(c: &mut Criterion) {
             let end = (start + TEXT_SMALL.len()).min(len);
             rope.remove(start..end);
 
-            if rope.len_bytes() == 0 {
+            if rope.total_len() == 0 {
                 rope = Rope::from_str(&text);
             }
         })
@@ -222,7 +222,7 @@ fn remove_large(c: &mut Criterion) {
             let start = end - TEXT_SMALL.len().min(len);
             rope.remove(start..end);
 
-            if rope.len_bytes() == 0 {
+            if rope.total_len() == 0 {
                 rope = Rope::from_str(&text);
             }
         })

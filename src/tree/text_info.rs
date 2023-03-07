@@ -1,74 +1,70 @@
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-use crate::str_utils::{count_chars, count_line_breaks, count_utf16_surrogates};
-use crate::tree::Count;
+use crate::{rope::Measurable, tree::Count};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct TextInfo {
-    pub(crate) bytes: Count,
-    pub(crate) chars: Count,
-    pub(crate) utf16_surrogates: Count,
-    pub(crate) line_breaks: Count,
+pub struct SliceInfo {
+    pub(crate) len: Count,
+    pub(crate) width: Count,
 }
 
-impl TextInfo {
+impl SliceInfo {
     #[inline]
-    pub fn new() -> TextInfo {
-        TextInfo {
-            bytes: 0,
-            chars: 0,
-            utf16_surrogates: 0,
-            line_breaks: 0,
-        }
+    pub fn new() -> SliceInfo {
+        SliceInfo { len: 0, width: 0 }
     }
 
     #[inline]
-    pub fn from_str(text: &str) -> TextInfo {
-        TextInfo {
-            bytes: text.len() as Count,
-            chars: count_chars(text) as Count,
-            utf16_surrogates: count_utf16_surrogates(text) as Count,
-            line_breaks: count_line_breaks(text) as Count,
+    pub fn from_slice<M>(slice: &[M]) -> SliceInfo
+    where
+        M: Measurable,
+    {
+        SliceInfo {
+            len: slice.len() as Count,
+            width: count_width(slice) as Count,
         }
     }
 }
 
-impl Add for TextInfo {
+impl Add for SliceInfo {
     type Output = Self;
     #[inline]
-    fn add(self, rhs: TextInfo) -> TextInfo {
-        TextInfo {
-            bytes: self.bytes + rhs.bytes,
-            chars: self.chars + rhs.chars,
-            utf16_surrogates: self.utf16_surrogates + rhs.utf16_surrogates,
-            line_breaks: self.line_breaks + rhs.line_breaks,
+    fn add(self, rhs: SliceInfo) -> SliceInfo {
+        SliceInfo {
+            len: self.len + rhs.len,
+            width: self.width + rhs.width,
         }
     }
 }
 
-impl AddAssign for TextInfo {
+impl AddAssign for SliceInfo {
     #[inline]
-    fn add_assign(&mut self, other: TextInfo) {
+    fn add_assign(&mut self, other: SliceInfo) {
         *self = *self + other;
     }
 }
 
-impl Sub for TextInfo {
+impl Sub for SliceInfo {
     type Output = Self;
     #[inline]
-    fn sub(self, rhs: TextInfo) -> TextInfo {
-        TextInfo {
-            bytes: self.bytes - rhs.bytes,
-            chars: self.chars - rhs.chars,
-            utf16_surrogates: self.utf16_surrogates - rhs.utf16_surrogates,
-            line_breaks: self.line_breaks - rhs.line_breaks,
+    fn sub(self, rhs: SliceInfo) -> SliceInfo {
+        SliceInfo {
+            len: self.len - rhs.len,
+            width: self.width - rhs.width,
         }
     }
 }
 
-impl SubAssign for TextInfo {
+impl SubAssign for SliceInfo {
     #[inline]
-    fn sub_assign(&mut self, other: TextInfo) {
+    fn sub_assign(&mut self, other: SliceInfo) {
         *self = *self - other;
     }
+}
+
+pub fn count_width<M>(slice: &[M]) -> usize
+where
+    M: Measurable,
+{
+    slice.iter().map(|measurable| measurable.width()).sum()
 }
