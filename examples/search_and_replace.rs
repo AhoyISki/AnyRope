@@ -14,28 +14,48 @@ extern crate ropey;
 use std::fs::File;
 use std::io;
 
-use ropey::{iter::Chars, Rope, RopeSlice};
+use ropey::{iter::Iter, Measurable, Rope, RopeSlice};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Lipsum {
+    Lorem,
+    Ipsum,
+    Dolor(usize),
+    Sit,
+    Amet,
+    Consectur(&'static str),
+    Adipiscing(bool),
+}
+
+impl Measurable for Lipsum {
+    fn width(&self) -> usize {
+        match self {
+            Lipsum::Lorem => 1,
+            Lipsum::Ipsum => 2,
+            Lipsum::Dolor(width) => *width,
+            Lipsum::Sit => 0,
+            Lipsum::Amet => 0,
+            Lipsum::Consectur(text) => text.len(),
+            Lipsum::Adipiscing(boolean) => *boolean as usize,
+        }
+    }
+}
+use self::Lipsum::*;
 
 fn main() {
-    // Get arguments from commandline
-    let (search_pattern, replacement_text, filepath) = if std::env::args().count() > 3 {
-        (
-            std::env::args().nth(1).unwrap(),
-            std::env::args().nth(2).unwrap(),
-            std::env::args().nth(3).unwrap(),
-        )
-    } else {
-        eprintln!(
-            "Usage:\n    search_and_replace <search_pattern> <replacement_text> <input_filepath>"
-        );
-        return;
-    };
-
     // Load file contents into a rope.
-    let mut text = Rope::from_reader(io::BufReader::new(File::open(&filepath).unwrap())).expect("Cannot read file: either it doesn't exist, file permissions don't allow reading, or is not utf8 text.");
+    let mut text = Rope::from_slice(&[
+        Lorem,
+        Ipsum,
+        Dolor(5),
+        Sit,
+        Amet,
+        Consectur("test"),
+        Adipiscing(false),
+    ]);
 
     // Do the search-and-replace.
-    search_and_replace(&mut text, &search_pattern, &replacement_text);
+    search_and_replace(&mut text, &[Dolor(5), Sit, Amet], &[Lorem, Ipsum, Lorem]);
 
     // Print the new text to stdout.
     println!("{}", text);
@@ -74,9 +94,12 @@ fn main() {
 ///
 /// In this implementation we take approach #4 because it seems the
 /// all-around best.
-fn search_and_replace(rope: &mut Rope, search_pattern: &str, replacement_text: &str) {
+fn search_and_replace<M>(rope: &mut Rope<M>, search_pattern: &[M], replacement_slice: &[M])
+where
+    M: Measurable + PartialEq,
+{
     const BATCH_SIZE: usize = 256;
-    let replacement_text_len = replacement_text.chars().count();
+    let replacement_text_len = replacement_slice.iter().count();
 
     let mut head = 0; // Keep track of where we are between searches
     let mut matches = Vec::with_capacity(BATCH_SIZE);
@@ -85,7 +108,9 @@ fn search_and_replace(rope: &mut Rope, search_pattern: &str, replacement_text: &
         // `Iterator::collect()` to collect the batch because we want to
         // re-use the same Vec to avoid unnecessary allocations.
         matches.clear();
-        for m in SearchIter::from_rope_slice(&rope.slice(head..), search_pattern).take(BATCH_SIZE) {
+        for m in
+            SearchIter::from_rope_slice(&rope.width_slice(head..), search_pattern).take(BATCH_SIZE)
+        {
             matches.push(m);
         }
 
@@ -103,7 +128,7 @@ fn search_and_replace(rope: &mut Rope, search_pattern: &str, replacement_text: &
 
             // Do the replacement.
             rope.remove(start_d..end_d);
-            rope.insert(start_d, replacement_text);
+            rope.insert_slice(start_d, replacement_slice);
 
             // Update the index offset.
             let match_len = (end - start) as isize;
@@ -125,31 +150,40 @@ fn search_and_replace(rope: &mut Rope, search_pattern: &str, replacement_text: &
 /// implementation providing an equivalent interface could easily be dropped
 /// in, and the search-and-replace function above would work with it quite
 /// happily.
-struct SearchIter<'a> {
-    char_iter: Chars<'a>,
-    search_pattern: &'a str,
+struct SearchIter<'a, M>
+where
+    M: Measurable,
+{
+    char_iter: Iter<'a, M>,
+    search_pattern: &'a [M],
     search_pattern_char_len: usize,
-    cur_index: usize, // The current char index of the search head.
-    possible_matches: Vec<std::str::Chars<'a>>, // Tracks where we are in the search pattern for the current possible matches.
+    cur_index: usize,                   // The current char index of the search head.
+    possible_matches: Vec<std::slice::Iter<'a, M>>, // Tracks where we are in the search pattern for the current possible matches.
 }
 
-impl<'a> SearchIter<'a> {
-    fn from_rope_slice<'b>(slice: &'b RopeSlice, search_pattern: &'b str) -> SearchIter<'b> {
+impl<'a, M> SearchIter<'a, M>
+where
+    M: Measurable,
+{
+    fn from_rope_slice<'b: 'a>(slice: &'b RopeSlice<M>, search_pattern: &'b [M]) -> Self {
         assert!(
             !search_pattern.is_empty(),
             "Can't search using an empty search pattern."
         );
         SearchIter {
-            char_iter: slice.chars(),
+            char_iter: slice.iter(),
             search_pattern: search_pattern,
-            search_pattern_char_len: search_pattern.chars().count(),
+            search_pattern_char_len: search_pattern.iter().count(),
             cur_index: 0,
             possible_matches: Vec::new(),
         }
     }
 }
 
-impl<'a> Iterator for SearchIter<'a> {
+impl<'a, M> Iterator for SearchIter<'a, M>
+where
+    M: Measurable + PartialEq,
+{
     type Item = (usize, usize);
 
     // Return the start/end char indices of the next match.
@@ -160,7 +194,7 @@ impl<'a> Iterator for SearchIter<'a> {
 
             // Push new potential match, for a possible match starting at the
             // current char.
-            self.possible_matches.push(self.search_pattern.chars());
+            self.possible_matches.push(self.search_pattern.iter());
 
             // Check the rope's char against the next character in each of
             // the potential matches, removing the potential matches that
@@ -169,8 +203,8 @@ impl<'a> Iterator for SearchIter<'a> {
             let mut i = 0;
             while i < self.possible_matches.len() {
                 let pattern_char = self.possible_matches[i].next().unwrap();
-                if next_char == pattern_char {
-                    if self.possible_matches[i].clone().next() == None {
+                if next_char == *pattern_char {
+                    if let None = self.possible_matches[i].clone().next() {
                         // We have a match!  Reset possible matches and
                         // return the successful match's char indices.
                         let char_match_range = (

@@ -107,7 +107,7 @@ where
     /// method, and should not be used in conjunction with it.
     #[doc(hidden)]
     pub fn _append_chunk(&mut self, contents: &[M]) {
-        self.append_leaf_node(Arc::new(Node::Leaf(Leaf::from(contents))));
+        self.append_leaf_node(Arc::new(Node::Leaf(Leaf::from_slice(contents))));
     }
 
     /// NOT PART OF THE PUBLIC API (hidden from docs for a reason!).
@@ -139,12 +139,12 @@ where
             match leaf_text {
                 NextSlice::None => break,
                 NextSlice::UseBuffer => {
-                    let leaf_text = Leaf::from(self.buffer.as_slice());
+                    let leaf_text = Leaf::from_slice(self.buffer.as_slice());
                     self.append_leaf_node(Arc::new(Node::Leaf(leaf_text)));
                     self.buffer.clear();
                 }
                 NextSlice::Slice(s) => {
-                    self.append_leaf_node(Arc::new(Node::Leaf(Leaf::from(s))));
+                    self.append_leaf_node(Arc::new(Node::Leaf(Leaf::from_slice(s))));
                 }
             }
         }
@@ -157,15 +157,16 @@ where
     // code.  But generally, `fix_tree` should be set to true.
     fn finish_internal(mut self, fix_tree: bool) -> Rope<M> {
         // Zip up all the remaining nodes on the stack
-        let mut stack_idx = self.stack.len() - 1;
-        while stack_idx >= 1 {
+        let mut stack_index = self.stack.len() - 1;
+        while stack_index >= 1 {
             let node = self.stack.pop().unwrap();
-            if let Node::Branch(ref mut children) = *Arc::make_mut(&mut self.stack[stack_idx - 1]) {
+            if let Node::Branch(ref mut children) = *Arc::make_mut(&mut self.stack[stack_index - 1])
+            {
                 children.push((node.slice_info(), node));
             } else {
                 unreachable!();
             }
-            stack_idx -= 1;
+            stack_index -= 1;
         }
 
         // Create the rope.
@@ -176,13 +177,11 @@ where
         // Fix up the tree to be well-formed.
         if fix_tree {
             Arc::make_mut(&mut rope.root).zip_fix_right();
-            if self.last_chunk_len_bytes < MIN_BYTES
-                && self.last_chunk_len_bytes != rope.total_len()
-            {
+            if self.last_chunk_len_bytes < MIN_BYTES && self.last_chunk_len_bytes != rope.len() {
                 // Merge the last chunk if it was too small.
-                let idx = rope.total_width()
-                    - rope.idx_to_width(rope.total_len() - self.last_chunk_len_bytes);
-                Arc::make_mut(&mut rope.root).fix_tree_seam(idx);
+                let index =
+                    rope.width() - rope.index_to_width(rope.len() - self.last_chunk_len_bytes);
+                Arc::make_mut(&mut rope.root).fix_tree_seam(index);
             }
             rope.pull_up_singular_nodes();
         }
@@ -206,15 +205,18 @@ where
         // Simplest case: empty buffer and enough in `text` for a full
         // chunk, so just chop a chunk off from `text` and use that.
         if self.buffer.is_empty() && slice.len() >= MAX_BYTES {
-            let split_idx = MAX_BYTES.min(slice.len() - 1);
-            return (NextSlice::Slice(&slice[..split_idx]), &slice[split_idx..]);
+            let split_index = MAX_BYTES.min(slice.len() - 1);
+            return (
+                NextSlice::Slice(&slice[..split_index]),
+                &slice[split_index..],
+            );
         }
         // If the buffer + `text` is enough for a full chunk, push enough
         // of `text` onto the buffer to fill it and use that.
         else if (slice.len() + self.buffer.len()) >= MAX_BYTES {
-            let mut split_idx = MAX_BYTES - self.buffer.len();
-            self.buffer.extend_from_slice(&slice[..split_idx]);
-            return (NextSlice::UseBuffer, &slice[split_idx..]);
+            let split_index = MAX_BYTES - self.buffer.len();
+            self.buffer.extend_from_slice(&slice[..split_index]);
+            return (NextSlice::UseBuffer, &slice[split_index..]);
         }
         // If we don't have enough text for a full chunk.
         else {
@@ -256,29 +258,29 @@ where
             Node::Branch(_) => {
                 self.stack.push(last);
                 let mut left = leaf;
-                let mut stack_idx = (self.stack.len() - 1) as isize;
+                let mut stack_index = (self.stack.len() - 1) as isize;
                 loop {
-                    if stack_idx < 0 {
+                    if stack_index < 0 {
                         // We're above the root, so do a root split.
                         let mut children = Branch::new();
                         children.push((left.slice_info(), left));
                         self.stack.insert(0, Arc::new(Node::Branch(children)));
                         break;
-                    } else if self.stack[stack_idx as usize].child_count() < (MAX_CHILDREN - 1) {
+                    } else if self.stack[stack_index as usize].child_count() < (MAX_CHILDREN - 1) {
                         // There's room to add a child, so do that.
-                        Arc::make_mut(&mut self.stack[stack_idx as usize])
+                        Arc::make_mut(&mut self.stack[stack_index as usize])
                             .children_mut()
                             .push((left.slice_info(), left));
                         break;
                     } else {
                         // Not enough room to fit a child, so split.
                         left = Arc::new(Node::Branch(
-                            Arc::make_mut(&mut self.stack[stack_idx as usize])
+                            Arc::make_mut(&mut self.stack[stack_index as usize])
                                 .children_mut()
                                 .push_split((left.slice_info(), left)),
                         ));
-                        std::mem::swap(&mut left, &mut self.stack[stack_idx as usize]);
-                        stack_idx -= 1;
+                        std::mem::swap(&mut left, &mut self.stack[stack_index as usize]);
+                        stack_index -= 1;
                     }
                 }
             }
@@ -310,51 +312,87 @@ where
 mod tests {
     use super::*;
 
-    // 127 bytes, 103 chars, 4 lines
-    const TEXT: &str = "Hello there!  How're you doing?\r\nIt's \
-                        a fine day, isn't it?\r\nAren't you glad \
-                        we're alive?\r\nこんにちは、みんなさん！";
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    enum Lipsum {
+        Lorem,
+        Ipsum,
+        Dolor(usize),
+        Sit,
+        Amet,
+        Consectur(&'static str),
+        Adipiscing(bool),
+    }
+
+    impl Measurable for Lipsum {
+        fn width(&self) -> usize {
+            match self {
+                Lipsum::Lorem => 1,
+                Lipsum::Ipsum => 2,
+                Lipsum::Dolor(width) => *width,
+                Lipsum::Sit => 0,
+                Lipsum::Amet => 0,
+                Lipsum::Consectur(text) => text.len(),
+                Lipsum::Adipiscing(boolean) => *boolean as usize,
+            }
+        }
+    }
+
+    use self::Lipsum::*;
+    /// 70 elements, total width of 135.
+    fn lorem_ipsum() -> Vec<Lipsum> {
+        (0..70)
+            .into_iter()
+            .map(|num| match num % 14 {
+                0 | 7 => Lorem,
+                1 | 8 => Ipsum,
+                2 => Dolor(4),
+                3 | 10 => Sit,
+                4 | 11 => Amet,
+                5 => Consectur("hello"),
+                6 => Adipiscing(true),
+                9 => Dolor(8),
+                12 => Consectur("bye"),
+                13 => Adipiscing(false),
+                _ => unreachable!()
+            })
+            .collect()
+    }
 
     #[test]
     fn rope_builder_01() {
-        let mut b = RopeBuilder::new();
+        let mut builder = RopeBuilder::new();
 
-        b.append("Hello there!  How're you doing?\r");
-        b.append("\nIt's a fine ");
-        b.append("d");
-        b.append("a");
-        b.append("y,");
-        b.append(" ");
-        b.append("isn't it?");
-        b.append("\r");
-        b.append("\nAren't you ");
-        b.append("glad we're alive?\r");
-        b.append("\n");
-        b.append("こんにち");
-        b.append("は、みんなさ");
-        b.append("ん！");
+        for _ in 0..5 {
+            builder.append(&[Lorem, Ipsum, Dolor(4), Sit, Amet]);
+            builder.append(&[Consectur("hello"), Adipiscing(true)]);
+            builder.append(&[Lorem, Ipsum, Dolor(8), Sit, Amet]);
+            builder.append(&[Consectur("bye"), Adipiscing(false)]);
+        }
 
-        let r = b.finish();
+        let rope = builder.finish();
 
-        assert_eq!(r, TEXT);
+        assert_eq!(rope, lorem_ipsum());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn rope_builder_default_01() {
-        let mut b = RopeBuilder::default();
+        let mut builder = RopeBuilder::default();
 
-        b.append("Hello there!  How're you doing?\r");
-        b.append("\nIt's a fine day, isn't it?\r\nAren't you ");
-        b.append("glad we're alive?\r\nこんにちは、みんなさん！");
+        for _ in 0..5 {
+            builder.append(&[Lorem, Ipsum, Dolor(4), Sit, Amet]);
+            builder.append(&[Consectur("hello"), Adipiscing(true)]);
+            builder.append(&[Lorem, Ipsum, Dolor(8), Sit, Amet]);
+            builder.append(&[Consectur("bye"), Adipiscing(false)]);
+        }
 
-        let r = b.finish();
+        let rope = builder.finish();
 
-        assert_eq!(r, TEXT);
+        assert_eq!(rope, lorem_ipsum());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 }

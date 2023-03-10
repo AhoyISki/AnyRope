@@ -180,7 +180,7 @@ pub mod iter;
 
 use std::ops::Bound;
 
-pub use crate::rope::Rope;
+pub use crate::rope::{Rope, Measurable};
 pub use crate::rope_builder::RopeBuilder;
 pub use crate::slice::RopeSlice;
 
@@ -198,48 +198,19 @@ pub enum Error {
     ///
     /// Contains the index attempted and the actual length of the
     /// `Rope`/`RopeSlice` in bytes, in that order.
-    ByteIndexOutOfBounds(usize, usize),
+    IndexOutOfBounds(usize, usize),
 
     /// Indicates that the passed char index was out of bounds.
     ///
     /// Contains the index attempted and the actual length of the
     /// `Rope`/`RopeSlice` in chars, in that order.
-    CharIndexOutOfBounds(usize, usize),
-
-    /// Indicates that the passed line index was out of bounds.
-    ///
-    /// Contains the index attempted and the actual length of the
-    /// `Rope`/`RopeSlice` in lines, in that order.
-    LineIndexOutOfBounds(usize, usize),
-
-    /// Indicates that the passed utf16 code-unit index was out of
-    /// bounds.
-    ///
-    /// Contains the index attempted and the actual length of the
-    /// `Rope`/`RopeSlice` in utf16 code units, in that order.
-    Utf16IndexOutOfBounds(usize, usize),
-
-    /// Indicates that the passed byte index was not a char boundary.
-    ///
-    /// Contains the passed byte index.
-    ByteIndexNotCharBoundary(usize),
-
-    /// Indicates that the passed byte range didn't line up with char
-    /// boundaries.
-    ///
-    /// Contains the [start, end) byte indices of the range, in that order.
-    /// When either the start or end are `None`, that indicates a half-open
-    /// range.
-    ByteRangeNotCharBoundary(
-        Option<usize>, // Start.
-        Option<usize>, // End.
-    ),
+    WidthOutOfBounds(usize, usize),
 
     /// Indicates that a reversed byte-index range (end < start) was
     /// encountered.
     ///
     /// Contains the [start, end) byte indices of the range, in that order.
-    ByteRangeInvalid(
+    IndexRangeInvalid(
         usize, // Start.
         usize, // End.
     ),
@@ -248,7 +219,7 @@ pub enum Error {
     /// encountered.
     ///
     /// Contains the [start, end) char indices of the range, in that order.
-    CharRangeInvalid(
+    WidthRangeInvalid(
         usize, // Start.
         usize, // End.
     ),
@@ -259,7 +230,7 @@ pub enum Error {
     /// Contains the [start, end) byte indices of the range and the actual
     /// length of the `Rope`/`RopeSlice` in bytes, in that order.  When
     /// either the start or end are `None`, that indicates a half-open range.
-    ByteRangeOutOfBounds(
+    IndexRangeOutOfBounds(
         Option<usize>, // Start.
         Option<usize>, // End.
         usize,         // Rope byte length.
@@ -271,7 +242,7 @@ pub enum Error {
     /// Contains the [start, end) char indices of the range and the actual
     /// length of the `Rope`/`RopeSlice` in chars, in that order.  When
     /// either the start or end are `None`, that indicates a half-open range.
-    CharRangeOutOfBounds(
+    WidthRangeOutOfBounds(
         Option<usize>, // Start.
         Option<usize>, // End.
         usize,         // Rope char length.
@@ -297,61 +268,40 @@ impl std::error::Error for Error {
 impl std::fmt::Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
-            Error::ByteIndexOutOfBounds(index, len) => {
+            Error::IndexOutOfBounds(index, len) => {
                 write!(
                     f,
                     "Byte index out of bounds: byte index {}, Rope/RopeSlice byte length {}",
                     index, len
                 )
             }
-            Error::CharIndexOutOfBounds(index, len) => {
+            Error::WidthOutOfBounds(index, len) => {
                 write!(
                     f,
                     "Char index out of bounds: char index {}, Rope/RopeSlice char length {}",
                     index, len
                 )
             }
-            Error::LineIndexOutOfBounds(index, len) => {
-                write!(
-                    f,
-                    "Line index out of bounds: line index {}, Rope/RopeSlice line count {}",
-                    index, len
-                )
-            }
-            Error::Utf16IndexOutOfBounds(index, len) => {
-                write!(f, "Utf16 code-unit index out of bounds: utf16 index {}, Rope/RopeSlice utf16 length {}", index, len)
-            }
-            Error::ByteIndexNotCharBoundary(index) => {
-                write!(
-                    f,
-                    "Byte index is not a valid char boundary: byte index {}",
-                    index
-                )
-            }
-            Error::ByteRangeNotCharBoundary(start_idx_opt, end_idx_opt) => {
-                write!(f, "Byte range does not align with char boundaries: range ")?;
-                write_range(f, start_idx_opt, end_idx_opt)
-            }
-            Error::ByteRangeInvalid(start_idx, end_idx) => {
+            Error::IndexRangeInvalid(start_idx, end_idx) => {
                 write!(
                     f,
                     "Invalid byte range {}..{}: start must be <= end",
                     start_idx, end_idx
                 )
             }
-            Error::CharRangeInvalid(start_idx, end_idx) => {
+            Error::WidthRangeInvalid(start_idx, end_idx) => {
                 write!(
                     f,
                     "Invalid char range {}..{}: start must be <= end",
                     start_idx, end_idx
                 )
             }
-            Error::ByteRangeOutOfBounds(start_idx_opt, end_idx_opt, len) => {
+            Error::IndexRangeOutOfBounds(start_idx_opt, end_idx_opt, len) => {
                 write!(f, "Byte range out of bounds: byte range ")?;
                 write_range(f, start_idx_opt, end_idx_opt)?;
                 write!(f, ", Rope/RopeSlice byte length {}", len)
             }
-            Error::CharRangeOutOfBounds(start_idx_opt, end_idx_opt, len) => {
+            Error::WidthRangeOutOfBounds(start_idx_opt, end_idx_opt, len) => {
                 write!(f, "Char range out of bounds: char range ")?;
                 write_range(f, start_idx_opt, end_idx_opt)?;
                 write!(f, ", Rope/RopeSlice char length {}", len)

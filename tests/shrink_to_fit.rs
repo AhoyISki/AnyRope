@@ -1,8 +1,53 @@
 extern crate rand;
 extern crate ropey;
 
-use rand::Rng;
-use ropey::Rope;
+use rand::{rngs::ThreadRng, Rng};
+use ropey::{Measurable, Rope};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Lipsum {
+    Lorem,
+    Ipsum,
+    Dolor(usize),
+    Sit,
+    Amet,
+    Consectur(&'static str),
+    Adipiscing(bool),
+}
+
+impl Measurable for Lipsum {
+    fn width(&self) -> usize {
+        match self {
+            Lipsum::Lorem => 1,
+            Lipsum::Ipsum => 2,
+            Lipsum::Dolor(width) => *width,
+            Lipsum::Sit => 0,
+            Lipsum::Amet => 0,
+            Lipsum::Consectur(text) => text.len(),
+            Lipsum::Adipiscing(boolean) => *boolean as usize,
+        }
+    }
+}
+use self::Lipsum::*;
+
+fn random_slice(rng: &mut ThreadRng, len: usize) -> Vec<Lipsum> {
+    (0..rng.gen::<usize>() % 10)
+        .into_iter()
+        .map(|_| match rng.gen::<usize>() % 14 {
+            0 | 7 => Lorem,
+            1 | 8 => Ipsum,
+            2 => Dolor(4),
+            3 | 10 => Sit,
+            4 | 11 => Amet,
+            5 => Consectur("hello"),
+            6 => Adipiscing(true),
+            9 => Dolor(8),
+            12 => Consectur("bye"),
+            13 => Adipiscing(false),
+            _ => unreachable!(),
+        })
+        .collect()
+}
 
 #[test]
 #[cfg_attr(miri, ignore)]
@@ -12,19 +57,18 @@ fn shrink_to_fit() {
 
     // Do a bunch of random incoherent inserts
     for _ in 0..(1 << 12) {
-        let len = rope.len_chars().max(1);
-        rope.insert(rng.gen::<usize>() % len, "Hello ");
-        rope.insert(rng.gen::<usize>() % len, "world! ");
-        rope.insert(rng.gen::<usize>() % len, "How are ");
-        rope.insert(rng.gen::<usize>() % len, "you ");
-        rope.insert(rng.gen::<usize>() % len, "doing?\r\n");
-        rope.insert(rng.gen::<usize>() % len, "Let's ");
-        rope.insert(rng.gen::<usize>() % len, "keep ");
-        rope.insert(rng.gen::<usize>() % len, "inserting ");
-        rope.insert(rng.gen::<usize>() % len, "more ");
-        rope.insert(rng.gen::<usize>() % len, "items.\r\n");
-        rope.insert(rng.gen::<usize>() % len, "こんいちは、");
-        rope.insert(rng.gen::<usize>() % len, "みんなさん！");
+        let len = rope.len().max(1);
+        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
+        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
+        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
+        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
+        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
+        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
+        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
+        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
+        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
+        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
+        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
     }
 
     let rope2 = rope.clone();

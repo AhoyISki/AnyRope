@@ -6,17 +6,15 @@ use std::sync::Arc;
 use crate::iter::{Chunks, Iter};
 use crate::rope_builder::RopeBuilder;
 use crate::slice::RopeSlice;
-use crate::slice_utils::{idx_to_width, width_of, width_to_idx};
+use crate::slice_utils::{index_to_width, width_to_index};
 use crate::tree::{Branch, Node, SliceInfo, MAX_BYTES, MIN_BYTES};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
-pub trait Measurable: Clone + Copy {
+pub trait Measurable: Clone + Copy + Debug {
     /// The width of this element, it need not be the actual lenght in bytes, but just a
     /// representative value, to be fed to the [Rope][crate::rope::Rope].
     fn width(&self) -> usize;
 }
-
-//impl<M> PartialEq<&'a [M]> for 
 
 /// A utf8 text rope.
 ///
@@ -121,15 +119,15 @@ where
     ///
     /// Runs in O(1) time.
     #[inline]
-    pub fn total_len(&self) -> usize {
-        self.root.count()
+    pub fn len(&self) -> usize {
+        self.root.len()
     }
 
     /// Total number of chars in the `Rope`.
     ///
     /// Runs in O(1) time.
     #[inline]
-    pub fn total_width(&self) -> usize {
+    pub fn width(&self) -> usize {
         self.root.width()
     }
 
@@ -200,30 +198,30 @@ where
     //-----------------------------------------------------------------------
     // Edit methods
 
-    /// Inserts `text` at char index `char_idx`.
+    /// Inserts `text` at char index `char_index`.
     ///
     /// Runs in O(M + log N) time, where N is the length of the `Rope` and M
     /// is the length of `text`.
     ///
     /// # Panics
     ///
-    /// Panics if `char_idx` is out of bounds (i.e. `char_idx > len_chars()`).
+    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
     #[inline]
-    pub fn insert(&mut self, char_idx: usize, slice: &[M]) {
+    pub fn insert_slice(&mut self, char_index: usize, slice: &[M]) {
         // Bounds check
-        self.try_insert(char_idx, slice).unwrap()
+        self.try_insert(char_index, slice).unwrap()
     }
 
-    /// Inserts a single char `ch` at char index `char_idx`.
+    /// Inserts a single char `ch` at char index `char_index`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_idx` is out of bounds (i.e. `char_idx > len_chars()`).
+    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
     #[inline]
-    pub fn insert_single(&mut self, char_idx: usize, measurable: M) {
-        self.try_insert_single(char_idx, measurable).unwrap()
+    pub fn insert(&mut self, char_index: usize, measurable: M) {
+        self.try_insert_single(char_index, measurable).unwrap()
     }
 
     /// Private internal-only method that does a single insertion of
@@ -235,16 +233,15 @@ where
     /// Note that a lot of the complexity in this method comes from avoiding
     /// splitting CRLF pairs and, when possible, avoiding re-scanning text for
     /// text info.  It is otherwise conceptually fairly straightforward.
-    fn insert_internal(&mut self, width: usize, mut ins_slice: &[M]) {
-        let mut left_seam = false;
+    fn insert_internal(&mut self, width: usize, ins_slice: &[M]) {
         let root_info = self.root.slice_info();
 
         let (l_info, residual) = Arc::make_mut(&mut self.root).edit_chunk_at_width(
             width,
             root_info,
-            |idx, cur_info, leaf_slice| {
+            |index, cur_info, leaf_slice| {
                 // Find our byte index
-                let idx = width_to_idx(leaf_slice, idx);
+                let index = width_to_index(leaf_slice, index);
 
                 // No node splitting
                 if (leaf_slice.len() + ins_slice.len()) <= MAX_BYTES {
@@ -257,12 +254,12 @@ where
                         info
                     };
                     // Insert the text and return the new info
-                    leaf_slice.insert_slice_split(idx, ins_slice);
+                    leaf_slice.insert_slice_split(index, ins_slice);
                     (new_info, None)
                 }
                 // We're splitting the node
                 else {
-                    let r_text = leaf_slice.insert_slice_split(idx, ins_slice);
+                    let r_text = leaf_slice.insert_slice_split(index, ins_slice);
                     let l_text_info = SliceInfo::from_slice(leaf_slice);
                     if r_text.len() > 0 {
                         let r_text_info = SliceInfo::from_slice(&r_text);
@@ -320,27 +317,26 @@ where
         self.try_remove(char_range).unwrap()
     }
 
-    /// Splits the `Rope` at `char_idx`, returning the right part of
+    /// Splits the `Rope` at `char_index`, returning the right part of
     /// the split.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_idx` is out of bounds (i.e. `char_idx > len_chars()`).
-    pub fn split_off(&mut self, char_idx: usize) -> Self {
-        self.try_split_off(char_idx).unwrap()
+    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
+    pub fn split_off(&mut self, char_index: usize) -> Self {
+        self.try_split_off(char_index).unwrap()
     }
 
     /// Appends a `Rope` to the end of this one, consuming the other `Rope`.
     ///
     /// Runs in O(log N) time.
-    pub fn append(&mut self, other: Self) {
-        if self.total_width() == 0 {
+    pub fn append(&mut self, mut other: Self) {
+        if self.width() == 0 {
             // Special case
-            let mut other = other;
             std::mem::swap(self, &mut other);
-        } else if other.total_width() > 0 {
+        } else if other.width() > 0 {
             let left_info = self.root.slice_info();
             let right_info = other.root.slice_info();
 
@@ -387,76 +383,76 @@ where
     ///
     /// - If the byte is in the middle of a multi-byte char, returns the
     ///   index of the char that the byte belongs to.
-    /// - `byte_idx` can be one-past-the-end, which will return
+    /// - `byte_index` can be one-past-the-end, which will return
     ///   one-past-the-end char index.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `byte_idx` is out of bounds (i.e. `byte_idx > len_bytes()`).
+    /// Panics if `byte_index` is out of bounds (i.e. `byte_index > len_bytes()`).
     #[inline]
-    pub fn idx_to_width(&self, byte_idx: usize) -> usize {
-        self.try_idx_to_width(byte_idx).unwrap()
+    pub fn index_to_width(&self, byte_index: usize) -> usize {
+        self.try_index_to_width(byte_index).unwrap()
     }
 
     /// Returns the byte index of the given char.
     ///
     /// Notes:
     ///
-    /// - `char_idx` can be one-past-the-end, which will return
+    /// - `char_index` can be one-past-the-end, which will return
     ///   one-past-the-end byte index.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_idx` is out of bounds (i.e. `char_idx > len_chars()`).
+    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
     #[inline]
-    pub fn width_to_idx(&self, width: usize) -> usize {
-        self.try_width_to_idx(width).unwrap()
+    pub fn width_to_index(&self, width: usize) -> usize {
+        self.try_width_to_index(width).unwrap()
     }
 
     //-----------------------------------------------------------------------
     // Fetch methods
 
-    /// Returns the byte at `byte_idx`.
+    /// Returns the byte at `byte_index`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `byte_idx` is out of bounds (i.e. `byte_idx >= len_bytes()`).
+    /// Panics if `byte_index` is out of bounds (i.e. `byte_index >= len_bytes()`).
     #[inline]
-    pub fn from_idx(&self, idx: usize) -> &M {
+    pub fn from_index(&self, index: usize) -> M {
         // Bounds check
-        if let Some(out) = self.get_from_idx(idx) {
+        if let Some(out) = self.get_from_index(index) {
             out
         } else {
             panic!(
                 "Attempt to index past end of Rope: byte index {}, Rope byte length {}",
-                idx,
-                self.total_len()
+                index,
+                self.len()
             );
         }
     }
 
-    /// Returns the char at `char_idx`.
+    /// Returns the char at `char_index`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_idx` is out of bounds (i.e. `char_idx >= len_chars()`).
+    /// Panics if `char_index` is out of bounds (i.e. `char_index >= len_chars()`).
     #[inline]
-    pub fn from_width(&self, width: usize) -> &M {
+    pub fn from_width(&self, width: usize) -> M {
         if let Some(out) = self.get_from_width(width) {
             out
         } else {
             panic!(
                 "Attempt to index past end of Rope: char index {}, Rope char length {}",
                 width,
-                self.total_width()
+                self.width()
             );
         }
     }
@@ -466,27 +462,27 @@ where
     /// Also returns the byte and char indices of the beginning of the chunk
     /// and the index of the line that the chunk starts on.
     ///
-    /// Note: for convenience, a one-past-the-end `byte_idx` returns the last
+    /// Note: for convenience, a one-past-the-end `byte_index` returns the last
     /// chunk of the `RopeSlice`.
     ///
     /// The return value is organized as
-    /// `(chunk, chunk_byte_idx, chunk_char_idx, chunk_line_idx)`.
+    /// `(chunk, chunk_byte_index, chunk_char_index, chunk_line_index)`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `byte_idx` is out of bounds (i.e. `byte_idx > len_bytes()`).
+    /// Panics if `byte_index` is out of bounds (i.e. `byte_index > len_bytes()`).
     #[inline]
-    pub fn chunk_at_idx(&self, idx: usize) -> (&[M], usize, usize) {
+    pub fn chunk_at_index(&self, index: usize) -> (&[M], usize, usize) {
         // Bounds check
-        if let Some(out) = self.get_chunk_at_idx(idx) {
+        if let Some(out) = self.get_chunk_at_index(index) {
             out
         } else {
             panic!(
                 "Attempt to index past end of Rope: byte index {}, Rope byte length {}",
-                idx,
-                self.total_len()
+                index,
+                self.len()
             );
         }
     }
@@ -496,17 +492,17 @@ where
     /// Also returns the byte and char indices of the beginning of the chunk
     /// and the index of the line that the chunk starts on.
     ///
-    /// Note: for convenience, a one-past-the-end `char_idx` returns the last
+    /// Note: for convenience, a one-past-the-end `char_index` returns the last
     /// chunk of the `RopeSlice`.
     ///
     /// The return value is organized as
-    /// `(chunk, chunk_byte_idx, chunk_char_idx, chunk_line_idx)`.
+    /// `(chunk, chunk_byte_index, chunk_char_index, chunk_line_index)`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_idx` is out of bounds (i.e. `char_idx > len_chars()`).
+    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
     #[inline]
     pub fn chunk_at_width(&self, width: usize) -> (&[M], usize, usize) {
         if let Some(out) = self.get_chunk_at_width(width) {
@@ -515,7 +511,7 @@ where
             panic!(
                 "Attempt to index past end of Rope: char index {}, Rope char length {}",
                 width,
-                self.total_width()
+                self.width()
             );
         }
     }
@@ -544,11 +540,11 @@ where
     /// Panics if the start of the range is greater than the end, or if the
     /// end is out of bounds (i.e. `end > len_chars()`).
     #[inline]
-    pub fn slice<R>(&self, width_range: R) -> RopeSlice<M>
+    pub fn width_slice<R>(&self, width_range: R) -> RopeSlice<M>
     where
         R: RangeBounds<usize>,
     {
-        self.get_slice(width_range).unwrap()
+        self.get_width_slice(width_range).unwrap()
     }
 
     /// Gets and immutable slice of the `Rope`, using byte indices.
@@ -563,11 +559,11 @@ where
     /// - The start of the range is greater than the end.
     /// - The end is out of bounds (i.e. `end > len_bytes()`).
     /// - The range doesn't align with char boundaries.
-    pub fn idx_slice<R>(&self, idx_range: R) -> RopeSlice<M>
+    pub fn index_slice<R>(&self, index_range: R) -> RopeSlice<M>
     where
         R: RangeBounds<usize>,
     {
-        match self.get_index_slice_impl(idx_range) {
+        match self.get_index_slice_impl(index_range) {
             Ok(s) => return s,
             Err(e) => panic!("byte_slice(): {}", e),
         }
@@ -585,25 +581,25 @@ where
     }
 
     /// Creates an iterator over the bytes of the `Rope`, starting at byte
-    /// `byte_idx`.
+    /// `byte_index`.
     ///
-    /// If `byte_idx == len_bytes()` then an iterator at the end of the
+    /// If `byte_index == len_bytes()` then an iterator at the end of the
     /// `Rope` is created (i.e. `next()` will return `None`).
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `byte_idx` is out of bounds (i.e. `byte_idx > len_bytes()`).
+    /// Panics if `byte_index` is out of bounds (i.e. `byte_index > len_bytes()`).
     #[inline]
-    pub fn iter_at_idx(&self, idx: usize) -> Iter<M> {
-        if let Some(out) = self.get_iter_at_idx(idx) {
+    pub fn iter_at_index(&self, index: usize) -> Iter<M> {
+        if let Some(out) = self.get_iter_at_index(index) {
             out
         } else {
             panic!(
                 "Attempt to index past end of Rope: byte index {}, Rope byte length {}",
-                idx,
-                self.total_len()
+                index,
+                self.len()
             );
         }
     }
@@ -617,52 +613,52 @@ where
     }
 
     /// Creates an iterator over the chunks of the `Rope`, with the
-    /// iterator starting at the chunk containing `byte_idx`.
+    /// iterator starting at the chunk containing `byte_index`.
     ///
     /// Also returns the byte and char indices of the beginning of the first
     /// chunk to be yielded, and the index of the line that chunk starts on.
     ///
-    /// If `byte_idx == len_bytes()` an iterator at the end of the `Rope`
+    /// If `byte_index == len_bytes()` an iterator at the end of the `Rope`
     /// (yielding `None` on a call to `next()`) is created.
     ///
     /// The return value is organized as
-    /// `(iterator, chunk_byte_idx, chunk_char_idx, chunk_line_idx)`.
+    /// `(iterator, chunk_byte_index, chunk_char_index, chunk_line_index)`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `byte_idx` is out of bounds (i.e. `byte_idx > len_bytes()`).
+    /// Panics if `byte_index` is out of bounds (i.e. `byte_index > len_bytes()`).
     #[inline]
-    pub fn chunks_at_idx(&self, idx: usize) -> (Chunks<M>, usize, usize) {
-        if let Some(out) = self.get_chunks_at_index(idx) {
+    pub fn chunks_at_index(&self, index: usize) -> (Chunks<M>, usize, usize) {
+        if let Some(out) = self.get_chunks_at_index(index) {
             out
         } else {
             panic!(
                 "Attempt to index past end of Rope: byte index {}, Rope byte length {}",
-                idx,
-                self.total_len()
+                index,
+                self.len()
             );
         }
     }
 
     /// Creates an iterator over the chunks of the `Rope`, with the
-    /// iterator starting at the chunk containing `char_idx`.
+    /// iterator starting at the chunk containing `char_index`.
     ///
     /// Also returns the byte and char indices of the beginning of the first
     /// chunk to be yielded, and the index of the line that chunk starts on.
     ///
-    /// If `char_idx == len_chars()` an iterator at the end of the `Rope`
+    /// If `char_index == len_chars()` an iterator at the end of the `Rope`
     /// (yielding `None` on a call to `next()`) is created.
     ///
     /// The return value is organized as
-    /// `(iterator, chunk_byte_idx, chunk_char_idx, chunk_line_idx)`.
+    /// `(iterator, chunk_byte_index, chunk_char_index, chunk_line_index)`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_idx` is out of bounds (i.e. `char_idx > len_chars()`).
+    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
     #[inline]
     pub fn chunks_at_width(&self, width: usize) -> (Chunks<M>, usize, usize) {
         if let Some(out) = self.get_chunks_at_width(width) {
@@ -671,7 +667,7 @@ where
             panic!(
                 "Attempt to index past end of Rope: char index {}, Rope char length {}",
                 width,
-                self.total_width()
+                self.width()
             );
         }
     }
@@ -753,9 +749,9 @@ where
 {
     /// Non-panicking version of [`insert()`](Rope::insert).
     #[inline]
-    pub fn try_insert(&mut self, char_idx: usize, elements: &[M]) -> Result<()> {
+    pub fn try_insert(&mut self, char_index: usize, elements: &[M]) -> Result<()> {
         // Bounds check
-        if char_idx <= self.total_width() {
+        if char_index <= self.width() {
             // We have three cases here:
             // 1. The insertion text is very large, in which case building a new
             //    Rope out of it and splicing it into the existing Rope is most
@@ -777,7 +773,7 @@ where
             if elements.len() > MAX_BYTES * 6 {
                 // Case #1: very large text, build rope and splice it in.
                 let text_rope = Rope::from_slice(elements);
-                let right = self.split_off(char_idx);
+                let right = self.split_off(char_index);
                 self.append(text_rope);
                 self.append(right);
             } else {
@@ -788,17 +784,17 @@ where
                     // We do this from the end instead of the front so that
                     // the repeated insertions can keep re-using the same
                     // insertion point.
-                    let split_idx = text.len() - (MAX_BYTES - 4).min(text.len());
-                    let ins_text = &text[split_idx..];
-                    text = &text[..split_idx];
+                    let split_index = text.len() - (MAX_BYTES - 4).min(text.len());
+                    let ins_text = &text[split_index..];
+                    text = &text[..split_index];
 
                     // Do the insertion.
-                    self.insert_internal(char_idx, ins_text);
+                    self.insert_internal(char_index, ins_text);
                 }
             }
             Ok(())
         } else {
-            Err(Error::CharIndexOutOfBounds(char_idx, self.total_width()))
+            Err(Error::WidthOutOfBounds(char_index, self.width()))
         }
     }
 
@@ -806,11 +802,11 @@ where
     #[inline]
     pub fn try_insert_single(&mut self, width: usize, measurable: M) -> Result<()> {
         // Bounds check
-        if width <= self.total_width() {
+        if width <= self.width() {
             self.insert_internal(width, &[measurable]);
             Ok(())
         } else {
-            Err(Error::CharIndexOutOfBounds(width, self.total_width()))
+            Err(Error::WidthOutOfBounds(width, self.width()))
         }
     }
 
@@ -822,19 +818,18 @@ where
         let start_opt = start_bound_to_num(char_range.start_bound());
         let end_opt = end_bound_to_num(char_range.end_bound());
         let start = start_opt.unwrap_or(0);
-        let end = end_opt.unwrap_or_else(|| self.total_width());
-        if end.max(start) > self.total_width() {
-            Err(Error::CharRangeOutOfBounds(
+        let end = end_opt.unwrap_or_else(|| self.width());
+        if end.max(start) > self.width() {
+            Err(Error::WidthRangeOutOfBounds(
                 start_opt,
                 end_opt,
-                self.total_width(),
+                self.width(),
             ))
         } else if start > end {
-            Err(Error::CharRangeInvalid(start, end))
+            // A special case that the rest of the logic doesn't handle correctly
+            Err(Error::WidthRangeInvalid(start, end))
         } else {
-            // A special case that the rest of the logic doesn't handle
-            // correctly.
-            if start == 0 && end == self.total_width() {
+            if start == 0 && end == self.width() {
                 self.root = Arc::new(Node::new());
                 return Ok(());
             }
@@ -854,21 +849,21 @@ where
     }
 
     /// Non-panicking version of [`split_off()`](Rope::split_off).
-    pub fn try_split_off(&mut self, char_idx: usize) -> Result<Self> {
+    pub fn try_split_off(&mut self, char_index: usize) -> Result<Self> {
         // Bounds check
-        if char_idx <= self.total_width() {
-            if char_idx == 0 {
+        if char_index <= self.width() {
+            if char_index == 0 {
                 // Special case 1
                 let mut new_rope = Rope::new();
                 std::mem::swap(self, &mut new_rope);
                 Ok(new_rope)
-            } else if char_idx == self.total_width() {
+            } else if char_index == self.width() {
                 // Special case 2
                 Ok(Rope::new())
             } else {
                 // Do the split
                 let mut new_rope = Rope {
-                    root: Arc::new(Arc::make_mut(&mut self.root).split(char_idx)),
+                    root: Arc::new(Arc::make_mut(&mut self.root).split(char_index)),
                 };
 
                 // Fix up the edges
@@ -880,42 +875,42 @@ where
                 Ok(new_rope)
             }
         } else {
-            Err(Error::CharIndexOutOfBounds(char_idx, self.total_width()))
+            Err(Error::WidthOutOfBounds(char_index, self.width()))
         }
     }
 
     /// Non-panicking version of [`byte_to_char()`](Rope::byte_to_char).
     #[inline]
-    pub fn try_idx_to_width(&self, idx: usize) -> Result<usize> {
+    pub fn try_index_to_width(&self, index: usize) -> Result<usize> {
         // Bounds check
-        if idx <= self.total_len() {
-            let (chunk, b, c) = self.chunk_at_idx(idx);
-            Ok(c + idx_to_width(chunk, idx - b))
+        if index <= self.len() {
+            let (chunk, b, c) = self.chunk_at_index(index);
+            Ok(c + index_to_width(chunk, index - b))
         } else {
-            Err(Error::ByteIndexOutOfBounds(idx, self.total_len()))
+            Err(Error::IndexOutOfBounds(index, self.len()))
         }
     }
 
     /// Non-panicking version of [`char_to_byte()`](Rope::char_to_byte).
     #[inline]
-    pub fn try_width_to_idx(&self, width: usize) -> Result<usize> {
+    pub fn try_width_to_index(&self, width: usize) -> Result<usize> {
         // Bounds check
-        if width <= self.total_width() {
+        if width <= self.width() {
             let (chunk, b, c) = self.chunk_at_width(width);
-            Ok(b + width_to_idx(chunk, width - c))
+            Ok(b + width_to_index(chunk, width - c))
         } else {
-            Err(Error::CharIndexOutOfBounds(width, self.total_width()))
+            Err(Error::WidthOutOfBounds(width, self.width()))
         }
     }
 
     /// Non-panicking version of [`byte()`](Rope::byte).
     #[inline]
-    pub fn get_from_idx(&self, idx: usize) -> Option<&M> {
+    pub fn get_from_index(&self, index: usize) -> Option<M> {
         // Bounds check
-        if idx < self.total_len() {
-            let (chunk, chunk_byte_idx, _) = self.chunk_at_idx(idx);
-            let chunk_rel_byte_idx = idx - chunk_byte_idx;
-            Some(&chunk[chunk_rel_byte_idx])
+        if index < self.len() {
+            let (chunk, chunk_byte_index, _) = self.chunk_at_index(index);
+            let chunk_rel_byte_index = index - chunk_byte_index;
+            Some(chunk[chunk_rel_byte_index])
         } else {
             None
         }
@@ -923,12 +918,12 @@ where
 
     /// Non-panicking version of [`char()`](Rope::char).
     #[inline]
-    pub fn get_from_width(&self, width: usize) -> Option<&M> {
+    pub fn get_from_width(&self, width: usize) -> Option<M> {
         // Bounds check
-        if width < self.total_width() {
+        if width < self.width() {
             let (chunk, _, chunk_width) = self.chunk_at_width(width);
-            let byte_idx = width_to_idx(chunk, width - chunk_width);
-            Some(&chunk[byte_idx])
+            let byte_index = width_to_index(chunk, width - chunk_width);
+            Some(chunk[byte_index])
         } else {
             None
         }
@@ -936,10 +931,10 @@ where
 
     /// Non-panicking version of [`chunk_at_byte()`](Rope::chunk_at_byte).
     #[inline]
-    pub fn get_chunk_at_idx(&self, byte_idx: usize) -> Option<(&[M], usize, usize)> {
+    pub fn get_chunk_at_index(&self, byte_index: usize) -> Option<(&[M], usize, usize)> {
         // Bounds check
-        if byte_idx <= self.total_len() {
-            let (chunk, info) = self.root.get_chunk_at_idx(byte_idx);
+        if byte_index <= self.len() {
+            let (chunk, info) = self.root.get_chunk_at_index(byte_index);
             Some((chunk, info.len as usize, info.width as usize))
         } else {
             None
@@ -950,7 +945,7 @@ where
     #[inline]
     pub fn get_chunk_at_width(&self, width: usize) -> Option<(&[M], usize, usize)> {
         // Bounds check
-        if width <= self.total_width() {
+        if width <= self.width() {
             let (chunk, info) = self.root.get_chunk_at_width(width);
             Some((chunk, info.len as usize, info.width as usize))
         } else {
@@ -960,15 +955,15 @@ where
 
     /// Non-panicking version of [`slice()`](Rope::slice).
     #[inline]
-    pub fn get_slice<R>(&self, width_range: R) -> Option<RopeSlice<M>>
+    pub fn get_width_slice<R>(&self, width_range: R) -> Option<RopeSlice<M>>
     where
         R: RangeBounds<usize>,
     {
         let start = start_bound_to_num(width_range.start_bound()).unwrap_or(0);
-        let end = end_bound_to_num(width_range.end_bound()).unwrap_or_else(|| self.total_width());
+        let end = end_bound_to_num(width_range.end_bound()).unwrap_or_else(|| self.width());
 
         // Bounds check
-        if start <= end && end <= self.total_width() {
+        if start <= end && end <= self.width() {
             Some(RopeSlice::new_with_range(&self.root, start, end))
         } else {
             None
@@ -995,31 +990,27 @@ where
         match (start_range, end_range) {
             (Some(s), Some(e)) => {
                 if s > e {
-                    return Err(Error::ByteRangeInvalid(s, e));
-                } else if e > self.total_len() {
-                    return Err(Error::ByteRangeOutOfBounds(
+                    return Err(Error::IndexRangeInvalid(s, e));
+                } else if e > self.len() {
+                    return Err(Error::IndexRangeOutOfBounds(
                         start_range,
                         end_range,
-                        self.total_len(),
+                        self.len(),
                     ));
                 }
             }
             (Some(s), None) => {
-                if s > self.total_len() {
-                    return Err(Error::ByteRangeOutOfBounds(
+                if s > self.len() {
+                    return Err(Error::IndexRangeOutOfBounds(
                         start_range,
                         end_range,
-                        self.total_len(),
+                        self.len(),
                     ));
                 }
             }
             (None, Some(e)) => {
-                if e > self.total_len() {
-                    return Err(Error::ByteRangeOutOfBounds(
-                        start_range,
-                        end_range,
-                        self.total_len(),
-                    ));
+                if e > self.len() {
+                    return Err(Error::IndexRangeOutOfBounds(None, end_range, self.len()));
                 }
             }
             _ => {}
@@ -1027,27 +1018,22 @@ where
 
         let (start, end) = (
             start_range.unwrap_or(0),
-            end_range.unwrap_or_else(|| self.total_len()),
+            end_range.unwrap_or_else(|| self.len()),
         );
 
-        RopeSlice::new_with_idx_range(&self.root, start, end).map_err(|e| {
-            if let Error::ByteRangeNotCharBoundary(_, _) = e {
-                Error::ByteRangeNotCharBoundary(start_range, end_range)
-            } else {
-                e
-            }
-        })
+        RopeSlice::new_with_index_range(&self.root, start, end)
     }
 
     /// Non-panicking version of [`iter_at()`](Self::iter_at).
     #[inline]
-    pub fn get_iter_at_idx(&self, idx: usize) -> Option<Iter<M>> {
+    pub fn get_iter_at_index(&self, index: usize) -> Option<Iter<M>> {
         // Bounds check
-        if idx <= self.total_len() {
+        if index <= self.len() {
             let info = self.root.slice_info();
-            Some(Iter::new_with_range(
+            Some(Iter::new_with_range_at(
                 &self.root,
-                (idx, info.len as usize),
+                index,
+                (0, info.len as usize),
                 (0, info.width as usize),
             ))
         } else {
@@ -1057,14 +1043,14 @@ where
 
     /// Non-panicking version of [`chunks_at_byte()`](Rope::chunks_at_byte).
     #[inline]
-    pub fn get_chunks_at_index(&self, idx: usize) -> Option<(Chunks<M>, usize, usize)> {
+    pub fn get_chunks_at_index(&self, index: usize) -> Option<(Chunks<M>, usize, usize)> {
         // Bounds check
-        if idx <= self.total_len() {
-            Some(Chunks::new_with_range_at_idx(
+        if index <= self.len() {
+            Some(Chunks::new_with_range_at_index(
                 &self.root,
-                idx,
-                (0, self.total_len()),
-                (0, self.total_width()),
+                index,
+                (0, self.len()),
+                (0, self.width()),
             ))
         } else {
             None
@@ -1073,14 +1059,14 @@ where
 
     /// Non-panicking version of [`chunks_at_char()`](Rope::chunks_at_char).
     #[inline]
-    pub fn get_chunks_at_width(&self, char_idx: usize) -> Option<(Chunks<M>, usize, usize)> {
+    pub fn get_chunks_at_width(&self, char_index: usize) -> Option<(Chunks<M>, usize, usize)> {
         // Bounds check
-        if char_idx <= self.total_width() {
+        if char_index <= self.width() {
             Some(Chunks::new_with_range_at_width(
                 &self.root,
-                char_idx,
-                (0, self.total_len()),
-                (0, self.total_width()),
+                char_index,
+                (0, self.len()),
+                (0, self.width()),
             ))
         } else {
             None
@@ -1184,7 +1170,7 @@ where
 {
     #[inline]
     fn from(r: &'a Rope<M>) -> Self {
-        let mut vec = Vec::with_capacity(r.total_len());
+        let mut vec = Vec::with_capacity(r.len());
         vec.extend(
             r.chunks()
                 .map(|chunk| chunk.iter())
@@ -1311,7 +1297,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        self.slice(..) == other.slice(..)
+        self.width_slice(..) == other.width_slice(..)
     }
 }
 
@@ -1321,7 +1307,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &&'a [M]) -> bool {
-        self.slice(..) == *other
+        self.width_slice(..) == *other
     }
 }
 
@@ -1331,7 +1317,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        *self == other.slice(..)
+        *self == other.width_slice(..)
     }
 }
 
@@ -1341,7 +1327,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &[M]) -> bool {
-        self.slice(..) == other
+        self.width_slice(..) == other
     }
 }
 
@@ -1351,7 +1337,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        self == other.slice(..)
+        self == other.width_slice(..)
     }
 }
 
@@ -1361,7 +1347,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Vec<M>) -> bool {
-        self.slice(..) == other.as_slice()
+        self.width_slice(..) == other.as_slice()
     }
 }
 
@@ -1371,7 +1357,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        self.as_slice() == other.slice(..)
+        self.as_slice() == other.width_slice(..)
     }
 }
 
@@ -1381,7 +1367,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &std::borrow::Cow<'a, [M]>) -> bool {
-        self.slice(..) == **other
+        self.width_slice(..) == **other
     }
 }
 
@@ -1391,7 +1377,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        **self == other.slice(..)
+        **self == other.width_slice(..)
     }
 }
 
@@ -1401,7 +1387,7 @@ where
 {
     #[inline]
     fn cmp(&self, other: &Rope<M>) -> std::cmp::Ordering {
-        self.slice(..).cmp(&other.slice(..))
+        self.width_slice(..).cmp(&other.width_slice(..))
     }
 }
 
@@ -1420,1145 +1406,785 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::slice_utils::*;
-    use std::hash::{Hash, Hasher};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    enum Test {
-        Foo,
-        Bar,
-        Baz(usize),
-        Qux,
-        Quux,
+    enum Lipsum {
+        Lorem,
+        Ipsum,
+        Dolor(usize),
+        Sit,
+        Amet,
+        Consectur(&'static str),
+        Adipiscing(bool),
     }
 
-    impl Measurable for Test {
+    impl Measurable for Lipsum {
         fn width(&self) -> usize {
             match self {
-                Test::Foo => 1,
-                Test::Bar => 2,
-                Test::Baz(width) => *width,
-                Test::Qux => 0,
-                Test::Quux => 0,
+                Lipsum::Lorem => 1,
+                Lipsum::Ipsum => 2,
+                Lipsum::Dolor(width) => *width,
+                Lipsum::Sit => 0,
+                Lipsum::Amet => 0,
+                Lipsum::Consectur(text) => text.len(),
+                Lipsum::Adipiscing(boolean) => *boolean as usize,
             }
         }
     }
 
-    use self::Test::*;
-    // 7 elements, total width of 10.
-    const NATURAL_WIDTH: &[Test] = &[Foo, Bar, Foo, Bar, Foo, Bar, Foo];
-    // 7 elements, total width of 40.
-    const VAR_WIDTH: &[Test] = &[Foo, Bar, Baz(4), Bar, Baz(30), Foo];
-    // 7 elements, total width of 5.
-    const ZERO_WIDTH: &[Test] = &[Qux, Quux, Bar, Qux, Quux, Baz(3), Qux];
+    use self::Lipsum::*;
+    /// 70 elements, total width of 135.
+    fn lorem_ipsum() -> Vec<Lipsum> {
+        (0..70)
+            .into_iter()
+            .map(|num| match num % 14 {
+                0 | 7 => Lorem,
+                1 | 8 => Ipsum,
+                2 => Dolor(4),
+                3 | 10 => Sit,
+                4 | 11 => Amet,
+                5 => Consectur("hello"),
+                6 => Adipiscing(true),
+                9 => Dolor(8),
+                12 => Consectur("bye"),
+                13 => Adipiscing(false),
+                _ => unreachable!(),
+            })
+            .collect()
+    }
+
+    /// 5 elements, total width of 6.
+    const SHORT_LOREM: &[Lipsum] = &[Lorem, Ipsum, Dolor(3), Sit, Amet];
 
     #[test]
     fn new_01() {
-        let r = Rope::<Test>::new();
-        assert_eq!(r, [].as_slice());
+        let rope: Rope<Lipsum> = Rope::new();
+        assert_eq!(rope, [].as_slice());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn from_slice() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        assert_eq!(r, NATURAL_WIDTH);
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        assert_eq!(rope, lorem_ipsum());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
-    fn len_bytes_01() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        assert_eq!(r.total_len(), 127);
+    fn len_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        assert_eq!(rope.len(), 70);
     }
 
     #[test]
-    fn len_bytes_02() {
-        let r = Rope::<Test>::from_slice(&[]);
-        assert_eq!(r.total_len(), 0);
+    fn width_02() {
+        let rope: Rope<Lipsum> = Rope::from_slice(&[]);
+        assert_eq!(rope.len(), 0);
     }
 
     #[test]
-    fn len_chars_01() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        assert_eq!(r.total_width(), 103);
+    fn len_from_widths_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        assert_eq!(rope.width(), 135);
     }
 
     #[test]
-    fn len_chars_02() {
-        let r = Rope::<Test>::from_slice(&[]);
-        assert_eq!(r.total_width(), 0);
+    fn len_from_widths_02() {
+        let rope: Rope<Lipsum> = Rope::from_slice(&[]);
+        assert_eq!(rope.width(), 0);
     }
 
     #[test]
     fn insert_01() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
-        r.insert(3, &[Foo, Bar, Baz(3)]);
+        let mut rope = Rope::from_slice(SHORT_LOREM);
+        rope.insert_slice(3, &[Lorem, Ipsum, Dolor(3)]);
 
         assert_eq!(
-            r,
-            "HelAAlo there!  How're you doing?  It's \
-             a fine day, isn't it?  Aren't you glad \
-             we're alive?  こんにちは、みんなさん！"
+            rope,
+            [Lorem, Ipsum, Lorem, Ipsum, Dolor(3), Dolor(3), Sit, Amet].as_slice()
         );
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn insert_02() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
-        r.insert(0, &[Foo, Bar, Baz(3)]);
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        rope.insert_slice(0, &[Lorem, Ipsum, Dolor(3)]);
 
         assert_eq!(
-            r,
-            "AAHello there!  How're you doing?  It's \
-             a fine day, isn't it?  Aren't you glad \
-             we're alive?  こんにちは、みんなさん！"
+            rope,
+            [Lorem, Ipsum, Dolor(3), Lorem, Ipsum, Dolor(3), Sit, Amet].as_slice()
         );
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn insert_03() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
-        r.insert(103, &[Foo, Bar, Baz(3)]);
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        rope.insert_slice(5, &[Lorem, Ipsum, Dolor(3)]);
 
         assert_eq!(
-            r,
-            "Hello there!  How're you doing?  It's \
-             a fine day, isn't it?  Aren't you glad \
-             we're alive?  こんにちは、みんなさん！AA"
+            rope,
+            [Lorem, Ipsum, Dolor(3), Sit, Amet, Lorem, Ipsum, Dolor(3)].as_slice()
         );
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn insert_04() {
-        let mut r = Rope::new();
-        r.insert(0, "He");
-        r.insert(2, "l");
-        r.insert(3, "l");
-        r.insert(4, "o w");
-        r.insert(7, "o");
-        r.insert(8, "rl");
-        r.insert(10, "d!");
-        r.insert(3, "zopter");
+        let mut rope = Rope::new();
+        rope.insert_slice(0, &[Lorem, Ipsum]);
+        rope.insert_slice(2, &[Dolor(5)]);
+        rope.insert_slice(3, &[Sit]);
+        rope.insert_slice(4, &[Consectur("test")]);
+        rope.insert_slice(11, &[Dolor(3)]);
 
-        assert_eq!("Helzopterlo world!", r);
+        // NOTE: Inserting in the middle of an item'slice width range, makes it so
+        // you actually place it at the end of said item.
+        assert_eq!(
+            rope,
+            [Lorem, Dolor(5), Consectur("test"), Sit, Ipsum, Dolor(3)].as_slice()
+        );
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn insert_05() {
-        let mut r = Rope::new();
-        r.insert(0, "こんいちは、みんなさん！");
-        r.insert(7, "zopter");
-        assert_eq!("こんいちは、みzopterんなさん！", r);
+        let mut rope = Rope::new();
+        rope.insert_slice(0, &[Dolor(15), Dolor(20)]);
+        rope.insert_slice(7, &[Sit, Amet]);
+        assert_eq!(rope, [Dolor(15), Sit, Amet, Dolor(20)].as_slice());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn insert_06() {
-        let mut r = Rope::new();
-        r.insert(0, "こ");
-        r.insert(1, "ん");
-        r.insert(2, "い");
-        r.insert(3, "ち");
-        r.insert(4, "は");
-        r.insert(5, "、");
-        r.insert(6, "み");
-        r.insert(7, "ん");
-        r.insert(8, "な");
-        r.insert(9, "さ");
-        r.insert(10, "ん");
-        r.insert(11, "！");
-        r.insert(7, "zopter");
-        assert_eq!("こんいちは、みzopterんなさん！", r);
-
-        r.assert_integrity();
-        r.assert_invariants();
-    }
-
-    #[test]
-    fn insert_char_01() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
-        r.insert_char(3, 'A');
-        r.insert_char(12, '!');
-        r.insert_char(12, '!');
-
+        let mut rope = Rope::new();
+        rope.insert(0, Dolor(15));
+        rope.insert(1, Dolor(20));
+        rope.insert(2, Dolor(10));
+        rope.insert(3, Dolor(4));
+        rope.insert_slice(20, &[Sit, Amet]);
         assert_eq!(
-            r,
-            "HelAlo there!!!  How're you doing?  It's \
-             a fine day, isn't it?  Aren't you glad \
-             we're alive?  こんにちは、みんなさん！"
+            rope,
+            [Dolor(4), Dolor(10), Dolor(20), Sit, Amet, Dolor(15)].as_slice()
         );
 
-        r.assert_integrity();
-        r.assert_invariants();
-    }
-
-    #[test]
-    fn insert_char_02() {
-        let mut r = Rope::new();
-
-        r.insert_single(0, '！');
-        r.insert_single(0, 'こ');
-        r.insert_single(1, 'ん');
-        r.insert_single(2, 'い');
-        r.insert_single(3, 'ち');
-        r.insert_single(4, 'は');
-        r.insert_single(5, '、');
-        r.insert_single(6, 'み');
-        r.insert_single(7, 'ん');
-        r.insert_single(8, 'な');
-        r.insert_single(9, 'さ');
-        r.insert_single(10, 'ん');
-        assert_eq!("こんいちは、みんなさん！", r);
-
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn remove_01() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
+        let slice = &[Dolor(15), Sit, Amet, Dolor(24), Lorem, Ipsum, Dolor(7)];
+        let mut rope = Rope::from_slice(slice);
 
-        r.remove(5..11);
-        r.remove(24..31);
-        r.remove(19..25);
-        r.remove(75..79);
-        assert_eq!(
-            r,
-            "Hello!  How're you \
-             a fine day, isn't it?  Aren't you glad \
-             we're alive?  こんにんなさん！"
-        );
+        rope.remove(5..11); // Removes Dolor(15).
+        rope.remove(24..31); // Removes [Lorem, Ipsum, Dolor(7).
+        rope.remove(19..25); // Removes Dolor(24).
+        assert_eq!(rope, [Sit, Amet].as_slice());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn remove_02() {
-        let mut r = Rope::from_slice("\r\n\r\n\r\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n");
+        let slice = &[Lorem; 15];
+        let mut rope = Rope::from_slice(slice);
 
         // Make sure CRLF pairs get merged properly, via
         // assert_invariants() below.
-        r.remove(3..6);
-        assert_eq!(r, "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n");
+        rope.remove(3..6);
+        assert_eq!(rope, [Lorem; 12].as_slice());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn remove_03() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
 
         // Make sure removing nothing actually does nothing.
-        r.remove(45..45);
-        assert_eq!(r, NATURAL_WIDTH);
+        rope.remove(45..45);
+        assert_eq!(rope, lorem_ipsum());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn remove_04() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
 
         // Make sure removing everything works.
-        r.remove(0..103);
-        assert_eq!(r, "");
+        rope.remove(0..135);
+        assert_eq!(rope, [].as_slice());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn remove_05() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
 
         // Make sure removing a large range works.
-        r.remove(3..100);
-        assert_eq!(r, "Helさん！");
+        rope.remove(3..100);
+        assert_eq!(rope, &lorem_ipsum()[2..51]);
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     #[should_panic]
     fn remove_06() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
         #[allow(clippy::reversed_empty_ranges)]
-        r.remove(56..55); // Wrong ordering of start/end on purpose.
+        rope.remove(56..55); // Wrong ordering of start/end on purpose.
     }
 
     #[test]
     #[should_panic]
     fn remove_07() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
-        r.remove(102..104); // Removing past the end
-    }
-
-    #[test]
-    #[should_panic]
-    fn remove_08() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
-        r.remove(103..104); // Removing past the end
-    }
-
-    #[test]
-    #[should_panic]
-    fn remove_09() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
-        r.remove(104..104); // Removing past the end
-    }
-
-    #[test]
-    #[should_panic]
-    fn remove_10() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
-        r.remove(104..105); // Removing past the end
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        rope.remove(134..136); // Removing past the end
     }
 
     #[test]
     fn split_off_01() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let r2 = r.split_off(50);
-        assert_eq!(
-            r,
-            "Hello there!  How're you doing?  It's \
-             a fine day, "
-        );
-        assert_eq!(
-            r2,
-            "isn't it?  Aren't you glad \
-             we're alive?  こんにちは、みんなさん！"
-        );
+        let split = rope.split_off(50);
+        assert_eq!(rope, &lorem_ipsum()[..23]);
+        assert_eq!(split, &lorem_ipsum()[23..]);
 
-        r.assert_integrity();
-        r2.assert_integrity();
-        r.assert_invariants();
-        r2.assert_invariants();
+        rope.assert_integrity();
+        split.assert_integrity();
+        rope.assert_invariants();
+        split.assert_invariants();
     }
 
     #[test]
     fn split_off_02() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let r2 = r.split_off(1);
-        assert_eq!(r, "H");
-        assert_eq!(
-            r2,
-            "ello there!  How're you doing?  It's \
-             a fine day, isn't it?  Aren't you glad \
-             we're alive?  こんにちは、みんなさん！"
-        );
+        let split = rope.split_off(1);
+        assert_eq!(rope, [Lorem].as_slice());
+        assert_eq!(split, &lorem_ipsum()[1..]);
 
-        r.assert_integrity();
-        r2.assert_integrity();
-        r.assert_invariants();
-        r2.assert_invariants();
+        rope.assert_integrity();
+        split.assert_integrity();
+        rope.assert_invariants();
+        split.assert_invariants();
     }
 
     #[test]
     fn split_off_03() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let r2 = r.split_off(102);
-        assert_eq!(
-            r,
-            "Hello there!  How're you doing?  It's \
-             a fine day, isn't it?  Aren't you glad \
-             we're alive?  こんにちは、みんなさん"
-        );
-        assert_eq!(r2, "！");
+        let split = rope.split_off(134);
+        assert_eq!(rope, &lorem_ipsum()[..69]);
+        assert_eq!(split, [Consectur("bye"), Adipiscing(false)].as_slice());
 
-        r.assert_integrity();
-        r2.assert_integrity();
-        r.assert_invariants();
-        r2.assert_invariants();
+        rope.assert_integrity();
+        split.assert_integrity();
+        rope.assert_invariants();
+        split.assert_invariants();
     }
 
     #[test]
     fn split_off_04() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let r2 = r.split_off(0);
-        assert_eq!(r, "");
-        assert_eq!(
-            r2,
-            "Hello there!  How're you doing?  It's \
-             a fine day, isn't it?  Aren't you glad \
-             we're alive?  こんにちは、みんなさん！"
-        );
+        let split = rope.split_off(0);
+        assert_eq!(rope, [].as_slice());
+        assert_eq!(split, lorem_ipsum().as_slice());
 
-        r.assert_integrity();
-        r2.assert_integrity();
-        r.assert_invariants();
-        r2.assert_invariants();
+        rope.assert_integrity();
+        split.assert_integrity();
+        rope.assert_invariants();
+        split.assert_invariants();
     }
 
     #[test]
     fn split_off_05() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let r2 = r.split_off(103);
-        assert_eq!(
-            r,
-            "Hello there!  How're you doing?  It's \
-             a fine day, isn't it?  Aren't you glad \
-             we're alive?  こんにちは、みんなさん！"
-        );
-        assert_eq!(r2, "");
+        let split = rope.split_off(135);
+        assert_eq!(rope, lorem_ipsum().as_slice());
+        assert_eq!(split, [].as_slice());
 
-        r.assert_integrity();
-        r2.assert_integrity();
-        r.assert_invariants();
-        r2.assert_invariants();
+        rope.assert_integrity();
+        split.assert_integrity();
+        rope.assert_invariants();
+        split.assert_invariants();
     }
 
     #[test]
     #[should_panic]
     fn split_off_06() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
-        r.split_off(104); // One past the end of the rope
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        rope.split_off(104); // One past the end of the rope
     }
 
     #[test]
     fn append_01() {
-        let mut r = Rope::from_slice(
-            "Hello there!  How're you doing?  It's \
-             a fine day, isn't ",
-        );
-        let r2 = Rope::from_slice(
-            "it?  Aren't you glad \
-             we're alive?  こんにちは、みんなさん！",
-        );
+        let mut rope = Rope::from_slice(&lorem_ipsum()[..35]);
+        let append = Rope::from_slice(&lorem_ipsum()[35..]);
 
-        r.append(r2);
-        assert_eq!(r, NATURAL_WIDTH);
+        rope.append(append);
+        assert_eq!(rope, lorem_ipsum().as_slice());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn append_02() {
-        let mut r = Rope::from_slice(
-            "Hello there!  How're you doing?  It's \
-             a fine day, isn't it?  Aren't you glad \
-             we're alive?  こんに",
-        );
-        let r2 = Rope::from_slice("ちは、みんなさん！");
+        let mut rope = Rope::from_slice(&lorem_ipsum()[..68]);
+        let append = Rope::from_slice(&[Consectur("bye"), Adipiscing(false)]);
 
-        r.append(r2);
-        assert_eq!(r, NATURAL_WIDTH);
+        rope.append(append);
+        assert_eq!(rope, lorem_ipsum());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn append_03() {
-        let mut r = Rope::from_slice(
-            "Hello there!  How're you doing?  It's \
-             a fine day, isn't it?  Aren't you glad \
-             we're alive?  こんにちは、みんなさん",
-        );
-        let r2 = Rope::from_slice("！");
+        let mut rope = Rope::from_slice(&[Lorem, Ipsum]);
+        let append = Rope::from_slice(&lorem_ipsum()[2..]);
 
-        r.append(r2);
-        assert_eq!(r, NATURAL_WIDTH);
+        rope.append(append);
+        assert_eq!(rope, lorem_ipsum());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn append_04() {
-        let mut r = Rope::from_slice("H");
-        let r2 = Rope::from_slice(
-            "ello there!  How're you doing?  It's \
-             a fine day, isn't it?  Aren't you glad \
-             we're alive?  こんにちは、みんなさん！",
-        );
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let append = Rope::from_slice([].as_slice());
 
-        r.append(r2);
-        assert_eq!(r, NATURAL_WIDTH);
+        rope.append(append);
+        assert_eq!(rope, lorem_ipsum());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
     fn append_05() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
-        let r2 = Rope::from_slice("");
+        let mut rope = Rope::from_slice([].as_slice());
+        let append = Rope::from_slice(lorem_ipsum().as_slice());
 
-        r.append(r2);
-        assert_eq!(r, NATURAL_WIDTH);
+        rope.append(append);
+        assert_eq!(rope, lorem_ipsum());
 
-        r.assert_integrity();
-        r.assert_invariants();
+        rope.assert_integrity();
+        rope.assert_invariants();
     }
 
     #[test]
-    fn append_06() {
-        let mut r = Rope::from_slice("");
-        let r2 = Rope::from_slice(NATURAL_WIDTH);
+    fn width_to_index_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        r.append(r2);
-        assert_eq!(r, NATURAL_WIDTH);
+        assert_eq!(rope.width_to_index(0), 0);
+        assert_eq!(rope.width_to_index(1), 1);
+        assert_eq!(rope.width_to_index(2), 2);
 
-        r.assert_integrity();
-        r.assert_invariants();
+        assert_eq!(rope.width_to_index(91), 48);
+        assert_eq!(rope.width_to_index(92), 48);
+        assert_eq!(rope.width_to_index(93), 49);
+        assert_eq!(rope.width_to_index(94), 50);
+
+        assert_eq!(rope.width_to_index(102), 52);
+        assert_eq!(rope.width_to_index(103), 52);
     }
 
     #[test]
-    #[should_panic]
-    fn byte_to_line_04() {
-        let r = Rope::from_slice(VAR_WIDTH);
-        r.byte_to_line(125);
-    }
+    fn from_index_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-    #[test]
-    fn char_to_byte_01() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-
-        assert_eq!(0, r.char_to_byte(0));
-        assert_eq!(1, r.char_to_byte(1));
-        assert_eq!(2, r.char_to_byte(2));
-
-        assert_eq!(91, r.char_to_byte(91));
-        assert_eq!(94, r.char_to_byte(92));
-        assert_eq!(97, r.char_to_byte(93));
-        assert_eq!(100, r.char_to_byte(94));
-
-        assert_eq!(124, r.char_to_byte(102));
-        assert_eq!(127, r.char_to_byte(103));
-    }
-
-    #[test]
-    fn char_to_line_01() {
-        let r = Rope::from_slice(VAR_WIDTH);
-
-        assert_eq!(0, r.char_to_line(0));
-        assert_eq!(0, r.char_to_line(1));
-
-        assert_eq!(0, r.char_to_line(31));
-        assert_eq!(1, r.char_to_line(32));
-        assert_eq!(1, r.char_to_line(33));
-
-        assert_eq!(1, r.char_to_line(58));
-        assert_eq!(2, r.char_to_line(59));
-        assert_eq!(2, r.char_to_line(60));
-
-        assert_eq!(2, r.char_to_line(87));
-        assert_eq!(3, r.char_to_line(88));
-        assert_eq!(3, r.char_to_line(89));
-        assert_eq!(3, r.char_to_line(100));
-    }
-
-    #[test]
-    fn char_to_line_02() {
-        let r = Rope::from_slice("");
-        assert_eq!(0, r.char_to_line(0));
-    }
-
-    #[test]
-    fn char_to_line_03() {
-        let r = Rope::from_slice("Hi there\n");
-        assert_eq!(0, r.char_to_line(0));
-        assert_eq!(0, r.char_to_line(8));
-        assert_eq!(1, r.char_to_line(9));
-    }
-
-    #[test]
-    #[should_panic]
-    fn char_to_line_04() {
-        let r = Rope::from_slice(VAR_WIDTH);
-        r.char_to_line(101);
-    }
-
-    #[test]
-    fn line_to_byte_01() {
-        let r = Rope::from_slice(VAR_WIDTH);
-
-        assert_eq!(0, r.line_to_byte(0));
-        assert_eq!(32, r.line_to_byte(1));
-        assert_eq!(59, r.line_to_byte(2));
-        assert_eq!(88, r.line_to_byte(3));
-        assert_eq!(124, r.line_to_byte(4));
-    }
-
-    #[test]
-    fn line_to_byte_02() {
-        let r = Rope::from_slice("");
-        assert_eq!(0, r.line_to_byte(0));
-        assert_eq!(0, r.line_to_byte(1));
-    }
-
-    #[test]
-    #[should_panic]
-    fn line_to_byte_03() {
-        let r = Rope::from_slice(VAR_WIDTH);
-        r.line_to_byte(5);
-    }
-
-    #[test]
-    fn line_to_char_01() {
-        let r = Rope::from_slice(VAR_WIDTH);
-
-        assert_eq!(0, r.line_to_char(0));
-        assert_eq!(32, r.line_to_char(1));
-        assert_eq!(59, r.line_to_char(2));
-        assert_eq!(88, r.line_to_char(3));
-        assert_eq!(100, r.line_to_char(4));
-    }
-
-    #[test]
-    fn line_to_char_02() {
-        let r = Rope::from_slice("");
-        assert_eq!(0, r.line_to_char(0));
-        assert_eq!(0, r.line_to_char(1));
-    }
-
-    #[test]
-    #[should_panic]
-    fn line_to_char_03() {
-        let r = Rope::from_slice(VAR_WIDTH);
-        r.line_to_char(5);
-    }
-
-    #[test]
-    fn char_to_utf16_cu_01() {
-        let r = Rope::from_slice("");
-        assert_eq!(0, r.char_to_utf16_cu(0));
-    }
-
-    #[test]
-    #[should_panic]
-    fn char_to_utf16_cu_02() {
-        let r = Rope::from_slice("");
-        r.char_to_utf16_cu(1);
-    }
-
-    #[test]
-    fn char_to_utf16_cu_03() {
-        let r = Rope::from_slice(ZERO_WIDTH);
-
-        assert_eq!(0, r.char_to_utf16_cu(0));
-
-        assert_eq!(12, r.char_to_utf16_cu(12));
-        assert_eq!(14, r.char_to_utf16_cu(13));
-
-        assert_eq!(33, r.char_to_utf16_cu(32));
-        assert_eq!(35, r.char_to_utf16_cu(33));
-
-        assert_eq!(63, r.char_to_utf16_cu(61));
-        assert_eq!(65, r.char_to_utf16_cu(62));
-
-        assert_eq!(95, r.char_to_utf16_cu(92));
-        assert_eq!(97, r.char_to_utf16_cu(93));
-
-        assert_eq!(111, r.char_to_utf16_cu(107));
-    }
-
-    #[test]
-    #[should_panic]
-    fn char_to_utf16_cu_04() {
-        let r = Rope::from_slice(ZERO_WIDTH);
-        r.char_to_utf16_cu(108);
-    }
-
-    #[test]
-    fn utf16_cu_to_char_01() {
-        let r = Rope::from_slice("");
-        assert_eq!(0, r.utf16_cu_to_char(0));
-    }
-
-    #[test]
-    #[should_panic]
-    fn utf16_cu_to_char_02() {
-        let r = Rope::from_slice("");
-        r.utf16_cu_to_char(1);
-    }
-
-    #[test]
-    fn utf16_cu_to_char_03() {
-        let r = Rope::from_slice(ZERO_WIDTH);
-
-        assert_eq!(0, r.utf16_cu_to_char(0));
-
-        assert_eq!(12, r.utf16_cu_to_char(12));
-        assert_eq!(12, r.utf16_cu_to_char(13));
-        assert_eq!(13, r.utf16_cu_to_char(14));
-
-        assert_eq!(32, r.utf16_cu_to_char(33));
-        assert_eq!(32, r.utf16_cu_to_char(34));
-        assert_eq!(33, r.utf16_cu_to_char(35));
-
-        assert_eq!(61, r.utf16_cu_to_char(63));
-        assert_eq!(61, r.utf16_cu_to_char(64));
-        assert_eq!(62, r.utf16_cu_to_char(65));
-
-        assert_eq!(92, r.utf16_cu_to_char(95));
-        assert_eq!(92, r.utf16_cu_to_char(96));
-        assert_eq!(93, r.utf16_cu_to_char(97));
-
-        assert_eq!(107, r.utf16_cu_to_char(111));
-    }
-
-    #[test]
-    #[should_panic]
-    fn utf16_cu_to_char_04() {
-        let r = Rope::from_slice(ZERO_WIDTH);
-        r.utf16_cu_to_char(112);
-    }
-
-    #[test]
-    fn byte_01() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-
-        assert_eq!(r.byte(0), b'H');
+        assert_eq!(rope.from_index(0), Lorem);
 
         // UTF-8 for "wide exclamation mark"
-        assert_eq!(r.byte(124), 0xEF);
-        assert_eq!(r.byte(125), 0xBC);
-        assert_eq!(r.byte(126), 0x81);
+        assert_eq!(rope.from_index(67), Amet);
+        assert_eq!(rope.from_index(68), Consectur("bye"));
+        assert_eq!(rope.from_index(69), Adipiscing(false));
     }
 
     #[test]
     #[should_panic]
-    fn byte_02() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        r.byte(127);
+    fn from_index_02() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        rope.from_index(70);
     }
 
     #[test]
     #[should_panic]
-    fn byte_03() {
-        let r = Rope::from_slice("");
-        r.byte(0);
+    fn from_index_03() {
+        let rope: Rope<Lipsum> = Rope::from_slice(&[]);
+        rope.from_index(0);
     }
 
     #[test]
-    fn char_01() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+    fn from_width_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        assert_eq!(r.char(0), 'H');
-        assert_eq!(r.char(10), 'e');
-        assert_eq!(r.char(18), 'r');
-        assert_eq!(r.char(102), '！');
-    }
-
-    #[test]
-    #[should_panic]
-    fn char_02() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        r.char(103);
+        assert_eq!(rope.from_width(0), Lorem);
+        assert_eq!(rope.from_width(10), Consectur("hello"));
+        assert_eq!(rope.from_width(18), Dolor(8));
+        assert_eq!(rope.from_width(108), Adipiscing(false));
     }
 
     #[test]
     #[should_panic]
-    fn char_03() {
-        let r = Rope::from_slice("");
-        r.char(0);
+    fn from_width_02() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        rope.from_width(103);
+    }
+
+    #[test]
+    #[should_panic]
+    fn from_width_03() {
+        let rope: Rope<Lipsum> = Rope::from_slice(&[]);
+        rope.from_width(0);
     }
 
     #[test]
     fn chunk_at_index() {
-        let r = Rope::from_slice(VAR_WIDTH);
-        let mut t = VAR_WIDTH;
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let lorem_ipsum = lorem_ipsum();
+        let mut total = lorem_ipsum.as_slice();
 
-        let mut last_chunk = "";
-        for i in 0..r.total_len() {
-            let (chunk, b, c, l) = r.chunk_at_byte(i);
-            assert_eq!(c, idx_to_width(VAR_WIDTH, b));
+        let mut last_chunk = [].as_slice();
+        for i in 0..rope.len() {
+            let (chunk, b, c) = rope.chunk_at_index(i);
+            assert_eq!(c, index_to_width(&total, b));
             if chunk != last_chunk {
-                assert_eq!(chunk, &t[..chunk.len()]);
-                t = &t[chunk.len()..];
+                assert_eq!(chunk, &total[..chunk.len()]);
+                total = &total[chunk.len()..];
                 last_chunk = chunk;
             }
 
             let c1 = {
-                let i2 = idx_to_width(VAR_WIDTH, i);
-                VAR_WIDTH.chars().nth(i2).unwrap()
+                let i2 = index_to_width(&lorem_ipsum, i);
+                lorem_ipsum.iter().nth(i2).unwrap()
             };
             let c2 = {
                 let i2 = i - b;
-                let i3 = idx_to_width(chunk, i2);
-                chunk.chars().nth(i3).unwrap()
+                let i3 = index_to_width(chunk, i2);
+                chunk.iter().nth(i3).unwrap()
             };
             assert_eq!(c1, c2);
         }
-        assert_eq!(t.len(), 0);
+        assert_eq!(total.len(), 0);
     }
 
     #[test]
-    fn chunk_at_char() {
-        let r = Rope::from_slice(VAR_WIDTH);
-        let mut t = VAR_WIDTH;
+    fn chunk_at_width_asdf() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let lorem_ipsum = lorem_ipsum();
+        let mut total = lorem_ipsum.as_slice();
 
-        let mut last_chunk = "";
-        for i in 0..r.total_width() {
-            let (chunk, b, c, l) = r.chunk_at_width(i);
-            assert_eq!(b, idx_to_width(VAR_WIDTH, c));
+        let mut last_chunk = [].as_slice();
+        for i in 0..rope.width() {
+            let (chunk, index, width) = rope.chunk_at_width(i);
             if chunk != last_chunk {
-                assert_eq!(chunk, &t[..chunk.len()]);
-                t = &t[chunk.len()..];
+                assert_eq!(chunk, &total[..chunk.len()]);
+                total = &total[chunk.len()..];
                 last_chunk = chunk;
             }
 
-            let c1 = VAR_WIDTH.chars().nth(i).unwrap();
-            let c2 = {
-                let i2 = i - c;
-                chunk.chars().nth(i2).unwrap()
-            };
-            assert_eq!(c1, c2);
+            let index_1 = width_to_index(&lorem_ipsum, i);
+            let lipsum_1 = lorem_ipsum.iter().nth(index_1).unwrap();
+            let index_2 = width_to_index(&chunk, i - width);
+            let lipsum_2 = chunk.iter().nth(index_2).unwrap();
+            assert_eq!(lipsum_1, lipsum_2);
         }
-        assert_eq!(t.len(), 0);
+        assert_eq!(total.len(), 0);
     }
 
     #[test]
-    fn slice_01() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+    fn width_slice_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s = r.slice(0..r.total_width());
+        let slice = rope.width_slice(0..rope.width());
 
-        assert_eq!(NATURAL_WIDTH, s);
+        assert_eq!(lorem_ipsum(), slice);
     }
 
     #[test]
-    fn slice_02() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+    fn width_slice_02() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s = r.slice(5..21);
+        let slice = rope.width_slice(5..21);
 
-        assert_eq!(&NATURAL_WIDTH[5..21], s);
+        assert_eq!(&lorem_ipsum()[2..9], slice);
     }
 
     #[test]
-    fn slice_03() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+    fn width_slice_03() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s = r.slice(31..97);
+        let slice = rope.width_slice(31..135);
 
-        assert_eq!(&NATURAL_WIDTH[31..109], s);
+        assert_eq!(&lorem_ipsum()[17..70], slice);
     }
 
     #[test]
-    fn slice_04() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+    fn width_slice_04() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s = r.slice(53..53);
+        let slice = rope.width_slice(53..53);
 
-        assert_eq!("", s);
+        assert_eq!([].as_slice(), slice);
     }
 
     #[test]
     #[should_panic]
-    fn slice_05() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+    fn width_slice_05() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
         #[allow(clippy::reversed_empty_ranges)]
-        r.slice(53..52); // Wrong ordering on purpose.
+        rope.width_slice(53..52); // Wrong ordering on purpose.
     }
 
     #[test]
     #[should_panic]
-    fn slice_06() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        r.slice(102..104);
+    fn width_slice_06() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        rope.width_slice(134..136);
     }
 
     #[test]
-    fn byte_slice_01() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+    fn index_slice_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s = r.byte_slice(0..r.total_len());
+        let slice = rope.index_slice(0..rope.len());
 
-        assert_eq!(NATURAL_WIDTH, s);
+        assert_eq!(lorem_ipsum(), slice);
     }
 
     #[test]
-    fn byte_slice_02() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+    fn index_slice_02() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s = r.byte_slice(5..21);
+        let slice = rope.index_slice(5..21);
 
-        assert_eq!(&NATURAL_WIDTH[5..21], s);
+        assert_eq!(&lorem_ipsum()[5..21], slice);
     }
 
     #[test]
-    fn byte_slice_03() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+    fn index_slice_03() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s = r.byte_slice(31..97);
+        let slice = rope.index_slice(31..55);
 
-        assert_eq!(&NATURAL_WIDTH[31..97], s);
+        assert_eq!(&lorem_ipsum()[31..55], slice);
     }
 
     #[test]
-    fn byte_slice_04() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+    fn index_slice_04() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s = r.byte_slice(53..53);
+        let slice = rope.index_slice(53..53);
 
-        assert_eq!("", s);
+        assert_eq!([].as_slice(), slice);
     }
 
     #[test]
     #[should_panic]
-    fn byte_slice_05() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+    fn index_slice_05() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
         #[allow(clippy::reversed_empty_ranges)]
-        r.byte_slice(53..52); // Wrong ordering on purpose.
+        rope.index_slice(53..52); // Wrong ordering on purpose.
     }
 
     #[test]
     #[should_panic]
-    fn byte_slice_06() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        r.byte_slice(20..128);
-    }
-
-    #[test]
-    #[should_panic]
-    fn byte_slice_07() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        // Not a char boundary.
-        r.byte_slice(..96);
-    }
-
-    #[test]
-    #[should_panic]
-    fn byte_slice_08() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        // Not a char boundary.
-        r.byte_slice(96..);
+    fn index_slice_06() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        rope.index_slice(20..72);
     }
 
     #[test]
     fn eq_rope_01() {
-        let r = Rope::from_slice("");
+        let rope: Rope<Lipsum> = Rope::from_slice([].as_slice());
 
-        assert_eq!(r, r);
+        assert_eq!(rope, rope);
     }
 
     #[test]
     fn eq_rope_02() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        assert_eq!(r, r);
+        assert_eq!(rope, rope);
     }
 
     #[test]
     fn eq_rope_03() {
-        let r1 = Rope::from_slice(NATURAL_WIDTH);
-        let mut r2 = r1.clone();
-        r2.remove(26..27);
-        r2.insert(26, "z");
+        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope_2 = rope_1.clone();
+        rope_2.remove(26..27);
+        rope_2.insert(26, Consectur("bye"));
 
-        assert_ne!(r1, r2);
+        assert_ne!(rope_1, rope_2);
     }
 
     #[test]
     fn eq_rope_04() {
-        let r = Rope::from_slice("");
+        let rope: Rope<Lipsum> = Rope::from_slice([].as_slice());
 
-        assert_eq!(r, "");
-        assert_eq!("", r);
+        assert_eq!(rope, [].as_slice());
+        assert_eq!([].as_slice(), rope);
     }
 
     #[test]
     fn eq_rope_05() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        assert_eq!(r, NATURAL_WIDTH);
-        assert_eq!(NATURAL_WIDTH, r);
+        assert_eq!(rope, lorem_ipsum());
+        assert_eq!(lorem_ipsum(), rope);
     }
 
     #[test]
     fn eq_rope_06() {
-        let mut r = Rope::from_slice(NATURAL_WIDTH);
-        r.remove(26..27);
-        r.insert(26, "z");
+        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        rope.remove(26..27);
+        rope.insert(26, Consectur("bye"));
 
-        assert_ne!(r, NATURAL_WIDTH);
-        assert_ne!(NATURAL_WIDTH, r);
+        assert_ne!(rope, lorem_ipsum());
+        assert_ne!(lorem_ipsum(), rope);
     }
 
     #[test]
     fn eq_rope_07() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        let s: String = NATURAL_WIDTH.into();
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice: Vec<Lipsum> = lorem_ipsum().into();
 
-        assert_eq!(r, s);
-        assert_eq!(s, r);
+        assert_eq!(rope, slice);
+        assert_eq!(slice, rope);
     }
 
     #[test]
     fn to_string_01() {
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        let s: String = (&r).into();
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice: Vec<Lipsum> = (&rope).into();
 
-        assert_eq!(r, s);
+        assert_eq!(rope, slice);
     }
 
     #[test]
     fn to_cow_01() {
         use std::borrow::Cow;
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        let cow: Cow<str> = (&r).into();
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let cow: Cow<[Lipsum]> = (&rope).into();
 
-        assert_eq!(r, cow);
+        assert_eq!(rope, cow);
     }
 
     #[test]
     fn to_cow_02() {
         use std::borrow::Cow;
-        let r = Rope::from_slice(NATURAL_WIDTH);
-        let cow: Cow<str> = (r.clone()).into();
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let cow: Cow<[Lipsum]> = (rope.clone()).into();
 
-        assert_eq!(r, cow);
+        assert_eq!(rope, cow);
     }
 
     #[test]
     fn to_cow_03() {
         use std::borrow::Cow;
-        let r = Rope::from_slice("a");
-        let cow: Cow<str> = (&r).into();
+        let rope = Rope::from_slice(&[Lorem]);
+        let cow: Cow<[Lipsum]> = (&rope).into();
 
-        // Make sure it's borrowed.
+        // Make sure it'slice borrowed.
         if let Cow::Owned(_) = cow {
             panic!("Small Cow conversions should result in a borrow.");
         }
 
-        assert_eq!(r, cow);
+        assert_eq!(rope, cow);
     }
 
     #[test]
     fn from_rope_slice_01() {
-        let r1 = Rope::from_slice(NATURAL_WIDTH);
-        let s = r1.slice(..);
-        let r2: Rope = s.into();
+        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice = rope_1.width_slice(..);
+        let rope_2: Rope<Lipsum> = slice.into();
 
-        assert_eq!(r1, r2);
-        assert_eq!(s, r2);
+        assert_eq!(rope_1, rope_2);
+        assert_eq!(slice, rope_2);
     }
 
     #[test]
     fn from_rope_slice_02() {
-        let r1 = Rope::from_slice(NATURAL_WIDTH);
-        let s = r1.slice(0..24);
-        let r2: Rope = s.into();
+        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice = rope_1.width_slice(0..24);
+        let rope_2: Rope<Lipsum> = slice.into();
 
-        assert_eq!(s, r2);
+        assert_eq!(slice, rope_2);
     }
 
     #[test]
     fn from_rope_slice_03() {
-        let r1 = Rope::from_slice(NATURAL_WIDTH);
-        let s = r1.slice(13..89);
-        let r2: Rope = s.into();
+        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice = rope_1.width_slice(13..89);
+        let rope_2: Rope<Lipsum> = slice.into();
 
-        assert_eq!(s, r2);
+        assert_eq!(slice, rope_2);
     }
 
     #[test]
     fn from_rope_slice_04() {
-        let r1 = Rope::from_slice(NATURAL_WIDTH);
-        let s = r1.slice(13..41);
-        let r2: Rope = s.into();
+        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice = rope_1.width_slice(13..41);
+        let rope_2: Rope<Lipsum> = slice.into();
 
-        assert_eq!(s, r2);
+        assert_eq!(slice, rope_2);
     }
 
     #[test]
     fn from_iter_01() {
-        let r1 = Rope::from_slice(NATURAL_WIDTH);
-        let r2: Rope = Rope::from_iter(r1.chunks());
+        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope_2 = Rope::from_iter(rope_1.chunks());
 
-        assert_eq!(r1, r2);
-    }
-
-    #[test]
-    fn hash_01() {
-        let mut h1 = std::collections::hash_map::DefaultHasher::new();
-        let mut h2 = std::collections::hash_map::DefaultHasher::new();
-        let r1 = Rope::from_slice("Hello there!");
-        let mut r2 = Rope::from_slice("Hlotee");
-        r2.insert_char(3, ' ');
-        r2.insert_char(7, '!');
-        r2.insert_char(1, 'e');
-        r2.insert_char(3, 'l');
-        r2.insert_char(7, 'h');
-        r2.insert_char(9, 'r');
-
-        r1.hash(&mut h1);
-        r2.hash(&mut h2);
-
-        assert_eq!(h1.finish(), h2.finish());
-    }
-
-    #[test]
-    fn hash_02() {
-        let mut h1 = std::collections::hash_map::DefaultHasher::new();
-        let mut h2 = std::collections::hash_map::DefaultHasher::new();
-        let r1 = Rope::from_slice("Hello there!");
-        let r2 = Rope::from_slice("Hello there.");
-
-        r1.hash(&mut h1);
-        r2.hash(&mut h2);
-
-        assert_ne!(h1.finish(), h2.finish());
-    }
-
-    #[test]
-    fn hash_03() {
-        let mut h1 = std::collections::hash_map::DefaultHasher::new();
-        let mut h2 = std::collections::hash_map::DefaultHasher::new();
-        let r = Rope::from_slice("Hello there!");
-        let s = [Rope::from_slice("Hello "), Rope::from_slice("there!")];
-
-        r.hash(&mut h1);
-        Rope::hash_slice(&s, &mut h2);
-
-        assert_ne!(h1.finish(), h2.finish());
+        assert_eq!(rope_1, rope_2);
     }
 
     #[test]
     fn is_instance_01() {
-        let r = Rope::from_slice("Hello there!");
-        let mut c1 = r.clone();
+        let rope = Rope::from_slice(&[Lorem, Ipsum, Dolor(10), Sit, Amet]);
+        let mut c1 = rope.clone();
         let c2 = c1.clone();
 
-        assert!(r.is_instance(&c1));
-        assert!(r.is_instance(&c2));
+        assert!(rope.is_instance(&c1));
+        assert!(rope.is_instance(&c2));
         assert!(c1.is_instance(&c2));
 
-        c1.insert(0, "Oh! ");
+        c1.insert_slice(0, &[Consectur("oh noes!")]);
 
-        assert!(!r.is_instance(&c1));
-        assert!(r.is_instance(&c2));
+        assert!(!rope.is_instance(&c1));
+        assert!(rope.is_instance(&c2));
         assert!(!c1.is_instance(&c2));
     }
 

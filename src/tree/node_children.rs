@@ -1,4 +1,4 @@
-use std::fmt::{self, Debug};
+use std::fmt::{self};
 use std::iter::{Iterator, Zip};
 use std::slice;
 use std::sync::Arc;
@@ -48,24 +48,24 @@ where
     }
 
     /// Access to the info array.
-    pub fn info(&self) -> &[SliceInfo] {
+    pub fn info(&self) -> &[(SliceInfo, bool)] {
         self.0.info()
     }
 
     /// Mutable access to the info array.
-    pub fn info_mut(&mut self) -> &mut [SliceInfo] {
+    pub fn info_mut(&mut self) -> &mut [(SliceInfo, bool)] {
         self.0.info_mut()
     }
 
     /// Mutable access to both the info and nodes arrays simultaneously.
-    pub fn data_mut(&mut self) -> (&mut [SliceInfo], &mut [Arc<Node<M>>]) {
+    pub fn data_mut(&mut self) -> (&mut [(SliceInfo, bool)], &mut [Arc<Node<M>>]) {
         self.0.data_mut()
     }
 
-    /// Updates the text info of the child at `idx`.
-    pub fn update_child_info(&mut self, idx: usize) {
+    /// Updates the text info of the child at `index`.
+    pub fn update_child_info(&mut self, index: usize) {
         let (info, nodes) = self.0.data_mut();
-        info[idx] = nodes[idx].slice_info();
+        info[index] = (nodes[index].slice_info(), nodes[index].zero_width_end())
     }
 
     /// Pushes an item into the end of the array.
@@ -95,11 +95,11 @@ where
     ///
     /// - True: merge was successful.
     /// - False: merge failed, equidistributed instead.
-    pub fn merge_distribute(&mut self, idx1: usize, idx2: usize) -> bool {
-        assert!(idx1 < idx2);
-        assert!(idx2 < self.len());
+    pub fn merge_distribute(&mut self, index1: usize, index2: usize) -> bool {
+        assert!(index1 < index2);
+        assert!(index2 < self.len());
         let remove_right = {
-            let ((_, node1), (_, node2)) = self.get_two_mut(idx1, idx2);
+            let ((_, node1), (_, node2)) = self.get_two_mut(index1, index2);
             let node1 = Arc::make_mut(node1);
             let node2 = Arc::make_mut(node2);
             match *node1 {
@@ -137,12 +137,12 @@ where
         };
 
         if remove_right {
-            self.remove(idx2);
-            self.update_child_info(idx1);
+            self.remove(index2);
+            self.update_child_info(index1);
             return true;
         } else {
-            self.update_child_info(idx1);
-            self.update_child_info(idx2);
+            self.update_child_info(index1);
+            self.update_child_info(index2);
             return false;
         }
     }
@@ -185,9 +185,9 @@ where
                     let ((_, node_l), (_, node_r)) = self.get_two_mut(i - 1, i);
                     let text_l = Arc::make_mut(node_l).leaf_slice_mut();
                     let text_r = Arc::make_mut(node_r).leaf_slice_mut();
-                    let split_idx_r = MAX_BYTES - text_l.len();
-                    text_l.push_slice(&text_r[..split_idx_r]);
-                    text_r.truncate_front(split_idx_r);
+                    let split_index_r = MAX_BYTES - text_l.len();
+                    text_l.push_slice(&text_r[..split_index_r]);
+                    text_r.truncate_front(split_index_r);
                 }
                 i += 1;
             } else {
@@ -211,20 +211,20 @@ where
     ///
     /// Increases length by one.  Panics if already full.  Preserves ordering
     /// of the other items.
-    pub fn insert(&mut self, idx: usize, item: (SliceInfo, Arc<Node<M>>)) {
-        self.0.insert(idx, item)
+    pub fn insert(&mut self, index: usize, item: (SliceInfo, Arc<Node<M>>)) {
+        self.0.insert(index, item)
     }
 
     /// Inserts an element into a the array, and then splits it in half, returning
     /// the right half.
     ///
     /// This works even when the array is full.
-    pub fn insert_split(&mut self, idx: usize, item: (SliceInfo, Arc<Node<M>>)) -> Self {
+    pub fn insert_split(&mut self, index: usize, item: (SliceInfo, Arc<Node<M>>)) -> Self {
         assert!(self.len() > 0);
-        assert!(idx <= self.len());
-        let extra = if idx < self.len() {
+        assert!(index <= self.len());
+        let extra = if index < self.len() {
             let extra = self.pop();
-            self.insert(idx, item);
+            self.insert(index, item);
             extra
         } else {
             item
@@ -236,20 +236,20 @@ where
     /// Removes the item at the given index from the the array.
     ///
     /// Decreases length by one.  Preserves ordering of the other items.
-    pub fn remove(&mut self, idx: usize) -> (SliceInfo, Arc<Node<M>>) {
-        self.0.remove(idx)
+    pub fn remove(&mut self, index: usize) -> (SliceInfo, Arc<Node<M>>) {
+        self.0.remove(index)
     }
 
-    /// Splits the array in two at `idx`, returning the right part of the split.
+    /// Splits the array in two at `index`, returning the right part of the split.
     ///
     /// TODO: implement this more efficiently.
-    pub fn split_off(&mut self, idx: usize) -> Self {
-        assert!(idx <= self.len());
+    pub fn split_off(&mut self, index: usize) -> Self {
+        assert!(index <= self.len());
 
         let mut other = Branch::new();
-        let count = self.len() - idx;
+        let count = self.len() - index;
         for _ in 0..count {
-            other.push(self.remove(idx));
+            other.push(self.remove(index));
         }
 
         other
@@ -258,43 +258,47 @@ where
     /// Fetches two children simultaneously, returning mutable references
     /// to their info and nodes.
     ///
-    /// `idx1` must be less than `idx2`.
+    /// `index1` must be less than `index2`.
     pub fn get_two_mut(
         &mut self,
-        idx1: usize,
-        idx2: usize,
+        index1: usize,
+        index2: usize,
     ) -> (
         (&mut SliceInfo, &mut Arc<Node<M>>),
         (&mut SliceInfo, &mut Arc<Node<M>>),
     ) {
-        assert!(idx1 < idx2);
-        assert!(idx2 < self.len());
+        assert!(index1 < index2);
+        assert!(index2 < self.len());
 
-        let split_idx = idx1 + 1;
+        let split_index = index1 + 1;
         let (info, nodes) = self.data_mut();
-        let (info1, info2) = info.split_at_mut(split_idx);
-        let (nodes1, nodes2) = nodes.split_at_mut(split_idx);
+        let (info1, info2) = info.split_at_mut(split_index);
+        let (nodes1, nodes2) = nodes.split_at_mut(split_index);
 
         (
-            (&mut info1[idx1], &mut nodes1[idx1]),
-            (&mut info2[idx2 - split_idx], &mut nodes2[idx2 - split_idx]),
+            (&mut info1[index1].0, &mut nodes1[index1]),
+            (
+                &mut info2[index2 - split_index].0,
+                &mut nodes2[index2 - split_index],
+            ),
         )
     }
 
     /// Creates an iterator over the array's items.
-    pub fn iter(&self) -> Zip<slice::Iter<SliceInfo>, slice::Iter<Arc<Node<M>>>> {
+    pub fn iter(&self) -> Zip<slice::Iter<(SliceInfo, bool)>, slice::Iter<Arc<Node<M>>>> {
         Iterator::zip(self.info().iter(), self.nodes().iter())
     }
 
     #[allow(clippy::needless_range_loop)]
     pub fn combined_info(&self) -> SliceInfo {
         let info = self.info();
+        println!("{:#?}", info);
         let mut acc = SliceInfo::new();
 
         // Doing this with an explicit loop is notably faster than
         // using an iterator in this case.
         for i in 0..info.len() {
-            acc += info[i];
+            acc += info[i].0;
         }
 
         acc
@@ -308,37 +312,37 @@ where
     pub fn search_by<F>(&self, pred: F) -> (usize, SliceInfo)
     where
         // (left-accumulated start info, left-accumulated end info)
-        F: Fn(SliceInfo, SliceInfo) -> bool,
+        F: Fn(SliceInfo, bool) -> bool,
     {
         debug_assert!(self.len() > 0);
 
         let mut accum = SliceInfo::new();
-        let mut idx = 0;
-        for info in self.info()[0..(self.len() - 1)].iter() {
+        let mut index = 0;
+        for (info, zero_width_end) in self.info()[0..(self.len() - 1)].iter() {
             let next_accum = accum + *info;
-            if pred(accum, next_accum) {
+            if pred(next_accum, *zero_width_end) {
                 break;
             }
             accum = next_accum;
-            idx += 1;
+            index += 1;
         }
 
-        (idx, accum)
+        (index, accum)
     }
 
     /// Returns the child index and left-side-accumulated text info of the
     /// child that contains the given byte.
     ///
     /// One-past-the end is valid, and will return the last child.
-    pub fn search_byte_idx(&self, byte_idx: usize) -> (usize, SliceInfo) {
-        let (idx, accum) = self.search_by(|_, end| byte_idx < end.len as usize);
+    pub fn search_index(&self, byte_index: usize) -> (usize, SliceInfo) {
+        let (index, accum) = self.search_by(|end, _| byte_index < end.len as usize);
 
         debug_assert!(
-            byte_idx <= (accum.len + self.info()[idx].len) as usize,
+            byte_index <= (accum.len + self.info()[index].0.len) as usize,
             "Index out of bounds."
         );
 
-        (idx, accum)
+        (index, accum)
     }
 
     /// Returns the child index and left-side-accumulated text info of the
@@ -346,17 +350,21 @@ where
     ///
     /// One-past-the end is valid, and will return the last child.
     pub fn search_width(&self, width: usize) -> (usize, SliceInfo) {
-        let (idx, accum) = self.search_by(|_, end| width < end.width as usize);
+        // The search uses the `<=` comparison because any slice may end with 0 width
+        // elements, and the use of the `<` comparison would leave those behind.
+        let (index, accum) = self.search_by(|end, zero_width_end| {
+            width < end.width as usize || (width == end.width as usize && zero_width_end)
+        });
 
         debug_assert!(
-            width <= (accum.width + self.info()[idx].width) as usize,
-            "Index out of bounds."
+            width <= (accum.width + self.info()[index].0.width) as usize,
+            "Index out of bounds., {}, {}, {}", width, accum.width,  self.info()[index].0.width 
         );
 
-        (idx, accum)
+        (index, accum)
     }
 
-    /// Same as `search_char_idx()` above, except that it only calulates the
+    /// Same as `search_char_index()` above, except that it only calulates the
     /// left-side-accumulated _char_ index rather than the full text info.
     ///
     /// Return is (child_index, left_acc_char_index)
@@ -367,22 +375,22 @@ where
         debug_assert!(self.len() > 0);
 
         let mut accum_width = 0;
-        let mut idx = 0;
-        for info in self.info()[0..(self.len() - 1)].iter() {
+        let mut index = 0;
+        for (info, zero_width_end) in self.info()[0..(self.len() - 1)].iter() {
             let next_accum = accum_width + info.width as usize;
-            if width < next_accum {
+            if (width <= next_accum && *zero_width_end) || width < next_accum {
                 break;
             }
             accum_width = next_accum;
-            idx += 1;
+            index += 1;
         }
 
         debug_assert!(
-            width <= (accum_width + self.info()[idx].width as usize) as usize,
+            width <= (accum_width + self.info()[index].0.width as usize) as usize,
             "Index out of bounds."
         );
 
-        (idx, accum_width)
+        (index, accum_width)
     }
 
     /// Returns the child indices at the start and end of the given char
@@ -396,56 +404,64 @@ where
     ///
     /// One-past-the end is valid, and corresponds to the last child.
     #[inline(always)]
-    pub fn search_width_range(
+    pub fn search_index_range(
         &self,
-        start_idx: usize,
-        end_idx: usize,
+        start_index: usize,
+        end_index: usize,
     ) -> ((usize, usize), (usize, usize)) {
-        debug_assert!(start_idx <= end_idx);
+        debug_assert!(start_index <= end_index);
         debug_assert!(self.len() > 0);
 
-        let mut accum_char_idx = 0;
-        let mut idx = 0;
+        let mut accum_char_index = 0;
+        let mut index = 0;
 
         // Find left child and info
-        for info in self.info()[..(self.len() - 1)].iter() {
-            let next_accum = accum_char_idx + info.width as usize;
-            if start_idx < next_accum {
+        for (info, _) in self.info()[..(self.len() - 1)].iter() {
+            let next_accum = accum_char_index + info.width as usize;
+            if start_index < next_accum {
                 break;
             }
-            accum_char_idx = next_accum;
-            idx += 1;
+            accum_char_index = next_accum;
+            index += 1;
         }
-        let l_child_i = idx;
-        let l_acc_info = accum_char_idx;
+        let l_child_i = index;
+        let l_acc_info = accum_char_index;
 
         // Find right child and info
-        for info in self.info()[idx..(self.len() - 1)].iter() {
-            let next_accum = accum_char_idx + info.width as usize;
-            if end_idx <= next_accum {
+        for (info, _) in self.info()[index..(self.len() - 1)].iter() {
+            let next_accum = accum_char_index + info.width as usize;
+            if end_index <= next_accum {
                 break;
             }
-            accum_char_idx = next_accum;
-            idx += 1;
+            accum_char_index = next_accum;
+            index += 1;
         }
 
         #[cfg(any(test, debug_assertions))]
         assert!(
-            end_idx <= accum_char_idx + self.info()[idx].width as usize,
+            end_index <= accum_char_index + self.info()[index].0.width as usize,
             "Index out of bounds."
         );
 
-        ((l_child_i, l_acc_info), (idx, accum_char_idx))
+        ((l_child_i, l_acc_info), (index, accum_char_index))
     }
 
     // Debug function, to help verify tree integrity
     pub fn is_info_accurate(&self) -> bool {
-        for (info, node) in self.info().iter().zip(self.nodes().iter()) {
+        for ((info, _), node) in self.info().iter().zip(self.nodes().iter()) {
             if *info != node.slice_info() {
                 return false;
             }
         }
         true
+    }
+
+    pub fn zero_width_end(&self) -> bool {
+        self.nodes()
+            .iter()
+            .last()
+            .map(|node| node.zero_width_end())
+            .unwrap_or(false)
     }
 }
 
@@ -495,7 +511,7 @@ mod inner {
         nodes: [MaybeUninit<Arc<Node<M>>>; MAX_LEN],
         /// An array of the child node text infos
         /// INVARIANT: The nodes from 0..len must be initialized
-        info: [MaybeUninit<SliceInfo>; MAX_LEN],
+        info: [MaybeUninit<(SliceInfo, bool)>; MAX_LEN],
         len: u8,
     }
 
@@ -539,7 +555,7 @@ mod inner {
 
         /// Access to the info array.
         #[inline(always)]
-        pub fn info(&self) -> &[SliceInfo] {
+        pub fn info(&self) -> &[(SliceInfo, bool)] {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the info from 0..len are guaranteed to be initialized
             unsafe { mem::transmute(&self.info[..(self.len())]) }
@@ -547,7 +563,7 @@ mod inner {
 
         /// Mutable access to the info array.
         #[inline(always)]
-        pub fn info_mut(&mut self) -> &mut [SliceInfo] {
+        pub fn info_mut(&mut self) -> &mut [(SliceInfo, bool)] {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the info from 0..len are guaranteed to be initialized
             unsafe { mem::transmute(&mut self.info[..(self.len as usize)]) }
@@ -555,7 +571,7 @@ mod inner {
 
         /// Mutable access to both the info and nodes arrays simultaneously.
         #[inline(always)]
-        pub fn data_mut(&mut self) -> (&mut [SliceInfo], &mut [Arc<Node<M>>]) {
+        pub fn data_mut(&mut self) -> (&mut [(SliceInfo, bool)], &mut [Arc<Node<M>>]) {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the info from 0..len are guaranteed to be initialized
             (
@@ -570,7 +586,7 @@ mod inner {
         #[inline(always)]
         pub fn push(&mut self, item: (SliceInfo, Arc<Node<M>>)) {
             assert!(self.len() < MAX_LEN);
-            self.info[self.len()] = MaybeUninit::new(item.0);
+            self.info[self.len()] = MaybeUninit::new((item.0, item.1.zero_width_end()));
             self.nodes[self.len as usize] = MaybeUninit::new(item.1);
             // We have just initialized both info and node and 0..=len, so we can increase it
             self.len += 1;
@@ -585,7 +601,7 @@ mod inner {
             self.len -= 1;
             // SAFETY: before this, len was long enough to guarantee that both must be init
             // We just decreased the length, guaranteeing that the elements will never be read again
-            (unsafe { self.info[self.len()].assume_init() }, unsafe {
+            (unsafe { self.info[self.len()].assume_init().0 }, unsafe {
                 ptr::read(&self.nodes[self.len()]).assume_init()
             })
         }
@@ -595,8 +611,8 @@ mod inner {
         /// Increases length by one.  Panics if already full.  Preserves ordering
         /// of the other items.
         #[inline(always)]
-        pub fn insert(&mut self, idx: usize, item: (SliceInfo, Arc<Node<M>>)) {
-            assert!(idx <= self.len());
+        pub fn insert(&mut self, index: usize, item: (SliceInfo, Arc<Node<M>>)) {
+            assert!(index <= self.len());
             assert!(self.len() < MAX_LEN);
 
             let len = self.len();
@@ -607,13 +623,13 @@ mod inner {
             // specific drop semantics needed for safety.
             unsafe {
                 let ptr = self.nodes.as_mut_ptr();
-                ptr::copy(ptr.add(idx), ptr.add(idx + 1), len - idx);
+                ptr::copy(ptr.add(index), ptr.add(index + 1), len - index);
             }
-            self.info.copy_within(idx..len, idx + 1);
+            self.info.copy_within(index..len, index + 1);
 
             // We have just made space for the two new elements, so insert them
-            self.info[idx] = MaybeUninit::new(item.0);
-            self.nodes[idx] = MaybeUninit::new(item.1);
+            self.info[index] = MaybeUninit::new((item.0, item.1.zero_width_end()));
+            self.nodes[index] = MaybeUninit::new(item.1);
             // Now that all elements from 0..=len are initialized, we can increase the length
             self.len += 1;
         }
@@ -622,14 +638,14 @@ mod inner {
         ///
         /// Decreases length by one.  Preserves ordering of the other items.
         #[inline(always)]
-        pub fn remove(&mut self, idx: usize) -> (SliceInfo, Arc<Node<M>>) {
+        pub fn remove(&mut self, index: usize) -> (SliceInfo, Arc<Node<M>>) {
             assert!(self.len() > 0);
-            assert!(idx < self.len());
+            assert!(index < self.len());
 
             // Read out the elements, they must not be touched again. We copy the elements
             // after them into them, and decrease the length at the end
-            let item = (unsafe { self.info[idx].assume_init() }, unsafe {
-                ptr::read(&self.nodes[idx]).assume_init()
+            let item = (unsafe { self.info[index].assume_init().0 }, unsafe {
+                ptr::read(&self.nodes[index]).assume_init()
             });
 
             let len = self.len();
@@ -640,9 +656,9 @@ mod inner {
             // specific drop semantics needed for safety.
             unsafe {
                 let ptr = self.nodes.as_mut_ptr();
-                ptr::copy(ptr.add(idx + 1), ptr.add(idx), len - idx - 1);
+                ptr::copy(ptr.add(index + 1), ptr.add(index), len - index - 1);
             }
-            self.info.copy_within((idx + 1)..len, idx);
+            self.info.copy_within((index + 1)..len, index);
 
             // Now that the gap is filled, decrease the length
             self.len -= 1;
@@ -725,271 +741,208 @@ mod tests {
     use crate::tree::{Leaf, Node, SliceInfo};
     use std::sync::Arc;
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    enum Lipsum {
+        Lorem,
+        Ipsum,
+        Dolor(usize),
+        Sit,
+        Amet,
+        Consectur(&'static str),
+        Adipiscing(bool),
+    }
+    use self::Lipsum::*;
+
+    impl Measurable for Lipsum {
+        fn width(&self) -> usize {
+            match self {
+                Lorem => 1,
+                Ipsum => 2,
+                Dolor(width) => *width,
+                Sit => 0,
+                Amet => 0,
+                Consectur(text) => text.len(),
+                Adipiscing(boolean) => *boolean as usize,
+            }
+        }
+    }
+
     #[test]
-    fn search_char_idx_01() {
+    fn search_index_01() {
         let mut children = Branch::new();
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("Hello "))),
+            Arc::new(Node::Leaf(Leaf::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("there "))),
+            Arc::new(Node::Leaf(Leaf::from_slice(&[Sit, Amet]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("world!"))),
+            Arc::new(Node::Leaf(Leaf::from_slice(&[
+                Consectur("text here"),
+                Adipiscing(true),
+            ]))),
         ));
 
         children.update_child_info(0);
         children.update_child_info(1);
         children.update_child_info(2);
 
-        assert_eq!(0, children.search_width(0).0);
-        assert_eq!(0, children.search_width(1).0);
-        assert_eq!(0, children.search_width(0).1.width);
-        assert_eq!(0, children.search_width(1).1.width);
+        assert_eq!(children.search_width(0).0, 0);
+        assert_eq!(children.search_width(1).0, 0);
+        assert_eq!(children.search_width(0).1.width, 0);
+        assert_eq!(children.search_width(1).1.width, 0);
 
-        assert_eq!(0, children.search_width(5).0);
-        assert_eq!(1, children.search_width(6).0);
-        assert_eq!(0, children.search_width(5).1.width);
-        assert_eq!(6, children.search_width(6).1.width);
+        assert_eq!(children.search_width(2).0, 0);
+        assert_eq!(children.search_width(3).0, 1);
+        assert_eq!(children.search_width(2).1.width, 0);
+        assert_eq!(children.search_width(3).1.width, 6);
 
-        assert_eq!(1, children.search_width(11).0);
-        assert_eq!(2, children.search_width(12).0);
-        assert_eq!(6, children.search_width(11).1.width);
-        assert_eq!(12, children.search_width(12).1.width);
+        assert_eq!(children.search_width(4).0, 1);
+        assert_eq!(children.search_width(5).0, 2);
+        assert_eq!(children.search_width(4).1.width, 6);
+        assert_eq!(children.search_width(5).1.width, 12);
 
-        assert_eq!(2, children.search_width(17).0);
-        assert_eq!(2, children.search_width(18).0);
-        assert_eq!(12, children.search_width(17).1.width);
-        assert_eq!(12, children.search_width(18).1.width);
+        assert_eq!(children.search_width(6).0, 2);
+        assert_eq!(children.search_width(7).0, 2);
+        assert_eq!(children.search_width(6).1.width, 12);
+        assert_eq!(children.search_width(7).1.width, 12);
     }
 
     #[test]
     #[should_panic]
-    fn search_char_idx_02() {
+    fn search_index_02() {
         let mut children = Branch::new();
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("Hello "))),
+            Arc::new(Node::Leaf(Leaf::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("there "))),
+            Arc::new(Node::Leaf(Leaf::from_slice(&[Sit, Amet]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("world!"))),
+            Arc::new(Node::Leaf(Leaf::from_slice(&[
+                Consectur("text here"),
+                Adipiscing(true),
+            ]))),
         ));
 
         children.update_child_info(0);
         children.update_child_info(1);
         children.update_child_info(2);
 
-        children.search_width(19);
+        children.search_width(7);
     }
 
     #[test]
-    fn search_char_idx_range_01() {
+    fn search_index_range_01() {
         let mut children = Branch::new();
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("Hello "))),
+            Arc::new(Node::Leaf(Leaf::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("there "))),
+            Arc::new(Node::Leaf(Leaf::from_slice(&[Sit, Amet]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("world!"))),
+            Arc::new(Node::Leaf(Leaf::from_slice(&[
+                Consectur("text here"),
+                Adipiscing(true),
+            ]))),
         ));
 
         children.update_child_info(0);
         children.update_child_info(1);
         children.update_child_info(2);
 
-        let at_0_0 = children.search_width_range(0, 0);
-        let at_6_6 = children.search_width_range(6, 6);
-        let at_12_12 = children.search_width_range(12, 12);
-        let at_18_18 = children.search_width_range(18, 18);
+        let at_0_0 = children.search_index_range(0, 0);
+        let at_3_3 = children.search_index_range(3, 3);
+        let at_5_5 = children.search_index_range(5, 5);
+        let at_7_7 = children.search_index_range(7, 7);
 
-        assert_eq!(0, (at_0_0.0).0);
-        assert_eq!(0, (at_0_0.1).0);
-        assert_eq!(0, (at_0_0.0).1);
-        assert_eq!(0, (at_0_0.1).1);
+        assert_eq!((at_0_0.0).0, 0);
+        assert_eq!((at_0_0.1).0, 0);
+        assert_eq!((at_0_0.0).1, 0);
+        assert_eq!((at_0_0.1).1, 0);
 
-        assert_eq!(1, (at_6_6.0).0);
-        assert_eq!(1, (at_6_6.1).0);
-        assert_eq!(6, (at_6_6.0).1);
-        assert_eq!(6, (at_6_6.1).1);
+        assert_eq!((at_3_3.0).0, 1);
+        assert_eq!((at_3_3.1).0, 1);
+        assert_eq!((at_3_3.0).1, 3);
+        assert_eq!((at_3_3.1).1, 3);
 
-        assert_eq!(2, (at_12_12.0).0);
-        assert_eq!(2, (at_12_12.1).0);
-        assert_eq!(12, (at_12_12.0).1);
-        assert_eq!(12, (at_12_12.1).1);
+        assert_eq!((at_5_5.0).0, 2);
+        assert_eq!((at_5_5.1).0, 2);
+        assert_eq!((at_5_5.0).1, 5);
+        assert_eq!((at_5_5.1).1, 5);
 
-        assert_eq!(2, (at_18_18.0).0);
-        assert_eq!(2, (at_18_18.1).0);
-        assert_eq!(12, (at_18_18.0).1);
-        assert_eq!(12, (at_18_18.1).1);
+        assert_eq!((at_7_7.0).0, 2);
+        assert_eq!((at_7_7.1).0, 2);
+        assert_eq!((at_7_7.0).1, 5);
+        assert_eq!((at_7_7.1).1, 5);
 
-        let at_0_6 = children.search_width_range(0, 6);
-        let at_6_12 = children.search_width_range(6, 12);
-        let at_12_18 = children.search_width_range(12, 18);
+        let at_0_3 = children.search_index_range(0, 3);
+        let at_3_5 = children.search_index_range(3, 5);
+        let at_5_7 = children.search_index_range(5, 7);
 
-        assert_eq!(0, (at_0_6.0).0);
-        assert_eq!(0, (at_0_6.1).0);
-        assert_eq!(0, (at_0_6.0).1);
-        assert_eq!(0, (at_0_6.1).1);
+        assert_eq!((at_0_3.0).0, 0);
+        assert_eq!((at_0_3.1).0, 0);
+        assert_eq!((at_0_3.0).1, 0);
+        assert_eq!((at_0_3.1).1, 0);
 
-        assert_eq!(1, (at_6_12.0).0);
-        assert_eq!(1, (at_6_12.1).0);
-        assert_eq!(6, (at_6_12.0).1);
-        assert_eq!(6, (at_6_12.1).1);
+        assert_eq!((at_3_5.0).0, 1);
+        assert_eq!((at_3_5.1).0, 1);
+        assert_eq!((at_3_5.0).1, 3);
+        assert_eq!((at_3_5.1).1, 3);
 
-        assert_eq!(2, (at_12_18.0).0);
-        assert_eq!(2, (at_12_18.1).0);
-        assert_eq!(12, (at_12_18.0).1);
-        assert_eq!(12, (at_12_18.1).1);
+        assert_eq!((at_5_7.0).0, 2);
+        assert_eq!((at_5_7.1).0, 2);
+        assert_eq!((at_5_7.0).1, 5);
+        assert_eq!((at_5_7.1).1, 5);
 
-        let at_5_7 = children.search_width_range(5, 7);
-        let at_11_13 = children.search_width_range(11, 13);
+        let at_2_4 = children.search_index_range(2, 4);
+        let at_4_6 = children.search_index_range(4, 6);
 
-        assert_eq!(0, (at_5_7.0).0);
-        assert_eq!(1, (at_5_7.1).0);
-        assert_eq!(0, (at_5_7.0).1);
-        assert_eq!(6, (at_5_7.1).1);
+        assert_eq!((at_2_4.0).0, 0);
+        assert_eq!((at_2_4.1).0, 1);
+        assert_eq!((at_2_4.0).1, 0);
+        assert_eq!((at_2_4.1).1, 3);
 
-        assert_eq!(1, (at_11_13.0).0);
-        assert_eq!(2, (at_11_13.1).0);
-        assert_eq!(6, (at_11_13.0).1);
-        assert_eq!(12, (at_11_13.1).1);
+        assert_eq!((at_4_6.0).0, 1);
+        assert_eq!((at_4_6.1).0, 2);
+        assert_eq!((at_4_6.0).1, 3);
+        assert_eq!((at_4_6.1).1, 5);
     }
 
     #[test]
     #[should_panic]
-    fn search_char_idx_range_02() {
+    fn search_index_range_02() {
         let mut children = Branch::new();
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("Hello "))),
+            Arc::new(Node::Leaf(Leaf::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("there "))),
+            Arc::new(Node::Leaf(Leaf::from_slice(&[Sit, Amet]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("world!"))),
+            Arc::new(Node::Leaf(Leaf::from_slice(&[
+                Consectur("text here"),
+                Adipiscing(true),
+            ]))),
         ));
 
         children.update_child_info(0);
         children.update_child_info(1);
         children.update_child_info(2);
 
-        children.search_width_range(18, 19);
-    }
-
-    #[test]
-    fn search_line_break_idx_01() {
-        let mut children = Branch::new();
-        children.push((
-            SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("Hello\n"))),
-        ));
-        children.push((
-            SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("\nthere\n"))),
-        ));
-        children.push((
-            SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("world!\n"))),
-        ));
-
-        children.update_child_info(0);
-        children.update_child_info(1);
-        children.update_child_info(2);
-
-        assert_eq!(0, children.search_line_break_idx(0).0);
-        assert_eq!(0, children.search_line_break_idx(0).1.line_breaks);
-
-        assert_eq!(0, children.search_line_break_idx(1).0);
-        assert_eq!(0, children.search_line_break_idx(1).1.line_breaks);
-
-        assert_eq!(1, children.search_line_break_idx(2).0);
-        assert_eq!(1, children.search_line_break_idx(2).1.line_breaks);
-
-        assert_eq!(1, children.search_line_break_idx(3).0);
-        assert_eq!(1, children.search_line_break_idx(3).1.line_breaks);
-
-        assert_eq!(2, children.search_line_break_idx(4).0);
-        assert_eq!(3, children.search_line_break_idx(4).1.line_breaks);
-
-        assert_eq!(2, children.search_line_break_idx(5).0);
-        assert_eq!(3, children.search_line_break_idx(5).1.line_breaks);
-    }
-
-    #[test]
-    fn search_line_break_idx_02() {
-        let mut children = Branch::new();
-        children.push((
-            SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("Hello\n"))),
-        ));
-        children.push((
-            SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("there"))),
-        ));
-        children.push((
-            SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_str("world!"))),
-        ));
-
-        children.update_child_info(0);
-        children.update_child_info(1);
-        children.update_child_info(2);
-
-        assert_eq!(0, children.search_line_break_idx(0).0);
-        assert_eq!(0, children.search_line_break_idx(0).1.line_breaks);
-
-        assert_eq!(0, children.search_line_break_idx(1).0);
-        assert_eq!(0, children.search_line_break_idx(1).1.line_breaks);
-
-        assert_eq!(2, children.search_line_break_idx(2).0);
-        assert_eq!(1, children.search_line_break_idx(2).1.line_breaks);
-    }
-
-    #[test]
-    fn search_line_break_idx_03() {
-        let mut children = Branch::new();
-        children.push((SliceInfo::new(), Arc::new(Node::Leaf(Leaf::from_str("")))));
-
-        children.update_child_info(0);
-
-        assert_eq!(0, children.search_line_break_idx(0).0);
-        assert_eq!(0, children.search_line_break_idx(0).1.line_breaks);
-
-        assert_eq!(0, children.search_line_break_idx(1).0);
-        assert_eq!(0, children.search_line_break_idx(1).1.line_breaks);
-    }
-
-    #[test]
-    #[should_panic]
-    fn search_line_break_idx_04() {
-        let mut children = Branch::new();
-        children.push((SliceInfo::new(), Arc::new(Node::Leaf(Leaf::from_str("")))));
-
-        children.update_child_info(0);
-
-        assert_eq!(0, children.search_line_break_idx(0).0);
-        assert_eq!(0, children.search_line_break_idx(0).1.line_breaks);
-
-        assert_eq!(0, children.search_line_break_idx(1).0);
-        assert_eq!(0, children.search_line_break_idx(1).1.line_breaks);
-
-        assert_eq!(0, children.search_line_break_idx(2).0);
-        assert_eq!(0, children.search_line_break_idx(2).1.line_breaks);
+        children.search_index_range(7, 8);
     }
 }

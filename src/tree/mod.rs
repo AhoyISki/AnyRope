@@ -1,12 +1,12 @@
 mod node;
 mod node_children;
-mod node_text;
-mod text_info;
+mod node_slice;
+mod slice_info;
 
 pub(crate) use self::node::Node;
 pub(crate) use self::node_children::Branch;
-pub(crate) use self::node_text::Leaf;
-pub(crate) use self::text_info::SliceInfo;
+pub(crate) use self::node_slice::Leaf;
+pub(crate) use self::slice_info::SliceInfo;
 
 // Type used for storing tree metadata, such as byte and char length.
 pub(crate) type Count = u64;
@@ -14,7 +14,7 @@ pub(crate) type Count = u64;
 // Real constants used in release builds.
 #[cfg(not(any(test, feature = "small_chunks")))]
 mod constants {
-    use super::{Node, SliceInfo};
+    use super::{SliceInfo};
     use smallvec::SmallVec;
     use std::{
         mem::{align_of, size_of},

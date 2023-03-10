@@ -67,9 +67,8 @@
 use std::sync::Arc;
 
 use crate::rope::Measurable;
-use crate::slice::{RSEnum, RopeSlice};
 use crate::slice_utils::width_of;
-use crate::tree::{Count, Node, SliceInfo};
+use crate::tree::{Node, SliceInfo};
 
 //==========================================================
 
@@ -81,7 +80,7 @@ where
 {
     chunk_iter: Chunks<'a, M>,
     cur_chunk: &'a [M],
-    idx: usize,
+    index: usize,
     last_call_was_prev_impl: bool,
     total_len: usize,
     remaining_len: usize,
@@ -102,7 +101,7 @@ where
         Iter {
             chunk_iter: chunk_iter,
             cur_chunk,
-            idx: 0,
+            index: 0,
             last_call_was_prev_impl: false,
             total_len: node.slice_info().len as usize,
             remaining_len: node.slice_info().len as usize,
@@ -113,39 +112,48 @@ where
     #[inline(always)]
     pub(crate) fn new_with_range(
         node: &'a Arc<Node<M>>,
-        byte_idx_range: (usize, usize),
-        width_idx_range: (usize, usize),
+        byte_index_range: (usize, usize),
+        width_index_range: (usize, usize),
     ) -> Self {
-        Iter::new_with_range_at(node, byte_idx_range.0, byte_idx_range, width_idx_range)
+        Iter::new_with_range_at(
+            node,
+            byte_index_range.0,
+            byte_index_range,
+            width_index_range,
+        )
     }
 
     pub(crate) fn new_with_range_at(
         node: &'a Arc<Node<M>>,
-        at_idx: usize,
-        idx_range: (usize, usize),
+        at_index: usize,
+        index_range: (usize, usize),
         width_range: (usize, usize),
     ) -> Self {
-        let (mut chunk_iter, mut chunk_start_idx, _) =
-            Chunks::new_with_range_at_idx(node, at_idx, idx_range, width_range);
+        let (mut chunk_iter, mut chunk_start_index, _) =
+            Chunks::new_with_range_at_index(node, at_index, index_range, width_range);
 
-        let cur_chunk = if idx_range.0 == idx_range.1 {
+        let cur_chunk = if index_range.0 == index_range.1 {
             &[]
-        } else if at_idx < idx_range.1 {
+        } else if at_index < index_range.1 {
             chunk_iter.next().unwrap()
         } else {
             let chunk = chunk_iter.prev().unwrap();
             chunk_iter.next();
-            chunk_start_idx -= chunk.len();
+            chunk_start_index -= chunk.len();
             chunk
         };
+        println!(
+            "{:?}, {:?}, {:?}, {:?}, {:?}",
+            index_range, at_index, chunk_start_index, width_range, cur_chunk
+        );
 
         Iter {
             chunk_iter,
             cur_chunk,
-            idx: at_idx - chunk_start_idx,
+            index: at_index - chunk_start_index,
             last_call_was_prev_impl: false,
-            total_len: idx_range.1 - idx_range.0,
-            remaining_len: idx_range.1 - at_idx,
+            total_len: index_range.1 - index_range.0,
+            remaining_len: index_range.1 - at_index,
             is_reversed: false,
         }
     }
@@ -155,7 +163,7 @@ where
         Iter::from_slice_at(slice, 0)
     }
 
-    pub(crate) fn from_slice_at(slice: &'a [M], idx: usize) -> Self {
+    pub(crate) fn from_slice_at(slice: &'a [M], index: usize) -> Self {
         let mut chunk_iter = Chunks::from_slice(slice, false);
         let cur_chunk = if let Some(chunk) = chunk_iter.next() {
             chunk
@@ -165,10 +173,10 @@ where
         Iter {
             chunk_iter: chunk_iter,
             cur_chunk: cur_chunk,
-            idx,
+            index,
             last_call_was_prev_impl: false,
             total_len: slice.len(),
-            remaining_len: slice.len() - idx,
+            remaining_len: slice.len() - index,
             is_reversed: false,
         }
     }
@@ -222,20 +230,19 @@ where
         }
 
         // Progress the chunks iterator back if needed.
-        if self.idx == 0 {
+        if self.index == 0 {
             if let Some(chunk) = self.chunk_iter.prev() {
                 self.cur_chunk = chunk;
-                self.idx = self.cur_chunk.len();
+                self.index = self.cur_chunk.len();
             } else {
                 return None;
             }
         }
 
         // Progress the byte counts and return the previous byte.
-        let idx = self.cur_chunk[self.idx];
-        self.idx -= 1;
+        self.index -= 1;
         self.remaining_len += 1;
-        return Some(idx);
+        return Some(self.cur_chunk[self.index]);
     }
 
     #[inline]
@@ -247,20 +254,20 @@ where
         }
 
         // Progress the chunks iterator forward if needed.
-        if self.idx >= self.cur_chunk.len() {
+        if self.index >= self.cur_chunk.len() {
             if let Some(chunk) = self.chunk_iter.next() {
                 self.cur_chunk = chunk;
-                self.idx = 0;
+                self.index = 0;
             } else {
                 return None;
             }
         }
 
         // Progress the byte counts and return the next byte.
-        let idx = self.cur_chunk[self.idx];
-        self.idx += 1;
+        let index = self.cur_chunk[self.index];
+        self.index += 1;
         self.remaining_len -= 1;
-        return Some(idx);
+        return Some(index);
     }
 }
 
@@ -336,7 +343,7 @@ where
     Full {
         node_stack: Vec<(&'a Arc<Node<M>>, usize)>, // (node ref, index of current child)
         total_bytes: usize, // Total bytes in the data range of the iterator.
-        byte_idx: isize,    // The index of the current byte relative to the data range start.
+        byte_index: isize,  // The index of the current byte relative to the data range start.
     },
     Light {
         slice: &'a [M],
@@ -351,16 +358,22 @@ where
     #[inline(always)]
     pub(crate) fn new(node: &'a Arc<Node<M>>) -> Self {
         let info = node.slice_info();
-        Chunks::new_with_range_at_idx(node, 0, (0, info.len as usize), (0, info.width as usize)).0
+        Chunks::new_with_range_at_index(node, 0, (0, info.len as usize), (0, info.width as usize)).0
     }
 
     #[inline(always)]
     pub(crate) fn new_with_range(
         node: &'a Arc<Node<M>>,
-        byte_idx_range: (usize, usize),
-        char_idx_range: (usize, usize),
+        byte_index_range: (usize, usize),
+        char_index_range: (usize, usize),
     ) -> Self {
-        Chunks::new_with_range_at_idx(node, byte_idx_range.0, byte_idx_range, char_idx_range).0
+        Chunks::new_with_range_at_index(
+            node,
+            byte_index_range.0,
+            byte_index_range,
+            char_index_range,
+        )
+        .0
     }
 
     /// The main workhorse function for creating new `Chunks` iterators.
@@ -368,31 +381,32 @@ where
     /// Creates a new `Chunks` iterator from the given node, starting the
     /// iterator at the chunk containing the `at_byte` byte index (i.e. the
     /// `next()` method will yield the chunk containing that byte).  The range
-    /// of the iterator is bounded by `byte_idx_range`.
+    /// of the iterator is bounded by `byte_index_range`.
     ///
-    /// Both `at_byte` and `byte_idx_range` are relative to the beginning of
+    /// Both `at_byte` and `byte_index_range` are relative to the beginning of
     /// of the passed node.
     ///
-    /// Passing an `at_byte` equal to the max of `byte_idx_range` creates an
+    /// Passing an `at_byte` equal to the max of `byte_index_range` creates an
     /// iterator at the end of forward iteration.
     ///
     /// Returns the iterator and the index/width of its start relative
     /// to the start of the node.
-    pub(crate) fn new_with_range_at_idx(
+    pub(crate) fn new_with_range_at_index(
         node: &Arc<Node<M>>,
-        at_idx: usize,
-        idx_range: (usize, usize),
+        at_index: usize,
+        index_range: (usize, usize),
         width_range: (usize, usize),
     ) -> (Chunks<M>, usize, usize) {
-        debug_assert!(at_idx >= idx_range.0);
-        debug_assert!(at_idx <= idx_range.1);
+        debug_assert!(at_index >= index_range.0);
+        debug_assert!(at_index <= index_range.1);
 
         // For convenience/readability.
-        let start_idx = idx_range.0;
-        let end_idx = idx_range.1;
+        let start_index = index_range.0;
+        let end_index = index_range.1;
 
         // Special-case for empty text contents.
-        if start_idx == end_idx {
+        println!("start: {}, end: {}", start_index, end_index);
+        if start_index == end_index {
             return (
                 Chunks {
                     iter: ChunksEnum::Light {
@@ -408,8 +422,8 @@ where
 
         // If root is a leaf, return light version of the iter.
         if node.is_leaf() {
-            let slice = &node.leaf_slice()[start_idx..end_idx];
-            if at_idx == end_idx {
+            let slice = &node.leaf_slice()[start_index..end_index];
+            if at_index == end_index {
                 return (
                     Chunks {
                         iter: ChunksEnum::Light {
@@ -439,20 +453,20 @@ where
         // Create and populate the node stack, and determine the char index
         // within the first chunk, and byte index of the start of that chunk.
         let mut info = SliceInfo::new();
-        let mut byte_idx = at_idx as isize;
+        let mut byte_index = at_index as isize;
         let node_stack = {
             let mut node_stack: Vec<(&Arc<Node<M>>, usize)> = Vec::new();
             let mut node_ref = node;
             loop {
                 match **node_ref {
-                    Node::Leaf(ref text) => {
-                        if at_idx < end_idx || byte_idx == 0 {
-                            byte_idx = info.len as isize - start_idx as isize;
+                    Node::Leaf(ref slice) => {
+                        if at_index < end_index || byte_index == 0 {
+                            byte_index = info.len as isize - start_index as isize;
                         } else {
-                            byte_idx =
-                                (info.len as isize + text.len() as isize) - start_idx as isize;
+                            byte_index =
+                                (info.len as isize + slice.len() as isize) - start_index as isize;
                             info = SliceInfo {
-                                len: idx_range.1 as u64,
+                                len: index_range.1 as u64,
                                 width: width_range.1 as u64,
                             };
                             (*node_stack.last_mut().unwrap()).1 += 1;
@@ -460,11 +474,11 @@ where
                         break;
                     }
                     Node::Branch(ref children) => {
-                        let (child_i, acc_info) = children.search_byte_idx(byte_idx as usize);
+                        let (child_i, acc_info) = children.search_index(byte_index as usize);
                         info += acc_info;
                         node_stack.push((node_ref, child_i));
                         node_ref = &children.nodes()[child_i];
-                        byte_idx -= acc_info.len as isize;
+                        byte_index -= acc_info.len as isize;
                     }
                 }
             }
@@ -476,12 +490,12 @@ where
             Chunks {
                 iter: ChunksEnum::Full {
                     node_stack: node_stack,
-                    total_bytes: end_idx - start_idx,
-                    byte_idx: byte_idx,
+                    total_bytes: end_index - start_index,
+                    byte_index: byte_index,
                 },
                 is_reversed: false,
             },
-            (info.len as usize).max(idx_range.0),
+            (info.len as usize).max(index_range.0),
             (info.width as usize).max(width_range.0),
         )
     }
@@ -490,16 +504,16 @@ where
     pub(crate) fn new_with_range_at_width(
         node: &'a Arc<Node<M>>,
         at_width: usize,
-        idx_range: (usize, usize),
+        index_range: (usize, usize),
         width_range: (usize, usize),
     ) -> (Self, usize, usize) {
         let at_byte = if at_width == width_range.1 {
-            idx_range.1
+            index_range.1
         } else {
-            (node.get_chunk_at_width(at_width).1.len as usize).max(idx_range.0)
+            (node.get_chunk_at_width(at_width).1.len as usize).max(index_range.0)
         };
 
-        Chunks::new_with_range_at_idx(node, at_byte, idx_range, width_range)
+        Chunks::new_with_range_at_index(node, at_byte, index_range, width_range)
     }
 
     pub(crate) fn from_slice(slice: &'a [M], at_end: bool) -> Self {
@@ -559,32 +573,32 @@ where
                     ChunksEnum::Full {
                         ref mut node_stack,
                         total_bytes,
-                        ref mut byte_idx,
+                        ref mut byte_index,
                     },
                 ..
             } => {
-                if *byte_idx <= 0 {
+                if *byte_index <= 0 {
                     return None;
                 }
 
                 // Progress the node stack if needed.
-                let mut stack_idx = node_stack.len() - 1;
-                if node_stack[stack_idx].1 == 0 {
-                    while node_stack[stack_idx].1 == 0 {
-                        if stack_idx == 0 {
+                let mut stack_index = node_stack.len() - 1;
+                if node_stack[stack_index].1 == 0 {
+                    while node_stack[stack_index].1 == 0 {
+                        if stack_index == 0 {
                             return None;
                         } else {
-                            stack_idx -= 1;
+                            stack_index -= 1;
                         }
                     }
-                    node_stack[stack_idx].1 -= 1;
-                    while stack_idx < (node_stack.len() - 1) {
-                        let child_i = node_stack[stack_idx].1;
-                        let node = &node_stack[stack_idx].0.children().nodes()[child_i];
-                        node_stack[stack_idx + 1] = (node, node.child_count() - 1);
-                        stack_idx += 1;
+                    node_stack[stack_index].1 -= 1;
+                    while stack_index < (node_stack.len() - 1) {
+                        let child_i = node_stack[stack_index].1;
+                        let node = &node_stack[stack_index].0.children().nodes()[child_i];
+                        node_stack[stack_index + 1] = (node, node.child_count() - 1);
+                        stack_index += 1;
                     }
-                    node_stack[stack_idx].1 += 1;
+                    node_stack[stack_index].1 += 1;
                 }
 
                 // Fetch the node and child index.
@@ -593,14 +607,16 @@ where
 
                 // Get the text, sliced to the appropriate range.
                 let text = node.children().nodes()[*child_i].leaf_slice();
-                *byte_idx -= text.len() as isize;
+                *byte_index -= text.len() as isize;
                 let text_slice = {
-                    let start_byte = if *byte_idx < 0 {
-                        (-*byte_idx) as usize
+                    let start_byte = if *byte_index < 0 {
+                        (-*byte_index) as usize
                     } else {
                         0
                     };
-                    let end_byte = text.len().min((total_bytes as isize - *byte_idx) as usize);
+                    let end_byte = text
+                        .len()
+                        .min((total_bytes as isize - *byte_index) as usize);
                     &text[start_byte..end_byte]
                 };
 
@@ -633,30 +649,31 @@ where
                     ChunksEnum::Full {
                         ref mut node_stack,
                         total_bytes,
-                        ref mut byte_idx,
+                        ref mut byte_index,
                     },
                 ..
             } => {
-                if *byte_idx >= total_bytes as isize {
+                if *byte_index >= total_bytes as isize {
                     return None;
                 }
 
                 // Progress the node stack if needed.
-                let mut stack_idx = node_stack.len() - 1;
-                if node_stack[stack_idx].1 >= node_stack[stack_idx].0.child_count() {
-                    while node_stack[stack_idx].1 >= (node_stack[stack_idx].0.child_count() - 1) {
-                        if stack_idx == 0 {
+                let mut stack_index = node_stack.len() - 1;
+                if node_stack[stack_index].1 >= node_stack[stack_index].0.child_count() {
+                    while node_stack[stack_index].1 >= (node_stack[stack_index].0.child_count() - 1)
+                    {
+                        if stack_index == 0 {
                             return None;
                         } else {
-                            stack_idx -= 1;
+                            stack_index -= 1;
                         }
                     }
-                    node_stack[stack_idx].1 += 1;
-                    while stack_idx < (node_stack.len() - 1) {
-                        let child_i = node_stack[stack_idx].1;
-                        let node = &node_stack[stack_idx].0.children().nodes()[child_i];
-                        node_stack[stack_idx + 1] = (node, 0);
-                        stack_idx += 1;
+                    node_stack[stack_index].1 += 1;
+                    while stack_index < (node_stack.len() - 1) {
+                        let child_i = node_stack[stack_index].1;
+                        let node = &node_stack[stack_index].0.children().nodes()[child_i];
+                        node_stack[stack_index + 1] = (node, 0);
+                        stack_index += 1;
                     }
                 }
 
@@ -666,17 +683,19 @@ where
                 // Get the text, sliced to the appropriate range.
                 let text = node.children().nodes()[*child_i].leaf_slice();
                 let text_slice = {
-                    let start_byte = if *byte_idx < 0 {
-                        (-*byte_idx) as usize
+                    let start_byte = if *byte_index < 0 {
+                        (-*byte_index) as usize
                     } else {
                         0
                     };
-                    let end_byte = text.len().min((total_bytes as isize - *byte_idx) as usize);
+                    let end_byte = text
+                        .len()
+                        .min((total_bytes as isize - *byte_index) as usize);
                     &text[start_byte..end_byte]
                 };
 
                 // Book keeping.
-                *byte_idx += text.len() as isize;
+                *byte_index += text.len() as isize;
                 *child_i += 1;
 
                 // Return the text.
@@ -753,469 +772,288 @@ mod tests {
     }
 
     use self::Lipsum::*;
-    const SLICE: &[Lipsum] = &[
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-        Lorem,
-        Ipsum,
-        Dolor(3),
-        Sit,
-        Amet,
-        Consectur("test"),
-        Adipiscing(false),
-    ];
+    fn lorem_ipsum() -> Vec<Lipsum> {
+        (0..1400)
+            .into_iter()
+            .map(|num| match num % 14 {
+                0 => Lorem,
+                1 => Ipsum,
+                2 => Dolor(4),
+                3 => Sit,
+                4 => Amet,
+                5 => Consectur("hello"),
+                6 => Adipiscing(true),
+                7 => Lorem,
+                8 => Ipsum,
+                9 => Dolor(8),
+                10 => Sit,
+                11 => Amet,
+                12 => Consectur("bye"),
+                13 => Adipiscing(false),
+                _ => unreachable!(),
+            })
+            .collect()
+    }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_01() {
-        let r = Rope::from_slice(SLICE);
-        for (br, bt) in r.iter().zip(SLICE.iter().map(|test| *test)) {
-            assert_eq!(br, bt);
+    fn iter_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        for (from_rope, from_vec) in rope.iter().zip(lorem_ipsum().iter().map(|test| *test)) {
+            assert_eq!(from_rope, from_vec);
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_02() {
-        let r = Rope::from_slice(SLICE);
-        let mut itr = r.iter();
-        while let Some(_) = itr.next() {}
+    fn iter_02() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut iter = rope.iter();
+        while let Some(_) = iter.next() {}
 
-        let mut i = SLICE.len();
-        while let Some(b) = itr.prev() {
+        let mut i = lorem_ipsum().len();
+        while let Some(b) = iter.prev() {
             i -= 1;
-            assert_eq!(b, SLICE[i]);
+            assert_eq!(b, lorem_ipsum()[i]);
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_03() {
-        let r = Rope::from_slice(SLICE);
-        let mut itr = r.iter();
+    fn iter_03() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut iter = rope.iter();
 
-        itr.next();
-        itr.prev();
-        assert_eq!(None, itr.prev());
+        iter.next();
+        iter.prev();
+        assert_eq!(None, iter.prev());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_04() {
-        let r = Rope::from_slice(SLICE);
-        let mut itr = r.iter();
-        while let Some(_) = itr.next() {}
+    fn iter_04() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut iter = rope.iter();
+        while let Some(_) = iter.next() {}
 
-        itr.prev();
-        itr.next();
-        assert_eq!(None, itr.next());
+        iter.prev();
+        iter.next();
+        assert_eq!(None, iter.next());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_05() {
-        let r = Rope::from_slice(SLICE);
-        let mut itr = r.iter();
+    fn iter_05() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut iter = rope.iter();
 
-        assert_eq!(None, itr.prev());
-        itr.next();
-        itr.prev();
-        assert_eq!(None, itr.prev());
+        assert_eq!(None, iter.prev());
+        iter.next();
+        iter.prev();
+        assert_eq!(None, iter.prev());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_06() {
-        let r = Rope::from_slice(SLICE);
-        let mut itr = r.iter();
-        while let Some(_) = itr.next() {}
+    fn iter_06() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut iter = rope.iter();
+        while let Some(_) = iter.next() {}
 
-        assert_eq!(None, itr.next());
-        itr.prev();
-        itr.next();
-        assert_eq!(None, itr.next());
+        assert_eq!(None, iter.next());
+        iter.prev();
+        iter.next();
+        assert_eq!(None, iter.next());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_07() {
-        let mut itr = Iter::from_slice(&[Lorem]);
+    fn iter_07() {
+        let mut iter = Iter::from_slice(&[Lorem]);
 
-        assert_eq!(Some(0x61), itr.next());
-        assert_eq!(None, itr.next());
-        assert_eq!(Some(0x61), itr.prev());
-        assert_eq!(None, itr.prev());
+        assert_eq!(Some(Lorem), iter.next());
+        assert_eq!(None, iter.next());
+        assert_eq!(Some(Lorem), iter.prev());
+        assert_eq!(None, iter.prev());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_at_01() {
-        let r = Rope::from_slice(SLICE);
+    fn iter_at_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let lorem_ipsum = lorem_ipsum();
 
-        let mut bytes_1 = SLICE;
-        for i in 0..(r.total_len() + 1) {
-            let mut bytes_2 = r.iter_at_idx(i);
-            assert_eq!(bytes_1.next(), bytes_2.next());
+        let mut iter_1 = lorem_ipsum.iter().map(|lipsum| *lipsum);
+        for i in 0..(rope.len() + 1) {
+            let mut iter_2 = rope.iter_at_index(i);
+            assert_eq!(iter_1.next(), iter_2.next());
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_at_02() {
-        let r = Rope::from_slice(SLICE);
-        let mut bytes = r.iter_at_idx(r.total_len());
+    fn iter_at_02() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut bytes = rope.iter_at_index(rope.len());
         assert_eq!(bytes.next(), None);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_at_03() {
-        let r = Rope::from_slice(SLICE);
-        let mut bytes_1 = r.iter_at_idx(r.total_len());
-        let mut bytes_2 = SLICE.iter().map(|lipsum| *lipsum);
+    fn iter_at_03() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut iter_1 = rope.iter_at_index(rope.len());
+        let lorem_ipsum = lorem_ipsum();
+        let mut iter_2 = lorem_ipsum.iter().map(|lipsum| *lipsum);
 
-        while let Some(b) = bytes_2.next_back() {
-            assert_eq!(bytes_1.prev(), Some(b));
+        while let Some(b) = iter_2.next_back() {
+            assert_eq!(iter_1.prev(), Some(b));
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_exact_size_iter_01() {
-        let r = Rope::from_slice(SLICE);
-        let s = r.slice(34..301);
+    fn exact_size_iter_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice = rope.width_slice(34..301);
 
-        let mut byte_count = s.total_len();
-        let mut bytes = s.iter();
+        let mut len = slice.len();
+        let mut iter = slice.iter();
 
-        assert_eq!(byte_count, bytes.len());
+        assert_eq!(len, iter.len());
 
-        while let Some(_) = bytes.next() {
-            byte_count -= 1;
-            assert_eq!(byte_count, bytes.len());
+        while let Some(_) = iter.next() {
+            len -= 1;
+            assert_eq!(len, iter.len());
         }
 
-        bytes.next();
-        bytes.next();
-        bytes.next();
-        bytes.next();
-        bytes.next();
-        bytes.next();
-        bytes.next();
-        assert_eq!(bytes.len(), 0);
-        assert_eq!(byte_count, 0);
+        iter.next();
+        iter.next();
+        iter.next();
+        iter.next();
+        iter.next();
+        iter.next();
+        iter.next();
+        assert_eq!(iter.len(), 0);
+        assert_eq!(len, 0);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_exact_size_iter_02() {
-        let r = Rope::from_slice(SLICE);
-        let s = r.slice(34..301);
+    fn exact_size_iter_02() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice = rope.width_slice(34..301);
 
-        for i in 0..=s.total_len() {
-            let bytes = s.iter_at(i);
-            assert_eq!(s.total_len() - i, bytes.len());
+        for i in 0..=slice.len() {
+            let bytes = slice.iter_at(i);
+            assert_eq!(slice.len() - i, bytes.len());
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_exact_size_iter_03() {
-        let r = Rope::from_slice(SLICE);
-        let s = r.slice(34..301);
+    fn exact_size_iter_03() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice = rope.width_slice(34..301);
 
-        let mut byte_count = 0;
-        let mut bytes = s.iter_at(s.total_len());
+        let mut len = 0;
+        let mut iter = slice.iter_at(slice.len());
 
-        assert_eq!(byte_count, bytes.len());
+        assert_eq!(len, iter.len());
 
-        while bytes.prev().is_some() {
-            byte_count += 1;
-            assert_eq!(byte_count, bytes.len());
+        while iter.prev().is_some() {
+            len += 1;
+            assert_eq!(len, iter.len());
         }
 
-        assert_eq!(bytes.len(), s.len_idx());
-        bytes.prev();
-        bytes.prev();
-        bytes.prev();
-        bytes.prev();
-        bytes.prev();
-        bytes.prev();
-        bytes.prev();
-        assert_eq!(bytes.len(), s.len_idx());
-        assert_eq!(byte_count, s.len_idx());
+        assert_eq!(iter.len(), slice.len());
+        iter.prev();
+        iter.prev();
+        iter.prev();
+        iter.prev();
+        iter.prev();
+        iter.prev();
+        iter.prev();
+        assert_eq!(iter.len(), slice.len());
+        assert_eq!(len, slice.len());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_reverse_01() {
-        let r = Rope::from_slice(SLICE);
-        let mut itr = r.iter();
+    fn iter_reverse_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut iter = rope.iter();
         let mut stack = Vec::new();
 
         for _ in 0..32 {
-            stack.push(itr.next().unwrap());
+            stack.push(iter.next().unwrap());
         }
-        itr.reverse();
+        iter.reverse();
         for _ in 0..32 {
-            assert_eq!(stack.pop(), itr.next());
+            assert_eq!(stack.pop(), iter.next());
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_reverse_02() {
-        let r = Rope::from_slice(SLICE);
-        let mut itr = r.iter_at(r.total_len() / 3);
+    fn iter_reverse_02() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut iter = rope.iter_at_index(rope.len() / 3);
         let mut stack = Vec::new();
 
         for _ in 0..32 {
-            stack.push(itr.next().unwrap());
+            stack.push(iter.next().unwrap());
         }
-        itr.reverse();
+        iter.reverse();
         for _ in 0..32 {
-            assert_eq!(stack.pop(), itr.next());
+            assert_eq!(stack.pop(), iter.next());
         }
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn bytes_reverse_03() {
-        let r = Rope::from_slice(SLICE);
-        let mut itr = r.iter_at(r.total_lent, 0);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_01() {
-        let r = Rope::from_slice(SLICE);
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let mut idx = 0;
-        for chunk in r.chunks() {
-            assert_eq!(chunk, &SLICE[idx..(idx + chunk.len())]);
-            idx += chunk.len();
+        let mut index = 0;
+        for chunk in rope.chunks() {
+            assert_eq!(chunk, &lorem_ipsum()[index..(index + chunk.len())]);
+            index += chunk.len();
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_02() {
-        let r = Rope::from_slice("");
-        let mut itr = r.chunks();
+        let rope = Rope::<Lipsum>::from_slice(&[]);
+        let mut iter = rope.chunks();
 
-        assert_eq!(None, itr.next());
+        assert_eq!(None, iter.next());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_03() {
-        let r = Rope::from_slice(SLICE);
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let mut itr = r.chunks();
+        let mut iter = rope.chunks();
 
-        assert_eq!(None, itr.prev());
+        assert_eq!(None, iter.prev());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_04() {
-        let r = Rope::from_slice(SLICE);
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
         let mut chunks = Vec::new();
-        let mut itr = r.chunks();
+        let mut iter = rope.chunks();
 
-        while let Some(text) = itr.next() {
+        while let Some(text) = iter.next() {
             chunks.push(text);
         }
 
-        while let Some(text) = itr.prev() {
+        while let Some(text) = iter.prev() {
             assert_eq!(text, chunks.pop().unwrap());
         }
 
@@ -1224,171 +1062,153 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn chunks_at_byte_01() {
-        let r = Rope::from_slice(SLICE);
+    fn chunks_at_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        for i in 0..r.len_bytes() {
-            let (chunk, b, c, l) = r.chunk_at_idx(i);
-            let (mut chunks, bs, cs, ls) = r.chunks_at_idx(i);
+        for i in 0..rope.len() {
+            let (chunk, b, c) = rope.chunk_at_index(i);
+            let (mut chunks, bs, cs) = rope.chunks_at_index(i);
 
             assert_eq!(b, bs);
             assert_eq!(c, cs);
-            assert_eq!(l, ls);
             assert_eq!(Some(chunk), chunks.next());
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn chunks_at_byte_02() {
-        let r = Rope::from_slice(SLICE);
-        let s = r.slice(34..301);
+    fn chunks_at_02() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice = rope.width_slice(34..301);
 
-        for i in 0..(s.len_chars() + 1) {
-            let (chunk, b, c, l) = s.chunk_at_byte(i);
-            let (mut chunks, bs, cs, ls) = s.chunks_at(i);
+        let (mut chunks, _, _) = slice.chunks_at_index(slice.len());
+        assert_eq!(chunks.next(), None);
 
-            assert_eq!(b, bs);
-            assert_eq!(c, cs);
-            assert_eq!(l, ls);
-            assert_eq!(Some(chunk), chunks.next());
-        }
+        let (mut chunks, _, _) = slice.chunks_at_index(slice.len());
+        assert_eq!(slice.chunks().last(), chunks.prev());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn chunks_at_byte_03() {
-        let r = Rope::from_slice(SLICE);
-        let s = r.slice(34..301);
+    fn chunks_at_03() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice = rope.width_slice(34..34);
 
-        let (mut chunks, _, _, _) = s.chunks_at(s.len_bytes());
+        let (mut chunks, _, _) = slice.chunks_at_index(0);
         assert_eq!(chunks.next(), None);
 
-        let (mut chunks, _, _, _) = s.chunks_at(s.len_bytes());
-        assert_eq!(s.chunks().last(), chunks.prev());
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn chunks_at_byte_04() {
-        let r = Rope::from_slice(SLICE);
-        let s = r.slice(34..34);
-
-        let (mut chunks, _, _, _) = s.chunks_at(0);
-        assert_eq!(chunks.next(), None);
-
-        let (mut chunks, _, _, _) = s.chunks_at(0);
+        let (mut chunks, _, _) = slice.chunks_at_index(0);
         assert_eq!(chunks.prev(), None);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_reverse_01() {
-        let r = Rope::from_slice(SLICE);
-        let mut itr = r.chunks();
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut iter = rope.chunks();
         let mut stack = Vec::new();
 
         for _ in 0..8 {
-            stack.push(itr.next().unwrap());
+            stack.push(iter.next().unwrap());
         }
-        itr.reverse();
+        iter.reverse();
         for _ in 0..8 {
-            assert_eq!(stack.pop().unwrap(), itr.next().unwrap());
+            assert_eq!(stack.pop().unwrap(), iter.next().unwrap());
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_reverse_02() {
-        let r = Rope::from_slice(SLICE);
-        let mut itr = r.chunks_at_char(r.len_width() / 3).0;
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut iter = rope.chunks_at_width(rope.width() / 3).0;
         let mut stack = Vec::new();
 
         for _ in 0..8 {
-            stack.push(itr.next().unwrap());
+            stack.push(iter.next().unwrap());
         }
-        itr.reverse();
+        iter.reverse();
         for _ in 0..8 {
-            assert_eq!(stack.pop().unwrap(), itr.next().unwrap());
+            assert_eq!(stack.pop().unwrap(), iter.next().unwrap());
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_reverse_03() {
-        let r = Rope::from_slice(SLICE);
-        let mut itr = r.chunks_at_char(r.len_width() / 3).0;
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut iter = rope.chunks_at_width(rope.width() / 3).0;
         let mut stack = Vec::new();
 
-        itr.reverse();
+        iter.reverse();
         for _ in 0..8 {
-            stack.push(itr.next().unwrap());
+            stack.push(iter.next().unwrap());
         }
-        itr.reverse();
+        iter.reverse();
         for _ in 0..8 {
-            assert_eq!(stack.pop().unwrap(), itr.next().unwrap());
+            assert_eq!(stack.pop().unwrap(), iter.next().unwrap());
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_reverse_04() {
-        let mut itr = Chunks::from_slice("a\n", false);
+        let mut iter = Chunks::from_slice(&[Dolor(5), Sit], false);
 
-        assert_eq!(Some("a\n"), itr.next());
-        assert_eq!(None, itr.next());
-        itr.reverse();
-        assert_eq!(Some("a\n"), itr.next());
-        assert_eq!(None, itr.next());
+        assert_eq!(Some([Dolor(5), Sit].as_slice()), iter.next());
+        assert_eq!(None, iter.next());
+        iter.reverse();
+        assert_eq!(Some([Dolor(5), Sit].as_slice()), iter.next());
+        assert_eq!(None, iter.next());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_sliced_01() {
-        let r = Rope::from_slice(SLICE);
+    fn iter_sliced_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s_start = 34;
-        let s_end = 301;
-        let s_start_byte = r.width_to_idx(s_start);
-        let s_end_byte = r.width_to_idx(s_end);
+        let slice_start = 34;
+        let slice_end = 301;
+        let slice_start_byte = rope.width_to_index(slice_start);
+        let s_end_byte = rope.width_to_index(slice_end);
 
-        let s1 = r.slice(s_start..s_end);
-        let s2 = &SLICE[s_start_byte..s_end_byte];
+        let slice_1 = rope.width_slice(slice_start..slice_end);
+        let slice_2 = &lorem_ipsum()[slice_start_byte..s_end_byte];
 
-        let mut s1_iter = s1.iter();
-        let mut s2_iter = s2.iter();
+        let mut slice_1_iter = slice_1.iter();
+        let mut slice_2_iter = slice_2.iter().map(|lipsum| *lipsum);
 
-        assert_eq!(s1, s2);
-        assert_eq!(s1.from_idx(0), s2[0]);
-        for _ in 0..(s2.len() + 1) {
-            assert_eq!(s1_iter.next(), s2_iter.next());
+        assert_eq!(slice_1, slice_2);
+        assert_eq!(slice_1.from_index(0), slice_2[0]);
+        for _ in 0..(slice_2.len() + 1) {
+            assert_eq!(slice_1_iter.next(), slice_2_iter.next());
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_at_sliced_02() {
-        let r = Rope::from_slice(SLICE);
-        let s = r.slice(34..301);
-        let mut bytes = s.iter_at(s.total_len());
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice = rope.width_slice(34..301);
+        let mut bytes = slice.iter_at(slice.len());
         assert_eq!(bytes.next(), None);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_at_sliced_03() {
-        let r = Rope::from_slice(SLICE);
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s_start = 34;
-        let s_end = 301;
-        let s_start_byte = r.char_to_byte(s_start);
-        let s_end_byte = r.char_to_byte(s_end);
+        let slice_start = 34;
+        let slice_end = 301;
+        let slice_start_byte = rope.width_to_index(slice_start);
+        let s_end_byte = rope.width_to_index(slice_end);
 
-        let s1 = r.slice(s_start..s_end);
-        let s2 = &SLICE[s_start_byte..s_end_byte];
+        let slice_1 = rope.width_slice(slice_start..slice_end);
+        let slice_2 = &lorem_ipsum()[slice_start_byte..s_end_byte];
 
-        let mut bytes_1 = s1.iter_at(s1.total_len());
-        let mut bytes_2 = s2.bytes();
+        let mut bytes_1 = slice_1.iter_at(slice_1.len());
+        let mut bytes_2 = slice_2.iter().map(|lipsum| *lipsum);
         while let Some(b) = bytes_2.next_back() {
             assert_eq!(bytes_1.prev(), Some(b));
         }
@@ -1396,71 +1216,71 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn bytes_at_sliced_reverse_01() {
-        let r = Rope::from_slice(SLICE);
+    fn iter_at_sliced_reverse_01() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s_start = 34;
-        let s_end = 301;
-        let s = r.slice(s_start..s_end);
+        let slice_start = 34;
+        let slice_end = 301;
+        let slice = rope.width_slice(slice_start..slice_end);
 
-        let mut itr = s.iter_at(s.total_len() / 3);
+        let mut iter = slice.iter_at(slice.len() / 3);
         let mut stack = Vec::new();
         for _ in 0..32 {
-            stack.push(itr.next().unwrap());
+            stack.push(iter.next().unwrap());
         }
-        itr.reverse();
+        iter.reverse();
         for _ in 0..32 {
-            assert_eq!(stack.pop(), itr.next());
+            assert_eq!(stack.pop(), iter.next());
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_sliced_01() {
-        let r = Rope::from_slice(SLICE);
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s_start = 34;
-        let s_end = 301;
-        let s_start_byte = r.char_to_byte(s_start);
-        let s_end_byte = r.char_to_byte(s_end);
+        let slice_start = 34;
+        let slice_end = 301;
+        let slice_start_byte = rope.width_to_index(slice_start);
+        let s_end_byte = rope.width_to_index(slice_end);
 
-        let s1 = r.slice(s_start..s_end);
-        let s2 = &SLICE[s_start_byte..s_end_byte];
+        let s1 = rope.width_slice(slice_start..slice_end);
+        let s2 = &lorem_ipsum()[slice_start_byte..s_end_byte];
 
-        let mut idx = 0;
+        let mut index = 0;
         for chunk in s1.chunks() {
-            assert_eq!(chunk, &s2[idx..(idx + chunk.len())]);
-            idx += chunk.len();
+            assert_eq!(chunk, &s2[index..(index + chunk.len())]);
+            index += chunk.len();
         }
 
-        assert_eq!(idx, s2.len());
+        assert_eq!(index, s2.len());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_sliced_reverse_01() {
-        let r = Rope::from_slice(SLICE);
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        let s_start = 34;
-        let s_end = 301;
-        let s = r.slice(s_start..s_end);
+        let slice_start = 34;
+        let slice_end = 301;
+        let slice = rope.width_slice(slice_start..slice_end);
 
-        let mut itr = s.chunks();
+        let mut iter = slice.chunks();
         let mut stack = Vec::new();
         for _ in 0..8 {
-            stack.push(itr.next().unwrap());
+            stack.push(iter.next().unwrap());
         }
-        itr.reverse();
+        iter.reverse();
         for _ in 0..8 {
-            assert_eq!(stack.pop(), itr.next());
+            assert_eq!(stack.pop(), iter.next());
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn empty_iter() {
-        let rope = Rope::from_slice(&[]);
-        let r: Vec<_> = rope.lines().collect();
-        assert_eq!(&[""], &*r)
+        let rope = Rope::<Lipsum>::from_slice(&[]);
+        let rope: Vec<Lipsum> = rope.iter().collect();
+        assert_eq!(&*rope, [].as_slice())
     }
 }

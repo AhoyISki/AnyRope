@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::rope::Measurable;
-use crate::slice_utils::{idx_to_width, is_width_boundary, width_to_idx};
+use crate::slice_utils::{index_to_width, width_to_index};
 use crate::tree::{
     Branch, Count, Leaf, SliceInfo, MAX_BYTES, MAX_CHILDREN, MIN_BYTES, MIN_CHILDREN,
 };
@@ -23,12 +23,12 @@ where
     /// Creates an empty node.
     #[inline(always)]
     pub fn new() -> Self {
-        Node::Leaf(Leaf::from([].as_slice()))
+        Node::Leaf(Leaf::from_slice(&[]))
     }
 
     /// Total number of items in the Rope.
     #[inline(always)]
-    pub fn count(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.slice_info().len as usize
     }
 
@@ -41,7 +41,7 @@ where
     /// Fetches a chunk mutably, and allows it to be edited via a closure.
     ///
     /// There are three parameters:
-    /// - char_idx: the chunk that contains this char is fetched,
+    /// - char_index: the chunk that contains this char is fetched,
     /// - node_info: this is the text info of the node it's being called on.
     ///              This makes it a little awkward to call, but is needed since
     ///              it's actually the parent node that contains the text info,
@@ -51,7 +51,7 @@ where
     /// The closure is effectively the termination case for the recursion,
     /// and takes essentially same parameters and returns the same things as
     /// the method itself.  In particular, the closure receives the char offset
-    /// of char_idx within the given chunk and the TextInfo of the chunk.
+    /// of char_index within the given chunk and the TextInfo of the chunk.
     /// The main difference is that it receives a NodeText instead of a node.
     ///
     /// The closure is expected to return the updated text info of the node,
@@ -89,13 +89,15 @@ where
                 }
 
                 // Find the child we care about.
-                let (child_i, acc_char_idx) = children.search_width_only(width);
-                let info = children.info()[child_i];
+                let (child_i, acc_char_index) = children.search_width_only(width);
+                let (info, _) = children.info()[child_i];
 
                 // Recurse into the child.
                 let (l_info, residual) = Arc::make_mut(&mut children.nodes_mut()[child_i])
-                    .edit_chunk_at_width(width - acc_char_idx, info, edit);
-                children.info_mut()[child_i] = l_info;
+                    .edit_chunk_at_width(width - acc_char_index, info, edit);
+
+                let zero_width_end = children.nodes()[child_i].zero_width_end();
+                children.info_mut()[child_i] = (l_info, zero_width_end);
 
                 // Handle the residual node if there is one and return.
                 if let Some((r_info, r_node)) = residual {
@@ -117,7 +119,7 @@ where
         }
     }
 
-    /// Removes chars in the range `start_idx..end_idx`.
+    /// Removes chars in the range `start_index..end_index`.
     ///
     /// Returns (in this order):
     /// - The updated TextInfo for the node.
@@ -127,20 +129,20 @@ where
     /// should be special-cased in calling code.
     pub fn remove_range(
         &mut self,
-        start_idx: usize,
-        end_idx: usize,
+        start_index: usize,
+        end_index: usize,
         node_info: SliceInfo,
     ) -> (SliceInfo, bool) {
-        if start_idx == end_idx {
+        if start_index == end_index {
             return (node_info, false);
         }
 
         match *self {
             // If it's a leaf
             Node::Leaf(ref mut leaf_text) => {
-                let byte_start = width_to_idx(leaf_text, start_idx);
+                let byte_start = width_to_index(leaf_text, start_index);
                 let byte_end =
-                    byte_start + width_to_idx(&leaf_text[byte_start..], end_idx - start_idx);
+                    byte_start + width_to_index(&leaf_text[byte_start..], end_index - start_index);
 
                 // Remove text and calculate new info & seam info
                 if byte_start > 0 || byte_end < leaf_text.len() {
@@ -180,12 +182,12 @@ where
                                     c_char_acc: usize|
                  -> (bool, SliceInfo) {
                     // Recurse into child
-                    let tmp_info = children.info()[child_i];
-                    let tmp_chars = children.info()[child_i].width as usize;
+                    let (tmp_info, _) = children.info()[child_i];
+                    let tmp_chars = children.info()[child_i].0.width as usize;
                     let (new_info, needs_fix) = Arc::make_mut(&mut children.nodes_mut()[child_i])
                         .remove_range(
-                            start_idx - c_char_acc.min(start_idx),
-                            (end_idx - c_char_acc).min(tmp_chars),
+                            start_index - c_char_acc.min(start_index),
+                            (end_index - c_char_acc).min(tmp_chars),
                             tmp_info,
                         );
 
@@ -193,7 +195,8 @@ where
                     if new_info.len == 0 {
                         children.remove(child_i);
                     } else {
-                        children.info_mut()[child_i] = new_info;
+                        let zero_width_end = children.nodes()[child_i].zero_width_end();
+                        children.info_mut()[child_i] = (new_info, zero_width_end);
                     }
 
                     (needs_fix, new_info)
@@ -215,11 +218,11 @@ where
 
                 // Get child info for the two char indices
                 let ((l_child_i, l_char_acc), (r_child_i, r_char_acc)) =
-                    children.search_width_range(start_idx, end_idx);
+                    children.search_index_range(start_index, end_index);
 
                 // Both indices point into the same child
                 if l_child_i == r_child_i {
-                    let info = children.info()[l_child_i];
+                    let (info, _) = children.info()[l_child_i];
                     let (mut needs_fix, new_info) = handle_child(children, l_child_i, l_char_acc);
 
                     if children.len() > 0 {
@@ -241,14 +244,14 @@ where
                     // Calculate the start..end range of nodes to be removed.
                     let r_child_exists: bool;
                     let start_i = l_child_i + 1;
-                    let end_i = if r_char_acc + children.info()[r_child_i].width as usize == end_idx
-                    {
-                        r_child_exists = false;
-                        r_child_i + 1
-                    } else {
-                        r_child_exists = true;
-                        r_child_i
-                    };
+                    let end_i =
+                        if r_char_acc + children.info()[r_child_i].0.width as usize == end_index {
+                            r_child_exists = false;
+                            r_child_i + 1
+                        } else {
+                            r_child_exists = true;
+                            r_child_i
+                        };
 
                     // Remove the children
                     for _ in start_i..end_i {
@@ -286,34 +289,27 @@ where
         }
     }
 
-    pub fn append_at_depth(&mut self, other: Arc<Node<M>>, depth: usize) -> Option<Arc<Self>> {
+    pub fn append_at_depth(&mut self, mut other: Arc<Node<M>>, depth: usize) -> Option<Arc<Self>> {
         if depth == 0 {
-            match *self {
-                Node::Leaf(_) => {
-                    if !other.is_leaf() {
-                        panic!("Tree-append siblings have differing types.");
-                    } else {
-                        return Some(other);
-                    }
-                }
-                Node::Branch(ref mut children_l) => {
-                    let mut other = other;
-                    if let Node::Branch(ref mut children_r) = *Arc::make_mut(&mut other) {
-                        if (children_l.len() + children_r.len()) <= MAX_CHILDREN {
-                            for _ in 0..children_r.len() {
-                                children_l.push(children_r.remove(0));
-                            }
-                            return None;
-                        } else {
-                            children_l.distribute_with(children_r);
-                            // Return lower down, to avoid borrow-checker.
+            if let Node::Branch(ref mut children_l) = *self {
+                if let Node::Branch(ref mut children_r) = *Arc::make_mut(&mut other) {
+                    if (children_l.len() + children_r.len()) <= MAX_CHILDREN {
+                        for _ in 0..children_r.len() {
+                            children_l.push(children_r.remove(0));
                         }
+                        return None;
                     } else {
-                        panic!("Tree-append siblings have differing types.");
+                        children_l.distribute_with(children_r);
+                        // Return lower down, to avoid borrow-checker.
                     }
-                    return Some(other);
+                } else {
+                    panic!("Tree-append siblings have differing types.");
                 }
+            } else if !other.is_leaf() {
+                panic!("Tree-append siblings have differing types.");
             }
+
+            return Some(other);
         } else if let Node::Branch(ref mut children) = *self {
             let last_i = children.len() - 1;
             let residual =
@@ -385,19 +381,19 @@ where
         }
     }
 
-    /// Splits the `Node` at char index `char_idx`, returning
+    /// Splits the `Node` at char index `char_index`, returning
     /// the right side of the split.
     pub fn split(&mut self, width: usize) -> Self {
         debug_assert!(width != 0);
         debug_assert!(width != (self.slice_info().width as usize));
         match *self {
             Node::Leaf(ref mut slice) => {
-                let idx = width_to_idx(slice, width);
-                Node::Leaf(slice.split_off(idx))
+                let index = width_to_index(slice, width);
+                Node::Leaf(slice.split_off(index))
             }
             Node::Branch(ref mut children) => {
                 let (child_i, acc_info) = children.search_width(width);
-                let child_info = children.info()[child_i];
+                let (child_info, _) = children.info()[child_i];
 
                 if width == acc_info.width as usize {
                     Node::Branch(children.split_off(child_i))
@@ -423,9 +419,9 @@ where
 
     /// Returns the chunk that contains the given byte, and the TextInfo
     /// corresponding to the start of the chunk.
-    pub fn get_chunk_at_idx(&self, byte_idx: usize) -> (&[M], SliceInfo) {
+    pub fn get_chunk_at_index(&self, byte_index: usize) -> (&[M], SliceInfo) {
         let mut node = self;
-        let mut byte_idx = byte_idx;
+        let mut byte_index = byte_index;
         let mut info = SliceInfo::new();
 
         loop {
@@ -434,10 +430,10 @@ where
                     return (slice, info);
                 }
                 Node::Branch(ref children) => {
-                    let (child_i, acc_info) = children.search_byte_idx(byte_idx);
+                    let (child_i, acc_info) = children.search_index(byte_index);
                     info += acc_info;
                     node = &*children.nodes()[child_i];
-                    byte_idx -= acc_info.len as usize;
+                    byte_index -= acc_info.len as usize;
                 }
             }
         }
@@ -451,12 +447,13 @@ where
 
         loop {
             match *node {
-                Node::Leaf(ref text) => {
-                    return (text, info);
+                Node::Leaf(ref slice) => {
+                    return (slice, info);
                 }
                 Node::Branch(ref children) => {
                     let (child_i, acc_info) = children.search_width(width);
                     info += acc_info;
+
                     node = &*children.nodes()[child_i];
                     width -= acc_info.width as usize;
                 }
@@ -468,7 +465,7 @@ where
     #[inline(always)]
     pub fn width_to_slice_info(&self, width: usize) -> SliceInfo {
         let (chunk, info) = self.get_chunk_at_width(width);
-        let bi = width_to_idx(chunk, width - info.width as usize);
+        let bi = width_to_index(chunk, width - info.width as usize);
         SliceInfo {
             len: info.len + bi as Count,
             width: width as Count,
@@ -477,11 +474,11 @@ where
 
     /// Returns the TextInfo at the given byte index.
     #[inline(always)]
-    pub fn idx_to_slice_info(&self, idx: usize) -> SliceInfo {
-        let (chunk, info) = self.get_chunk_at_idx(idx);
-        let width = idx_to_width(chunk, idx - info.len as usize);
+    pub fn index_to_slice_info(&self, index: usize) -> SliceInfo {
+        let (chunk, info) = self.get_chunk_at_index(index);
+        let width = index_to_width(chunk, index - info.len as usize);
         SliceInfo {
-            len: idx as Count,
+            len: index as Count,
             width: info.width + width as Count,
         }
     }
@@ -491,11 +488,6 @@ where
             Node::Leaf(ref slice) => SliceInfo::from_slice(slice),
             Node::Branch(ref children) => children.combined_info(),
         }
-    }
-
-    pub fn is_width_boundary(&self, byte_idx: usize) -> bool {
-        let (chunk, info) = self.get_chunk_at_idx(byte_idx);
-        is_width_boundary(chunk, byte_idx - info.len as usize)
     }
 
     //-----------------------------------------
@@ -575,10 +567,9 @@ where
         match *self {
             Node::Leaf(_) => {}
             Node::Branch(ref children) => {
-                for (info, node) in children.iter() {
-                    if *info != node.slice_info() {
-                        assert_eq!(*info, node.slice_info());
-                    }
+                for ((info, zero_width_end), node) in children.iter() {
+                    assert_eq!(*info, node.slice_info());
+                    assert_eq!(*zero_width_end, node.zero_width_end());
                     node.assert_integrity();
                 }
             }
@@ -620,50 +611,6 @@ where
 
                 for node in children.nodes() {
                     node.assert_node_size(false);
-                }
-            }
-        }
-    }
-
-    /// Returns the chunk that contains the given byte, and the offset
-    /// of that byte within the chunk.
-    pub fn get_chunk_at_byte_mut(&mut self, byte_idx: usize) -> (&mut Leaf<M>, usize) {
-        match *self {
-            Node::Leaf(ref mut text) => return (text, byte_idx),
-            Node::Branch(ref mut children) => {
-                let (child_i, acc_info) = children.search_byte_idx(byte_idx);
-                Arc::make_mut(&mut children.nodes_mut()[child_i])
-                    .get_chunk_at_byte_mut(byte_idx - acc_info.len as usize)
-            }
-        }
-    }
-
-    /// Updates the tree meta-data down the left side of the tree, and removes empty
-    /// children as it goes as well.
-    fn fix_info_left(&mut self) {
-        match *self {
-            Node::Leaf(_) => {}
-            Node::Branch(ref mut children) => {
-                Arc::make_mut(&mut children.nodes_mut()[0]).fix_info_left();
-                children.update_child_info(0);
-                if children.info()[0].len == 0 {
-                    children.remove(0);
-                }
-            }
-        }
-    }
-
-    /// Updates the tree meta-data down the right side of the tree, and removes empty
-    /// children as it goes as well.
-    fn fix_info_right(&mut self) {
-        match *self {
-            Node::Leaf(_) => {}
-            Node::Branch(ref mut children) => {
-                let idx = children.len() - 1;
-                Arc::make_mut(&mut children.nodes_mut()[idx]).fix_info_right();
-                children.update_child_info(idx);
-                if children.info()[idx].len == 0 {
-                    children.remove(idx);
                 }
             }
         }
@@ -732,13 +679,14 @@ where
     ///
     /// Returns whether it did anything or not that would affect the
     /// parent. True: did stuff, false: didn't do stuff
-    pub fn fix_tree_seam(&mut self, char_idx: usize) -> bool {
+    pub fn fix_tree_seam(&mut self, char_index: usize) -> bool {
         if let Node::Branch(ref mut children) = *self {
             let mut did_stuff = false;
             loop {
                 // Do merging
                 if children.len() > 1 {
-                    let (child_i, start_info) = children.search_width(char_idx);
+                    println!("char_index: {}, {:#?}", char_index, children);
+                    let (child_i, start_info) = children.search_width(char_index);
                     let mut do_merge = match *children.nodes()[child_i] {
                         Node::Leaf(ref text) => text.len() < MIN_BYTES,
                         Node::Branch(ref children2) => children2.len() < MIN_CHILDREN,
@@ -749,12 +697,13 @@ where
                             did_stuff |= children.merge_distribute(0, 1);
                         }
                     } else {
-                        do_merge = do_merge
-                            || (start_info.width as usize == char_idx
+                        do_merge |= {
+                            start_info.width as usize == char_index
                                 && match *children.nodes()[child_i - 1] {
                                     Node::Leaf(ref text) => text.len() < MIN_BYTES,
                                     Node::Branch(ref children2) => children2.len() < MIN_CHILDREN,
-                                });
+                                }
+                        };
                         if do_merge {
                             let res = children.merge_distribute(child_i - 1, child_i);
                             did_stuff |= res
@@ -763,10 +712,10 @@ where
                 }
 
                 // Do recursion
-                let (child_i, start_info) = children.search_width(char_idx);
+                let (child_i, start_info) = children.search_width(char_index);
 
-                if start_info.width as usize == char_idx && child_i != 0 {
-                    let tmp = children.info()[child_i - 1].width as usize;
+                if start_info.width as usize == char_index && child_i != 0 {
+                    let tmp = children.info()[child_i - 1].0.width as usize;
                     let effect_1 =
                         Arc::make_mut(&mut children.nodes_mut()[child_i - 1]).fix_tree_seam(tmp);
                     let effect_2 =
@@ -775,7 +724,7 @@ where
                         break;
                     }
                 } else if !Arc::make_mut(&mut children.nodes_mut()[child_i])
-                    .fix_tree_seam(char_idx - start_info.width as usize)
+                    .fix_tree_seam(char_index - start_info.width as usize)
                 {
                     break;
                 }
@@ -784,6 +733,13 @@ where
             did_stuff
         } else {
             false
+        }
+    }
+
+    pub fn zero_width_end(&self) -> bool {
+        match self {
+            Node::Leaf(ref leaf) => leaf.zero_width_end(),
+            Node::Branch(ref branch) => branch.zero_width_end(),
         }
     }
 }
