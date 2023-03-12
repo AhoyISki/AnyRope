@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::iter::{Chunks, Iter};
 use crate::rope::{Measurable, Rope};
-use crate::slice_utils::{index_to_width, width_of, width_to_index};
+use crate::slice_utils::{first_width_to_index, index_to_width, last_width_to_index, width_of};
 use crate::tree::{Count, Node, SliceInfo};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
@@ -63,11 +63,11 @@ where
                 });
             } else {
                 return RopeSlice(RSEnum::Full {
-                    node: node,
+                    node,
                     start_info: SliceInfo { len: 0, width: 0 },
                     end_info: SliceInfo {
                         len: node.len() as Count,
-                        width: node.len() as Count,
+                        width: node.width() as Count,
                     },
                 });
             }
@@ -81,20 +81,24 @@ where
             match *(node as &Node<M>) {
                 // Early out if we reach a leaf, because we can do the
                 // simpler lightweight slice then.
-                Node::Leaf(ref text) => {
-                    let start_index = width_to_index(text, n_start);
+                Node::Leaf(ref slice) => {
+                    println!("{:?}", slice);
+                    let start_index = first_width_to_index(slice, n_start);
                     let end_index =
-                        start_index + width_to_index(&text[start_index..], n_end - n_start);
+                        start_index + last_width_to_index(&slice[start_index..], n_end - n_start);
                     return RopeSlice(RSEnum::Light {
-                        slice: &text[start_index..end_index],
+                        slice: &slice[start_index..end_index],
                         count: (n_end - n_start) as Count,
                     });
                 }
 
                 Node::Branch(ref children) => {
                     let mut start_width = 0;
-                    for (i, (info, _)) in children.info().iter().enumerate() {
+                    for (i, (info, zero_width_end)) in children.info().iter().enumerate() {
                         if n_start >= start_width && n_end <= (start_width + info.width as usize) {
+                            if *zero_width_end {
+                                break;
+                            }
                             n_start -= start_width;
                             n_end -= start_width;
                             node = &children.nodes()[i];
@@ -109,9 +113,9 @@ where
 
         // Create the slice
         RopeSlice(RSEnum::Full {
-            node: node,
-            start_info: node.width_to_slice_info(n_start),
-            end_info: node.width_to_slice_info(n_end),
+            node,
+            start_info: node.first_width_to_slice_info(n_start, first_width_to_index),
+            end_info: node.last_width_to_slice_info(n_end, last_width_to_index),
         })
     }
 
@@ -421,8 +425,8 @@ where
                 start_info.width as usize + end,
             ),
             RopeSlice(RSEnum::Light { slice: text, .. }) => {
-                let start_byte = width_to_index(text, start);
-                let end_byte = width_to_index(text, end);
+                let start_byte = first_width_to_index(text, start);
+                let end_byte = first_width_to_index(text, end);
                 let new_text = &text[start_byte..end_byte];
                 RopeSlice(RSEnum::Light {
                     slice: new_text,
@@ -608,7 +612,7 @@ where
         // Bounds check
         if width <= self.width() {
             let (chunk, b, c) = self.chunk_at_width(width);
-            Ok(b + width_to_index(chunk, width - c))
+            Ok(b + first_width_to_index(chunk, width - c))
         } else {
             Err(Error::WidthOutOfBounds(width, self.width()))
         }
@@ -633,8 +637,8 @@ where
         // Bounds check
         if width < self.width() {
             let (chunk, _, chunk_char_index) = self.chunk_at_width(width);
-            let byte_index = width_to_index(chunk, width - chunk_char_index);
-            Some(chunk[byte_index])
+            let index = first_width_to_index(chunk, width - chunk_char_index);
+            Some(chunk[index])
         } else {
             None
         }
@@ -686,7 +690,7 @@ where
                 }) => {
                     // Get the chunk.
                     let (chunk, chunk_start_info) =
-                        node.get_chunk_at_width(width + start_info.width as usize);
+                        node.get_first_chunk_at_width(width + start_info.width as usize);
 
                     // Calculate clipped start/end byte indices within the chunk.
                     let chunk_start_byte_index =
@@ -739,8 +743,8 @@ where
                     start_info.width as usize + end,
                 )),
                 RopeSlice(RSEnum::Light { slice: text, .. }) => {
-                    let start_byte = width_to_index(text, start);
-                    let end_byte = width_to_index(text, end);
+                    let start_byte = first_width_to_index(text, start);
+                    let end_byte = first_width_to_index(text, end);
                     let new_text = &text[start_byte..end_byte];
                     Some(RopeSlice(RSEnum::Light {
                         slice: new_text,
@@ -838,7 +842,6 @@ where
                     node,
                     start_info,
                     end_info,
-                    
                 }) => Some(Iter::new_with_range_at(
                     node,
                     start_info.len as usize + index,
@@ -1264,7 +1267,7 @@ where
 mod tests {
     use crate::{
         rope::Measurable,
-        slice_utils::{index_to_width, width_to_index},
+        slice_utils::{first_width_to_index, index_to_width},
         Rope,
     };
 
@@ -1309,7 +1312,7 @@ mod tests {
                 9 => Dolor(8),
                 12 => Consectur("bye"),
                 13 => Adipiscing(false),
-                _ => unreachable!()
+                _ => unreachable!(),
             })
             .collect()
     }
@@ -1470,35 +1473,33 @@ mod tests {
     #[test]
     fn chunk_at_index_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        let slice_1 = rope.width_slice(34..96);
-        let slice_2 = &lorem_ipsum()[34..112];
+        let slice_1 = rope.width_slice(34..135);
+        let slice_2 = &lorem_ipsum()[17..70];
         // "'slice a fine day, isn't it?\nAren't you glad \
         //  we're alive?\nこんにちは、みん"
 
-        let mut t = slice_2;
+        let mut total = slice_2;
         let mut prev_chunk = [].as_slice();
         for i in 0..slice_1.len() {
-            let (chunk, b, c) = slice_1.chunk_at_index(i);
-            assert_eq!(c, index_to_width(slice_2, b));
+            let (chunk, index, width) = slice_1.chunk_at_index(i);
+            assert_eq!(width, index_to_width(slice_2, index));
             if chunk != prev_chunk {
-                assert_eq!(chunk, &t[..chunk.len()]);
-                t = &t[chunk.len()..];
+                println!("{}, {}, {:?}", index, width, chunk);
+                println!("{:?}", &total[..chunk.len()]);
+                assert_eq!(chunk, &total[..chunk.len()]);
+                total = &total[chunk.len()..];
                 prev_chunk = chunk;
             }
 
-            let c1 = {
-                let i2 = index_to_width(slice_2, i);
-                slice_2.iter().nth(i2).unwrap()
+            let lipsum_1 = slice_2.iter().nth(i).unwrap();
+            let lipsum_2 = {
+                let i2 = i - index;
+                chunk.iter().nth(i2).unwrap()
             };
-            let c2 = {
-                let i2 = i - b;
-                let i3 = index_to_width(chunk, i2);
-                chunk.iter().nth(i3).unwrap()
-            };
-            assert_eq!(c1, c2);
+            assert_eq!(lipsum_1, lipsum_2);
         }
 
-        assert_eq!(t.len(), 0);
+        assert_eq!(total.len(), 0);
     }
 
     #[test]
@@ -1513,7 +1514,7 @@ mod tests {
         let mut prev_chunk = [].as_slice();
         for i in 0..slice_1.width() {
             let (chunk, b, c) = slice_1.chunk_at_width(i);
-            assert_eq!(b, width_to_index(slice_2, c));
+            assert_eq!(b, first_width_to_index(slice_2, c));
             if chunk != prev_chunk {
                 assert_eq!(chunk, &t[..chunk.len()]);
                 t = &t[chunk.len()..];

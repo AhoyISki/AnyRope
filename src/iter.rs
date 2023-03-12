@@ -142,10 +142,6 @@ where
             chunk_start_index -= chunk.len();
             chunk
         };
-        println!(
-            "{:?}, {:?}, {:?}, {:?}, {:?}",
-            index_range, at_index, chunk_start_index, width_range, cur_chunk
-        );
 
         Iter {
             chunk_iter,
@@ -510,7 +506,7 @@ where
         let at_byte = if at_width == width_range.1 {
             index_range.1
         } else {
-            (node.get_chunk_at_width(at_width).1.len as usize).max(index_range.0)
+            (node.get_first_chunk_at_width(at_width).1.len as usize).max(index_range.0)
         };
 
         Chunks::new_with_range_at_index(node, at_byte, index_range, width_range)
@@ -1093,9 +1089,11 @@ mod tests {
     fn chunks_at_03() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice = rope.width_slice(34..34);
+        println!("{}", slice);
 
         let (mut chunks, _, _) = slice.chunks_at_index(0);
-        assert_eq!(chunks.next(), None);
+        assert_eq!(chunks.next(), Some([Sit].as_slice()));
+        assert!(chunks.next().is_some());
 
         let (mut chunks, _, _) = slice.chunks_at_index(0);
         assert_eq!(chunks.prev(), None);
@@ -1169,8 +1167,8 @@ mod tests {
 
         let slice_start = 34;
         let slice_end = 301;
-        let slice_start_byte = rope.width_to_index(slice_start);
-        let s_end_byte = rope.width_to_index(slice_end);
+        let slice_start_byte = rope.first_width_to_index(slice_start);
+        let s_end_byte = rope.last_width_to_index(slice_end);
 
         let slice_1 = rope.width_slice(slice_start..slice_end);
         let slice_2 = &lorem_ipsum()[slice_start_byte..s_end_byte];
@@ -1201,8 +1199,8 @@ mod tests {
 
         let slice_start = 34;
         let slice_end = 301;
-        let slice_start_byte = rope.width_to_index(slice_start);
-        let s_end_byte = rope.width_to_index(slice_end);
+        let slice_start_byte = rope.first_width_to_index(slice_start);
+        let s_end_byte = rope.last_width_to_index(slice_end);
 
         let slice_1 = rope.width_slice(slice_start..slice_end);
         let slice_2 = &lorem_ipsum()[slice_start_byte..s_end_byte];
@@ -1241,19 +1239,20 @@ mod tests {
 
         let slice_start = 34;
         let slice_end = 301;
-        let slice_start_byte = rope.width_to_index(slice_start);
-        let s_end_byte = rope.width_to_index(slice_end);
+        let slice_start_index = rope.first_width_to_index(slice_start);
+        let slice_end_index = rope.last_width_to_index(slice_end);
 
-        let s1 = rope.width_slice(slice_start..slice_end);
-        let s2 = &lorem_ipsum()[slice_start_byte..s_end_byte];
+        let slice_1 = rope.width_slice(slice_start..slice_end);
+        let slice_2 = &lorem_ipsum()[slice_start_index..slice_end_index];
+        println!("{:#?}, {:#?}", slice_1, slice_2);
 
         let mut index = 0;
-        for chunk in s1.chunks() {
-            assert_eq!(chunk, &s2[index..(index + chunk.len())]);
+        for chunk in slice_1.chunks() {
+            assert_eq!(chunk, &slice_2[index..(index + chunk.len())]);
             index += chunk.len();
         }
 
-        assert_eq!(index, s2.len());
+        assert_eq!(index, slice_2.len());
     }
 
     #[test]

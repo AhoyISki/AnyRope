@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::iter::{Chunks, Iter};
 use crate::rope_builder::RopeBuilder;
 use crate::slice::RopeSlice;
-use crate::slice_utils::{index_to_width, width_to_index};
+use crate::slice_utils::{index_to_width, first_width_to_index, last_width_to_index};
 use crate::tree::{Branch, Node, SliceInfo, MAX_BYTES, MIN_BYTES};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
@@ -241,7 +241,7 @@ where
             root_info,
             |index, cur_info, leaf_slice| {
                 // Find our byte index
-                let index = width_to_index(leaf_slice, index);
+                let index = last_width_to_index(leaf_slice, index);
 
                 // No node splitting
                 if (leaf_slice.len() + ins_slice.len()) <= MAX_BYTES {
@@ -253,8 +253,7 @@ where
 
                         info
                     };
-                    // Insert the text and return the new info
-                    leaf_slice.insert_slice_split(index, ins_slice);
+                    leaf_slice.insert_slice(index, ins_slice);
                     (new_info, None)
                 }
                 // We're splitting the node
@@ -409,8 +408,25 @@ where
     ///
     /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
     #[inline]
-    pub fn width_to_index(&self, width: usize) -> usize {
-        self.try_width_to_index(width).unwrap()
+    pub fn first_width_to_index(&self, width: usize) -> usize {
+        self.try_first_width_to_index(width).unwrap()
+    }
+
+    /// Returns the byte index of the given char.
+    ///
+    /// Notes:
+    ///
+    /// - `char_index` can be one-past-the-end, which will return
+    ///   one-past-the-end byte index.
+    ///
+    /// Runs in O(log N) time.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
+    #[inline]
+    pub fn last_width_to_index(&self, width: usize) -> usize {
+        self.try_last_width_to_index(width).unwrap()
     }
 
     //-----------------------------------------------------------------------
@@ -736,6 +752,18 @@ where
             self.root = child;
         }
     }
+
+    /// Non-panicking version of [`char_to_byte()`](Rope::char_to_byte).
+    #[inline]
+    pub fn try_last_width_to_index(&self, width: usize) -> Result<usize> {
+        // Bounds check
+        if width <= self.width() {
+            let (chunk, b, c) = self.chunk_at_width(width);
+            Ok(b + last_width_to_index(chunk, width - c))
+        } else {
+            Err(Error::WidthOutOfBounds(width, self.width()))
+        }
+    }
 }
 
 /// # Non-Panicking
@@ -849,21 +877,21 @@ where
     }
 
     /// Non-panicking version of [`split_off()`](Rope::split_off).
-    pub fn try_split_off(&mut self, char_index: usize) -> Result<Self> {
+    pub fn try_split_off(&mut self, width: usize) -> Result<Self> {
         // Bounds check
-        if char_index <= self.width() {
-            if char_index == 0 {
+        if width <= self.width() {
+            if width == 0 {
                 // Special case 1
                 let mut new_rope = Rope::new();
                 std::mem::swap(self, &mut new_rope);
                 Ok(new_rope)
-            } else if char_index == self.width() {
+            } else if width == self.width() {
                 // Special case 2
                 Ok(Rope::new())
             } else {
                 // Do the split
                 let mut new_rope = Rope {
-                    root: Arc::new(Arc::make_mut(&mut self.root).split(char_index)),
+                    root: Arc::new(Arc::make_mut(&mut self.root).last_split(width)),
                 };
 
                 // Fix up the edges
@@ -875,7 +903,7 @@ where
                 Ok(new_rope)
             }
         } else {
-            Err(Error::WidthOutOfBounds(char_index, self.width()))
+            Err(Error::WidthOutOfBounds(width, self.width()))
         }
     }
 
@@ -893,11 +921,11 @@ where
 
     /// Non-panicking version of [`char_to_byte()`](Rope::char_to_byte).
     #[inline]
-    pub fn try_width_to_index(&self, width: usize) -> Result<usize> {
+    pub fn try_first_width_to_index(&self, width: usize) -> Result<usize> {
         // Bounds check
         if width <= self.width() {
             let (chunk, b, c) = self.chunk_at_width(width);
-            Ok(b + width_to_index(chunk, width - c))
+            Ok(b + first_width_to_index(chunk, width - c))
         } else {
             Err(Error::WidthOutOfBounds(width, self.width()))
         }
@@ -922,8 +950,7 @@ where
         // Bounds check
         if width < self.width() {
             let (chunk, _, chunk_width) = self.chunk_at_width(width);
-            let byte_index = width_to_index(chunk, width - chunk_width);
-            Some(chunk[byte_index])
+            Some(chunk[first_width_to_index(chunk, width - chunk_width)])
         } else {
             None
         }
@@ -946,7 +973,7 @@ where
     pub fn get_chunk_at_width(&self, width: usize) -> Option<(&[M], usize, usize)> {
         // Bounds check
         if width <= self.width() {
-            let (chunk, info) = self.root.get_chunk_at_width(width);
+            let (chunk, info) = self.root.get_first_chunk_at_width(width);
             Some((chunk, info.len as usize, info.width as usize))
         } else {
             None
@@ -1126,11 +1153,12 @@ where
                     root: Arc::clone(node),
                 };
 
+                println!("{:#?}, {:?}", node, end_info);
                 // Chop off right end if needed
                 if end_info.width < node.slice_info().width {
                     {
                         let root = Arc::make_mut(&mut rope.root);
-                        root.split(end_info.width as usize);
+                        root.last_split(end_info.width as usize);
                         root.zip_fix_right();
                     }
                     rope.pull_up_singular_nodes();
@@ -1140,7 +1168,7 @@ where
                 if start_info.width > 0 {
                     {
                         let root = Arc::make_mut(&mut rope.root);
-                        *root = root.split(start_info.width as usize);
+                        *root = root.first_split(start_info.width as usize);
                         root.zip_fix_left();
                     }
                     rope.pull_up_singular_nodes();
@@ -1149,7 +1177,7 @@ where
                 // Return the rope
                 rope
             }
-            RopeSlice(RSEnum::Light { slice: text, .. }) => Rope::from_slice(text),
+            RopeSlice(RSEnum::Light { slice, .. }) => Rope::from_slice(slice),
         }
     }
 }
@@ -1514,7 +1542,7 @@ mod tests {
 
     #[test]
     fn insert_02() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope = Rope::from_slice(SHORT_LOREM);
         rope.insert_slice(0, &[Lorem, Ipsum, Dolor(3)]);
 
         assert_eq!(
@@ -1528,8 +1556,8 @@ mod tests {
 
     #[test]
     fn insert_03() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
-        rope.insert_slice(5, &[Lorem, Ipsum, Dolor(3)]);
+        let mut rope = Rope::from_slice(SHORT_LOREM);
+        rope.insert_slice(6, &[Lorem, Ipsum, Dolor(3)]);
 
         assert_eq!(
             rope,
@@ -1553,7 +1581,7 @@ mod tests {
         // you actually place it at the end of said item.
         assert_eq!(
             rope,
-            [Lorem, Dolor(5), Consectur("test"), Sit, Ipsum, Dolor(3)].as_slice()
+            [Lorem, Ipsum, Sit, Dolor(5), Consectur("test"), Dolor(3)].as_slice()
         );
 
         rope.assert_integrity();
@@ -1581,7 +1609,7 @@ mod tests {
         rope.insert_slice(20, &[Sit, Amet]);
         assert_eq!(
             rope,
-            [Dolor(4), Dolor(10), Dolor(20), Sit, Amet, Dolor(15)].as_slice()
+            [Dolor(15), Dolor(4), Dolor(10), Sit, Amet, Dolor(20)].as_slice()
         );
 
         rope.assert_integrity();
@@ -1593,10 +1621,11 @@ mod tests {
         let slice = &[Dolor(15), Sit, Amet, Dolor(24), Lorem, Ipsum, Dolor(7)];
         let mut rope = Rope::from_slice(slice);
 
-        rope.remove(5..11); // Removes Dolor(15).
-        rope.remove(24..31); // Removes [Lorem, Ipsum, Dolor(7).
-        rope.remove(19..25); // Removes Dolor(24).
-        assert_eq!(rope, [Sit, Amet].as_slice());
+        rope.remove(0..11); // Removes Dolor(15).
+        rope.remove(24..31); // Removes [Lorem, Ipsum, Dolor(7)].
+        println!("{:?}", rope);
+        rope.remove(0..0); // Removes Dolor(24).
+        assert_eq!(rope, [Dolor(24)].as_slice());
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1620,7 +1649,7 @@ mod tests {
     fn remove_03() {
         let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        // Make sure removing nothing actually does nothing.
+        // Make sure removing an empty range, on a non 0 width element, does nothing.
         rope.remove(45..45);
         assert_eq!(rope, lorem_ipsum());
 
@@ -1645,8 +1674,8 @@ mod tests {
         let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
 
         // Make sure removing a large range works.
-        rope.remove(3..100);
-        assert_eq!(rope, &lorem_ipsum()[2..51]);
+        rope.remove(3..135);
+        assert_eq!(rope, &lorem_ipsum()[..2]);
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1672,8 +1701,8 @@ mod tests {
         let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
 
         let split = rope.split_off(50);
-        assert_eq!(rope, &lorem_ipsum()[..23]);
-        assert_eq!(split, &lorem_ipsum()[23..]);
+        assert_eq!(rope, &lorem_ipsum()[..24]);
+        assert_eq!(split, &lorem_ipsum()[24..]);
 
         rope.assert_integrity();
         split.assert_integrity();
@@ -1701,7 +1730,7 @@ mod tests {
 
         let split = rope.split_off(134);
         assert_eq!(rope, &lorem_ipsum()[..69]);
-        assert_eq!(split, [Consectur("bye"), Adipiscing(false)].as_slice());
+        assert_eq!(split, [Adipiscing(false)].as_slice());
 
         rope.assert_integrity();
         split.assert_integrity();
@@ -1741,7 +1770,7 @@ mod tests {
     #[should_panic]
     fn split_off_06() {
         let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
-        rope.split_off(104); // One past the end of the rope
+        rope.split_off(136); // One past the end of the rope
     }
 
     #[test]
@@ -1808,17 +1837,17 @@ mod tests {
     fn width_to_index_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        assert_eq!(rope.width_to_index(0), 0);
-        assert_eq!(rope.width_to_index(1), 1);
-        assert_eq!(rope.width_to_index(2), 2);
+        assert_eq!(rope.first_width_to_index(0), 0);
+        assert_eq!(rope.first_width_to_index(1), 1);
+        assert_eq!(rope.first_width_to_index(2), 1);
 
-        assert_eq!(rope.width_to_index(91), 48);
-        assert_eq!(rope.width_to_index(92), 48);
-        assert_eq!(rope.width_to_index(93), 49);
-        assert_eq!(rope.width_to_index(94), 50);
+        assert_eq!(rope.first_width_to_index(91), 47);
+        assert_eq!(rope.first_width_to_index(92), 47);
+        assert_eq!(rope.first_width_to_index(93), 48);
+        assert_eq!(rope.first_width_to_index(94), 49);
 
-        assert_eq!(rope.width_to_index(102), 52);
-        assert_eq!(rope.width_to_index(103), 52);
+        assert_eq!(rope.first_width_to_index(102), 51);
+        assert_eq!(rope.first_width_to_index(103), 51);
     }
 
     #[test]
@@ -1861,7 +1890,7 @@ mod tests {
     #[should_panic]
     fn from_width_02() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        rope.from_width(103);
+        rope.from_width(136);
     }
 
     #[test]
@@ -1879,47 +1908,48 @@ mod tests {
 
         let mut last_chunk = [].as_slice();
         for i in 0..rope.len() {
-            let (chunk, b, c) = rope.chunk_at_index(i);
-            assert_eq!(c, index_to_width(&total, b));
+            let (chunk, index, width) = rope.chunk_at_index(i);
+            assert_eq!(width, index_to_width(&lorem_ipsum, index));
             if chunk != last_chunk {
                 assert_eq!(chunk, &total[..chunk.len()]);
                 total = &total[chunk.len()..];
                 last_chunk = chunk;
             }
 
-            let c1 = {
-                let i2 = index_to_width(&lorem_ipsum, i);
-                lorem_ipsum.iter().nth(i2).unwrap()
+            let lipsum_1 = lorem_ipsum.iter().nth(i).unwrap();
+            let lipsum_2 = {
+                let i2 = i - index;
+                chunk.iter().nth(i2).unwrap()
             };
-            let c2 = {
-                let i2 = i - b;
-                let i3 = index_to_width(chunk, i2);
-                chunk.iter().nth(i3).unwrap()
-            };
-            assert_eq!(c1, c2);
+            assert_eq!(lipsum_1, lipsum_2);
         }
         assert_eq!(total.len(), 0);
     }
 
     #[test]
-    fn chunk_at_width_asdf() {
+    fn chunk_at_width() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let lorem_ipsum = lorem_ipsum();
         let mut total = lorem_ipsum.as_slice();
 
         let mut last_chunk = [].as_slice();
         for i in 0..rope.width() {
-            let (chunk, index, width) = rope.chunk_at_width(i);
+            let (chunk, _, width) = rope.chunk_at_width(i);
             if chunk != last_chunk {
                 assert_eq!(chunk, &total[..chunk.len()]);
                 total = &total[chunk.len()..];
                 last_chunk = chunk;
             }
 
-            let index_1 = width_to_index(&lorem_ipsum, i);
-            let lipsum_1 = lorem_ipsum.iter().nth(index_1).unwrap();
-            let index_2 = width_to_index(&chunk, i - width);
-            let lipsum_2 = chunk.iter().nth(index_2).unwrap();
+            let lipsum_1 = {
+                let index_1 = first_width_to_index(&lorem_ipsum, i);
+                lorem_ipsum.iter().nth(index_1).unwrap()
+            };
+            let lipsum_2 = {
+                let index_2 = first_width_to_index(&chunk, i - width);
+                chunk.iter().nth(index_2).unwrap()
+            };
+
             assert_eq!(lipsum_1, lipsum_2);
         }
         assert_eq!(total.len(), 0);
@@ -1931,7 +1961,7 @@ mod tests {
 
         let slice = rope.width_slice(0..rope.width());
 
-        assert_eq!(lorem_ipsum(), slice);
+        assert_eq!(slice, lorem_ipsum());
     }
 
     #[test]
@@ -1940,7 +1970,7 @@ mod tests {
 
         let slice = rope.width_slice(5..21);
 
-        assert_eq!(&lorem_ipsum()[2..9], slice);
+        assert_eq!(slice, &lorem_ipsum()[2..10]);
     }
 
     #[test]
@@ -1949,7 +1979,7 @@ mod tests {
 
         let slice = rope.width_slice(31..135);
 
-        assert_eq!(&lorem_ipsum()[17..70], slice);
+        assert_eq!(slice, &lorem_ipsum()[16..70]);
     }
 
     #[test]
@@ -2046,7 +2076,7 @@ mod tests {
         let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
         let mut rope_2 = rope_1.clone();
         rope_2.remove(26..27);
-        rope_2.insert(26, Consectur("bye"));
+        rope_2.insert(26, Dolor(1000));
 
         assert_ne!(rope_1, rope_2);
     }
@@ -2071,7 +2101,7 @@ mod tests {
     fn eq_rope_06() {
         let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
         rope.remove(26..27);
-        rope.insert(26, Consectur("bye"));
+        rope.insert(26, Dolor(5000));
 
         assert_ne!(rope, lorem_ipsum());
         assert_ne!(lorem_ipsum(), rope);

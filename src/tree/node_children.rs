@@ -292,7 +292,6 @@ where
     #[allow(clippy::needless_range_loop)]
     pub fn combined_info(&self) -> SliceInfo {
         let info = self.info();
-        println!("{:#?}", info);
         let mut acc = SliceInfo::new();
 
         // Doing this with an explicit loop is notably faster than
@@ -349,7 +348,7 @@ where
     /// child that contains the given char.
     ///
     /// One-past-the end is valid, and will return the last child.
-    pub fn search_width(&self, width: usize) -> (usize, SliceInfo) {
+    pub fn search_first_width(&self, width: usize) -> (usize, SliceInfo) {
         // The search uses the `<=` comparison because any slice may end with 0 width
         // elements, and the use of the `<` comparison would leave those behind.
         let (index, accum) = self.search_by(|end, zero_width_end| {
@@ -358,7 +357,49 @@ where
 
         debug_assert!(
             width <= (accum.width + self.info()[index].0.width) as usize,
-            "Index out of bounds., {}, {}, {}", width, accum.width,  self.info()[index].0.width 
+            "Index out of bounds., {}, {}, {}",
+            width,
+            accum.width,
+            self.info()[index].0.width
+        );
+
+        (index, accum)
+    }
+
+    /// Returns the child index and left-side-accumulated text info of the
+    /// child that contains the given char.
+    ///
+    /// One-past-the end is valid, and will return the last child.
+    pub fn search_last_width(&self, width: usize) -> (usize, SliceInfo) {
+        // The search uses the `<=` comparison because any slice may end with 0 width
+        // elements, and the use of the `<` comparison would leave those behind.
+        let (index, accum) = self.search_by(|end, zero_width_end| width < end.width as usize);
+
+        debug_assert!(
+            width <= (accum.width + self.info()[index].0.width) as usize,
+            "Index out of bounds."
+        );
+
+        (index, accum)
+    }
+
+    /// Returns the child index and left-side-accumulated text info of the
+    /// child that contains the given char.
+    ///
+    /// One-past-the end is valid, and will return the last child.
+    pub fn search_width_last(&self, width: usize) -> (usize, SliceInfo) {
+        // The search uses the `<=` comparison because any slice may end with 0 width
+        // elements, and the use of the `<` comparison would leave those behind.
+        let (index, accum) = self.search_by(|end, zero_width_end| {
+            width < end.width as usize || (width == end.width as usize && zero_width_end)
+        });
+
+        debug_assert!(
+            width <= (accum.width + self.info()[index].0.width) as usize,
+            "Index out of bounds., {}, {}, {}",
+            width,
+            accum.width,
+            self.info()[index].0.width
         );
 
         (index, accum)
@@ -790,25 +831,25 @@ mod tests {
         children.update_child_info(1);
         children.update_child_info(2);
 
-        assert_eq!(children.search_width(0).0, 0);
-        assert_eq!(children.search_width(1).0, 0);
-        assert_eq!(children.search_width(0).1.width, 0);
-        assert_eq!(children.search_width(1).1.width, 0);
+        assert_eq!(children.search_first_width(0).0, 0);
+        assert_eq!(children.search_first_width(1).0, 0);
+        assert_eq!(children.search_first_width(0).1.width, 0);
+        assert_eq!(children.search_first_width(1).1.width, 0);
 
-        assert_eq!(children.search_width(2).0, 0);
-        assert_eq!(children.search_width(3).0, 1);
-        assert_eq!(children.search_width(2).1.width, 0);
-        assert_eq!(children.search_width(3).1.width, 6);
+        assert_eq!(children.search_first_width(2).0, 0);
+        assert_eq!(children.search_first_width(3).0, 1);
+        assert_eq!(children.search_first_width(2).1.width, 0);
+        assert_eq!(children.search_first_width(3).1.width, 6);
 
-        assert_eq!(children.search_width(4).0, 1);
-        assert_eq!(children.search_width(5).0, 2);
-        assert_eq!(children.search_width(4).1.width, 6);
-        assert_eq!(children.search_width(5).1.width, 12);
+        assert_eq!(children.search_first_width(4).0, 1);
+        assert_eq!(children.search_first_width(5).0, 2);
+        assert_eq!(children.search_first_width(4).1.width, 6);
+        assert_eq!(children.search_first_width(5).1.width, 12);
 
-        assert_eq!(children.search_width(6).0, 2);
-        assert_eq!(children.search_width(7).0, 2);
-        assert_eq!(children.search_width(6).1.width, 12);
-        assert_eq!(children.search_width(7).1.width, 12);
+        assert_eq!(children.search_first_width(6).0, 2);
+        assert_eq!(children.search_first_width(7).0, 2);
+        assert_eq!(children.search_first_width(6).1.width, 12);
+        assert_eq!(children.search_first_width(7).1.width, 12);
     }
 
     #[test]
@@ -835,7 +876,7 @@ mod tests {
         children.update_child_info(1);
         children.update_child_info(2);
 
-        children.search_width(7);
+        children.search_first_width(7);
     }
 
     #[test]
