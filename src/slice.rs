@@ -1265,37 +1265,11 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
-        rope::Measurable,
+        rope::Lipsum::{self, *},
         slice_utils::{first_width_to_index, index_to_width},
         Rope,
     };
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    enum Lipsum {
-        Lorem,
-        Ipsum,
-        Dolor(usize),
-        Sit,
-        Amet,
-        Consectur(&'static str),
-        Adipiscing(bool),
-    }
-
-    impl Measurable for Lipsum {
-        fn width(&self) -> usize {
-            match self {
-                Lipsum::Lorem => 1,
-                Lipsum::Ipsum => 2,
-                Lipsum::Dolor(width) => *width,
-                Lipsum::Sit => 0,
-                Lipsum::Amet => 0,
-                Lipsum::Consectur(text) => text.len(),
-                Lipsum::Adipiscing(boolean) => *boolean as usize,
-            }
-        }
-    }
-
-    use self::Lipsum::*;
     /// 70 elements, total width of 135.
     fn lorem_ipsum() -> Vec<Lipsum> {
         (0..70)

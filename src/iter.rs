@@ -1,10 +1,10 @@
-//! Iterators over a `Rope`'s data.
+//! Iterators over a [Rope<T>]'s data.
 //!
-//! The iterators in Ropey can be created from both `Rope`s and `RopeSlice`s.
-//! When created from a `RopeSlice`, they iterate over only the data that the
-//! `RopeSlice` refers to.  For the `Lines` and `Chunks` iterators, the data
-//! of the first and last yielded item will be correctly truncated to match
-//! the bounds of the `RopeSlice`.
+//! The iterators in Any-Ropey can be created from both [Rope<T>]s and [RopeSlice<T>]s.
+//! When created from a [RopeSlice<T>], they iterate over only the data that the
+//! [RopeSlice<T>] refers to.  For the [Chunks] iterator, the data of the first
+//! and last yielded item will be correctly truncated to match the bounds of
+//! the [RopeSlice<T>].
 //!
 //! # Reverse iteration
 //!
@@ -13,20 +13,20 @@
 //! `next()` and `prev()` methods on each iterator, or by using the `reverse()`
 //! or `reversed()` methods to change the iterator's direction.
 //!
-//! Conceptually, an iterator in Ropey is always positioned *between* the
+//! Conceptually, an iterator in Any-Ropey is always positioned *between* the
 //! elements it iterates over, and returns an element when it jumps over it
 //! via the `next()` or `prev()` methods.
 //!
-//! For example, given the text `"abc"` and a `Chars` iterator starting at the
-//! beginning of the text, you would get the following sequence of states and
+//! For example, given the slice `[Lorem, Ipsum, Dolor(5)]` and a an iterator starting
+//! at the beginning of the slice, you would get the following sequence of states and
 //! return values by repeatedly calling `next()` (the vertical bar represents
 //! the position of the iterator):
 //!
-//! 0. `|abc`
-//! 1. `a|bc` -> `Some('a')`
-//! 2. `ab|c` -> `Some('b')`
-//! 3. `abc|` -> `Some('c')`
-//! 4. `abc|` -> `None`
+//! 0. `[|Lorem, Ipsum, Dolor(5)]`
+//! 1. `[Lorem, |Ipsum, Dolor(5)] -> Some(Lorem)`
+//! 2. `[Lorem, Ipsum, |Dolor(5)] -> Some(Ipsum)`
+//! 3. `[Lorem, Ipsum, Dolor(5)|] -> Some(Dolor(5))`
+//! 4. `[Lorem, Ipsum, Dolor(5)|] -> None`
 //!
 //! The `prev()` method operates identically, except moving in the opposite
 //! direction.  And `reverse()` simply swaps the behavior of `prev()` and
@@ -35,34 +35,38 @@
 //! # Creating iterators at any position
 //!
 //! Iterators in Ropey can be created starting at any position in the text.
-//! This is accomplished with the various `bytes_at()`, `chars_at()`, etc.
-//! methods of `Rope` and `RopeSlice`.
+//! This is accomplished with the [Iter<T>] and [Chunks<T>] iterators, which can be created by
+//! various functions on a [Rope<T>].
 //!
 //! When an iterator is created this way, it is positioned such that a call to
 //! `next()` will return the specified element, and a call to `prev()` will
 //! return the element just before the specified one.
 //!
 //! Importantly, iterators created this way still have access to the entire
-//! contents of the `Rope`/`RopeSlice` they were created from&mdash;the
+//! contents of the [Rope<T>]/[RopeSlice<T>] they were created from and the
 //! contents before the specified position is not truncated.  For example, you
-//! can create a `Chars` iterator starting at the end of a `Rope`, and then
-//! use the `prev()` method to iterate backwards over all of that `Rope`'s
-//! chars.
+//! can create an [Iter<T>] iterator starting at the end of a [Rope<T>], and then
+//! use the [prev()][Iter::prev] method to iterate backwards over all of that [Rope<T>]'s
+//! elements.
 //!
 //! # A possible point of confusion
 //!
-//! The Rust standard library has an iterator trait `DoubleEndedIterator` with
-//! a method `rev()`.  While this method's name is very similar to Ropey's
-//! `reverse()` method, its behavior is very different.
+//! The Rust standard library has an iterator trait [DoubleEndedIterator] with
+//! a method [rev()]. While this method's name is //! very similar to Ropey's
+//! [reverse()][Iter::reverse] method, its behavior is very different.
 //!
-//! `DoubleEndedIterator` actually provides two iterators: one starting at each
+//! [DoubleEndedIterator] actually provides two iterators: one starting at each
 //! end of the collection, moving in opposite directions towards each other.
-//! Calling `rev()` switches between those two iterators, changing not only the
+//! Calling [rev()] switches between those two iterators, changing not only the
 //! direction of iteration but also its current position in the collection.
 //!
-//! The `reverse()` method on Ropey's iterators, on the other hand, reverses
-//! the direction of the iterator in-place, without changing its position in
-//! the text.
+//! The [reverse()][Iter::reverse] method on AnyRopey's iterators, on the other
+//! hand, reverses the direction of the iterator in-place, without changing its
+//! position in the text.
+//!
+//! [Rope<T>]: crate::rope::Rope
+//! [RopeSlice<T>]: crate::slice::RopeSlice
+//! [rev()]: DoubleEndedIterator::rev
 
 use std::sync::Arc;
 
@@ -72,13 +76,13 @@ use crate::tree::{Node, SliceInfo};
 
 //==========================================================
 
-/// An iterator over a `Rope`'s bytes.
+/// An iterator over a [Rope<T>][crate::rope::Rope]'s bytes.
 #[derive(Debug, Clone)]
 pub struct Iter<'a, M>
 where
     M: Measurable,
 {
-    chunk_iter: Chunks<'a, M>,
+    chunks: Chunks<'a, M>,
     cur_chunk: &'a [M],
     index: usize,
     last_call_was_prev_impl: bool,
@@ -99,7 +103,7 @@ where
             &[]
         };
         Iter {
-            chunk_iter: chunk_iter,
+            chunks: chunk_iter,
             cur_chunk,
             index: 0,
             last_call_was_prev_impl: false,
@@ -112,15 +116,10 @@ where
     #[inline(always)]
     pub(crate) fn new_with_range(
         node: &'a Arc<Node<M>>,
-        byte_index_range: (usize, usize),
-        width_index_range: (usize, usize),
+        index_range: (usize, usize),
+        width_range: (usize, usize),
     ) -> Self {
-        Iter::new_with_range_at(
-            node,
-            byte_index_range.0,
-            byte_index_range,
-            width_index_range,
-        )
+        Iter::new_with_range_at(node, index_range.0, index_range, width_range)
     }
 
     pub(crate) fn new_with_range_at(
@@ -129,22 +128,22 @@ where
         index_range: (usize, usize),
         width_range: (usize, usize),
     ) -> Self {
-        let (mut chunk_iter, mut chunk_start_index, _) =
+        let (mut chunks, mut chunk_start_index, _) =
             Chunks::new_with_range_at_index(node, at_index, index_range, width_range);
 
         let cur_chunk = if index_range.0 == index_range.1 {
             &[]
         } else if at_index < index_range.1 {
-            chunk_iter.next().unwrap()
+            chunks.next().unwrap()
         } else {
-            let chunk = chunk_iter.prev().unwrap();
-            chunk_iter.next();
+            let chunk = chunks.prev().unwrap();
+            chunks.next();
             chunk_start_index -= chunk.len();
             chunk
         };
 
         Iter {
-            chunk_iter,
+            chunks,
             cur_chunk,
             index: at_index - chunk_start_index,
             last_call_was_prev_impl: false,
@@ -160,15 +159,15 @@ where
     }
 
     pub(crate) fn from_slice_at(slice: &'a [M], index: usize) -> Self {
-        let mut chunk_iter = Chunks::from_slice(slice, false);
-        let cur_chunk = if let Some(chunk) = chunk_iter.next() {
+        let mut chunks = Chunks::from_slice(slice, false);
+        let cur_chunk = if let Some(chunk) = chunks.next() {
             chunk
         } else {
             &[]
         };
         Iter {
-            chunk_iter: chunk_iter,
-            cur_chunk: cur_chunk,
+            chunks,
+            cur_chunk,
             index,
             last_call_was_prev_impl: false,
             total_len: slice.len(),
@@ -179,24 +178,25 @@ where
 
     /// Reverses the direction of the iterator in-place.
     ///
-    /// In other words, swaps the behavior of [`prev()`](Bytes::prev())
-    /// and [`next()`](Bytes::next()).
+    /// In other words, swaps the behavior of [prev()][Self::prev]
+    /// and [next()][Self::next].
     #[inline]
     pub fn reverse(&mut self) {
         self.is_reversed = !self.is_reversed;
     }
 
-    /// Same as `reverse()`, but returns itself.
+    /// Same as [reverse()][Self::reverse], but returns itself.
     ///
     /// This is useful when chaining iterator methods:
     ///
     /// ```rust
+    /// # use ropey::rope::Lipsum::{self, *};
     /// # use ropey::Rope;
-    /// # let rope = Rope::from_str("Hello there\n world!\n");
-    /// // Enumerate the rope's bytes in reverse, starting from the end.
-    /// for (i, b) in rope.bytes_at(rope.len_bytes()).reversed().enumerate() {
-    ///     println!("{} {}", i, b);
-    /// #   assert_eq!(b, rope.byte(rope.len_bytes() - i - 1));
+    /// # let rope = Rope::from_slice(&[Lorem, Ipsum, Dolor(5)]);
+    /// // Enumerate the rope's elements in reverse, starting from the end.
+    /// for (index, element) in rope.iter_at(rope.len()).reversed().enumerate() {
+    ///     println!("{} {:?}", index, element);
+    /// #   assert_eq!(element, rope.from_index(rope.len() - index - 1));
     /// }
     #[inline]
     #[must_use]
@@ -221,13 +221,13 @@ where
     fn prev_impl(&mut self) -> Option<M> {
         // Put us back into a "prev" progression.
         if !self.last_call_was_prev_impl {
-            self.chunk_iter.prev();
+            self.chunks.prev();
             self.last_call_was_prev_impl = true;
         }
 
         // Progress the chunks iterator back if needed.
         if self.index == 0 {
-            if let Some(chunk) = self.chunk_iter.prev() {
+            if let Some(chunk) = self.chunks.prev() {
                 self.cur_chunk = chunk;
                 self.index = self.cur_chunk.len();
             } else {
@@ -235,7 +235,7 @@ where
             }
         }
 
-        // Progress the byte counts and return the previous byte.
+        // Progress the byte counts and return the previous element.
         self.index -= 1;
         self.remaining_len += 1;
         return Some(self.cur_chunk[self.index]);
@@ -245,13 +245,13 @@ where
     fn next_impl(&mut self) -> Option<M> {
         // Put us back into a "next" progression.
         if self.last_call_was_prev_impl {
-            self.chunk_iter.next();
+            self.chunks.next();
             self.last_call_was_prev_impl = false;
         }
 
         // Progress the chunks iterator forward if needed.
         if self.index >= self.cur_chunk.len() {
-            if let Some(chunk) = self.chunk_iter.next() {
+            if let Some(chunk) = self.chunks.next() {
                 self.cur_chunk = chunk;
                 self.index = 0;
             } else {
@@ -259,7 +259,7 @@ where
             }
         }
 
-        // Progress the byte counts and return the next byte.
+        // Progress the byte counts and return the next element.
         let index = self.cur_chunk[self.index];
         self.index += 1;
         self.remaining_len -= 1;
@@ -299,29 +299,22 @@ impl<'a, M> ExactSizeIterator for Iter<'a, M> where M: Measurable {}
 
 //==========================================================
 
-/// An iterator over a `Rope`'s contiguous `str` chunks.
+/// An iterator over a [Rope<T>]'s contiguous [T] chunks.
 ///
-/// Internally, each `Rope` stores text as a segemented collection of utf8
-/// strings. This iterator iterates over those segments, returning a
-/// `&str` slice for each one.  It is useful for situations such as:
+/// Internally, each [Rope<T>] stores [T]s as a segemented collection of [&[[T]]].
+/// It is useful for situations such as:
 ///
-/// - Writing a rope's utf8 text data to disk (but see
-///   [`write_to()`](crate::rope::Rope::write_to) for a convenience function that does this
-///   for casual use-cases).
-/// - Streaming a rope's text data somewhere.
-/// - Saving a rope to a non-utf8 encoding, doing the encoding conversion
-///   incrementally as you go.
-/// - Writing custom iterators over a rope's text data.
+/// - Streaming a [Rope<T>]'s elements data somewhere.
+/// - Writing custom iterators over a [Rope<T>]'s data.
 ///
-/// There are precisely two guarantees about the yielded chunks:
+/// There are no guarantees about the size of yielded chunks, and there are
+/// no guarantees about where the chunks are split.  For example, they may
+/// be zero-sized.
 ///
-/// - All non-empty chunks are yielded, and they are yielded in order.
-/// - CRLF pairs are never split across chunks.
-///
-/// There are no guarantees about the size of yielded chunks, and except for
-/// CRLF pairs and being valid `str` slices there are no guarantees about
-/// where the chunks are split.  For example, they may be zero-sized, they
-/// don't necessarily align with line breaks, etc.
+/// [T]: crate::rope::Measurable
+/// [Rope<T>]: crate::rope::Rope
+/// [RopeSlice<T>]: crate::slice::RopeSlice
+/// [rev()]: DoubleEndedIterator::rev
 #[derive(Debug, Clone)]
 pub struct Chunks<'a, M>
 where
@@ -337,9 +330,12 @@ where
     M: Measurable,
 {
     Full {
-        node_stack: Vec<(&'a Arc<Node<M>>, usize)>, // (node ref, index of current child)
-        total_bytes: usize, // Total bytes in the data range of the iterator.
-        byte_index: isize,  // The index of the current byte relative to the data range start.
+        /// (node ref, index of current child)
+        node_stack: Vec<(&'a Arc<Node<M>>, usize)>,
+        /// Total lenght of the data range of the iterator.
+        len: usize,
+        /// The index of the current element relative to the data range start.
+        index: isize,
     },
     Light {
         slice: &'a [M],
@@ -360,29 +356,23 @@ where
     #[inline(always)]
     pub(crate) fn new_with_range(
         node: &'a Arc<Node<M>>,
-        byte_index_range: (usize, usize),
-        char_index_range: (usize, usize),
+        index_range: (usize, usize),
+        width_range: (usize, usize),
     ) -> Self {
-        Chunks::new_with_range_at_index(
-            node,
-            byte_index_range.0,
-            byte_index_range,
-            char_index_range,
-        )
-        .0
+        Chunks::new_with_range_at_index(node, index_range.0, index_range, width_range).0
     }
 
-    /// The main workhorse function for creating new `Chunks` iterators.
+    /// The main workhorse function for creating new [Chunks] iterators.
     ///
-    /// Creates a new `Chunks` iterator from the given node, starting the
-    /// iterator at the chunk containing the `at_byte` byte index (i.e. the
-    /// `next()` method will yield the chunk containing that byte).  The range
-    /// of the iterator is bounded by `byte_index_range`.
+    /// Creates a new [Chunks] iterator from the given node, starting the
+    /// iterator at the chunk containing the element in `at_index`
+    /// (i.e. the [next()][Self::next] method will yield the chunk containing
+    /// that element). The range of the iterator is bounded by `index_range`.
     ///
-    /// Both `at_byte` and `byte_index_range` are relative to the beginning of
+    /// Both `at_index` and `index_range` are relative to the beginning of
     /// of the passed node.
     ///
-    /// Passing an `at_byte` equal to the max of `byte_index_range` creates an
+    /// Passing an `at_index` equal to the max of `index_range` creates an
     /// iterator at the end of forward iteration.
     ///
     /// Returns the iterator and the index/width of its start relative
@@ -449,17 +439,17 @@ where
         // Create and populate the node stack, and determine the char index
         // within the first chunk, and byte index of the start of that chunk.
         let mut info = SliceInfo::new();
-        let mut byte_index = at_index as isize;
+        let mut index = at_index as isize;
         let node_stack = {
             let mut node_stack: Vec<(&Arc<Node<M>>, usize)> = Vec::new();
             let mut node_ref = node;
             loop {
                 match **node_ref {
                     Node::Leaf(ref slice) => {
-                        if at_index < end_index || byte_index == 0 {
-                            byte_index = info.len as isize - start_index as isize;
+                        if at_index < end_index || index == 0 {
+                            index = info.len as isize - start_index as isize;
                         } else {
-                            byte_index =
+                            index =
                                 (info.len as isize + slice.len() as isize) - start_index as isize;
                             info = SliceInfo {
                                 len: index_range.1 as u64,
@@ -470,11 +460,11 @@ where
                         break;
                     }
                     Node::Branch(ref children) => {
-                        let (child_i, acc_info) = children.search_index(byte_index as usize);
+                        let (child_i, acc_info) = children.search_index(index as usize);
                         info += acc_info;
                         node_stack.push((node_ref, child_i));
                         node_ref = &children.nodes()[child_i];
-                        byte_index -= acc_info.len as isize;
+                        index -= acc_info.len as isize;
                     }
                 }
             }
@@ -485,9 +475,9 @@ where
         (
             Chunks {
                 iter: ChunksEnum::Full {
-                    node_stack: node_stack,
-                    total_bytes: end_index - start_index,
-                    byte_index: byte_index,
+                    node_stack,
+                    len: end_index - start_index,
+                    index,
                 },
                 is_reversed: false,
             },
@@ -503,44 +493,42 @@ where
         index_range: (usize, usize),
         width_range: (usize, usize),
     ) -> (Self, usize, usize) {
-        let at_byte = if at_width == width_range.1 {
+        let at_index = if at_width == width_range.1 {
             index_range.1
         } else {
             (node.get_first_chunk_at_width(at_width).1.len as usize).max(index_range.0)
         };
 
-        Chunks::new_with_range_at_index(node, at_byte, index_range, width_range)
+        Chunks::new_with_range_at_index(node, at_index, index_range, width_range)
     }
 
-    pub(crate) fn from_slice(slice: &'a [M], at_end: bool) -> Self {
+    pub(crate) fn from_slice(slice: &'a [M], is_end: bool) -> Self {
         Chunks {
-            iter: ChunksEnum::Light {
-                slice,
-                is_end: at_end,
-            },
+            iter: ChunksEnum::Light { slice, is_end },
             is_reversed: false,
         }
     }
 
     /// Reverses the direction of the iterator in-place.
     ///
-    /// In other words, swaps the behavior of [`prev()`](Chunks::prev())
-    /// and [`next()`](Chunks::next()).
+    /// In other words, swaps the behavior of [prev()][Self::prev]
+    /// and [next()][Self::next].
     #[inline]
     pub fn reverse(&mut self) {
         self.is_reversed = !self.is_reversed;
     }
 
-    /// Same as `reverse()`, but returns itself.
+    /// Same as [reverse()][Self::reverse], but returns itself.
     ///
     /// This is useful when chaining iterator methods:
     ///
     /// ```rust
+    /// # use ropey::rope::Lipsum::{self, *};
     /// # use ropey::Rope;
-    /// # let rope = Rope::from_str("Hello there\n world!\n");
+    /// # let rope = Rope::from_str(&[Lorem, Ipsum, Dolor(3), Sit, Amet]);
     /// // Enumerate the rope's chunks in reverse, starting from the end.
-    /// for (i, chunk) in rope.chunks_at_byte(rope.len_bytes()).0.reversed().enumerate() {
-    ///     println!("{} {}", i, chunk);
+    /// for (index, chunk) in rope.chunks_at_index(rope.len()).0.reversed().enumerate() {
+    ///     println!("{} {}", index, chunk);
     /// #   assert_eq!(chunk, rope.chunks().nth(rope.chunks().count() - i - 1).unwrap());
     /// }
     #[inline]
@@ -568,12 +556,12 @@ where
                 iter:
                     ChunksEnum::Full {
                         ref mut node_stack,
-                        total_bytes,
-                        ref mut byte_index,
+                        len,
+                        ref mut index,
                     },
                 ..
             } => {
-                if *byte_index <= 0 {
+                if *index <= 0 {
                     return None;
                 }
 
@@ -601,38 +589,32 @@ where
                 let (node, ref mut child_i) = node_stack.last_mut().unwrap();
                 *child_i -= 1;
 
-                // Get the text, sliced to the appropriate range.
+                // Get the slice in the appropriate range.
                 let text = node.children().nodes()[*child_i].leaf_slice();
-                *byte_index -= text.len() as isize;
-                let text_slice = {
-                    let start_byte = if *byte_index < 0 {
-                        (-*byte_index) as usize
-                    } else {
-                        0
-                    };
-                    let end_byte = text
-                        .len()
-                        .min((total_bytes as isize - *byte_index) as usize);
+                *index -= text.len() as isize;
+                let slice = {
+                    let start_byte = if *index < 0 { (-*index) as usize } else { 0 };
+                    let end_byte = text.len().min((len as isize - *index) as usize);
                     &text[start_byte..end_byte]
                 };
 
-                // Return the text.
-                return Some(text_slice);
+                // Return the slice.
+                return Some(slice);
             }
 
             Chunks {
                 iter:
                     ChunksEnum::Light {
-                        slice: text,
+                        slice,
                         ref mut is_end,
                     },
                 ..
             } => {
-                if !*is_end || text.is_empty() {
+                if !*is_end || slice.is_empty() {
                     return None;
                 } else {
                     *is_end = false;
-                    return Some(text);
+                    return Some(slice);
                 }
             }
         }
@@ -644,12 +626,12 @@ where
                 iter:
                     ChunksEnum::Full {
                         ref mut node_stack,
-                        total_bytes,
-                        ref mut byte_index,
+                        len,
+                        ref mut index,
                     },
                 ..
             } => {
-                if *byte_index >= total_bytes as isize {
+                if *index >= len as isize {
                     return None;
                 }
 
@@ -677,25 +659,19 @@ where
                 let (node, ref mut child_i) = node_stack.last_mut().unwrap();
 
                 // Get the text, sliced to the appropriate range.
-                let text = node.children().nodes()[*child_i].leaf_slice();
-                let text_slice = {
-                    let start_byte = if *byte_index < 0 {
-                        (-*byte_index) as usize
-                    } else {
-                        0
-                    };
-                    let end_byte = text
-                        .len()
-                        .min((total_bytes as isize - *byte_index) as usize);
-                    &text[start_byte..end_byte]
+                let leaf_slice = node.children().nodes()[*child_i].leaf_slice();
+                let slice = {
+                    let start_byte = if *index < 0 { (-*index) as usize } else { 0 };
+                    let end_byte = leaf_slice.len().min((len as isize - *index) as usize);
+                    &leaf_slice[start_byte..end_byte]
                 };
 
                 // Book keeping.
-                *byte_index += text.len() as isize;
+                *index += leaf_slice.len() as isize;
                 *child_i += 1;
 
                 // Return the text.
-                return Some(text_slice);
+                return Some(slice);
             }
 
             Chunks {
@@ -740,34 +716,11 @@ where
 mod tests {
     #![allow(clippy::while_let_on_iterator)]
     use super::*;
-    use crate::Rope;
+    use crate::{
+        rope::Lipsum::{self, *},
+        Rope,
+    };
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    enum Lipsum {
-        Lorem,
-        Ipsum,
-        Dolor(usize),
-        Sit,
-        Amet,
-        Consectur(&'static str),
-        Adipiscing(bool),
-    }
-
-    impl Measurable for Lipsum {
-        fn width(&self) -> usize {
-            match self {
-                Lipsum::Lorem => 1,
-                Lipsum::Ipsum => 2,
-                Lipsum::Dolor(width) => *width,
-                Lipsum::Sit => 0,
-                Lipsum::Amet => 0,
-                Lipsum::Consectur(text) => text.len(),
-                Lipsum::Adipiscing(boolean) => *boolean as usize,
-            }
-        }
-    }
-
-    use self::Lipsum::*;
     fn lorem_ipsum() -> Vec<Lipsum> {
         (0..1400)
             .into_iter()

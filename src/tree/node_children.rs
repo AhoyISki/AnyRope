@@ -373,33 +373,11 @@ where
     pub fn search_last_width(&self, width: usize) -> (usize, SliceInfo) {
         // The search uses the `<=` comparison because any slice may end with 0 width
         // elements, and the use of the `<` comparison would leave those behind.
-        let (index, accum) = self.search_by(|end, zero_width_end| width < end.width as usize);
+        let (index, accum) = self.search_by(|end, _| width < end.width as usize);
 
         debug_assert!(
             width <= (accum.width + self.info()[index].0.width) as usize,
             "Index out of bounds."
-        );
-
-        (index, accum)
-    }
-
-    /// Returns the child index and left-side-accumulated text info of the
-    /// child that contains the given char.
-    ///
-    /// One-past-the end is valid, and will return the last child.
-    pub fn search_width_last(&self, width: usize) -> (usize, SliceInfo) {
-        // The search uses the `<=` comparison because any slice may end with 0 width
-        // elements, and the use of the `<` comparison would leave those behind.
-        let (index, accum) = self.search_by(|end, zero_width_end| {
-            width < end.width as usize || (width == end.width as usize && zero_width_end)
-        });
-
-        debug_assert!(
-            width <= (accum.width + self.info()[index].0.width) as usize,
-            "Index out of bounds., {}, {}, {}",
-            width,
-            accum.width,
-            self.info()[index].0.width
         );
 
         (index, accum)
@@ -780,33 +758,8 @@ mod inner {
 mod tests {
     use super::*;
     use crate::tree::{Leaf, Node, SliceInfo};
+    use crate::rope::Lipsum::*;
     use std::sync::Arc;
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    enum Lipsum {
-        Lorem,
-        Ipsum,
-        Dolor(usize),
-        Sit,
-        Amet,
-        Consectur(&'static str),
-        Adipiscing(bool),
-    }
-    use self::Lipsum::*;
-
-    impl Measurable for Lipsum {
-        fn width(&self) -> usize {
-            match self {
-                Lorem => 1,
-                Ipsum => 2,
-                Dolor(width) => *width,
-                Sit => 0,
-                Amet => 0,
-                Consectur(text) => text.len(),
-                Adipiscing(boolean) => *boolean as usize,
-            }
-        }
-    }
 
     #[test]
     fn search_width_01() {
