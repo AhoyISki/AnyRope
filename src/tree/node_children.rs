@@ -445,7 +445,7 @@ where
     ///
     /// One-past-the end is valid, and corresponds to the last child.
     #[inline(always)]
-    pub fn search_index_range(
+    pub fn search_width_range(
         &self,
         start_index: usize,
         end_index: usize,
@@ -809,7 +809,7 @@ mod tests {
     }
 
     #[test]
-    fn search_index_01() {
+    fn search_width_01() {
         let mut children = Branch::new();
         children.push((
             SliceInfo::new(),
@@ -836,25 +836,25 @@ mod tests {
         assert_eq!(children.search_first_width(0).1.width, 0);
         assert_eq!(children.search_first_width(1).1.width, 0);
 
-        assert_eq!(children.search_first_width(2).0, 0);
-        assert_eq!(children.search_first_width(3).0, 1);
-        assert_eq!(children.search_first_width(2).1.width, 0);
-        assert_eq!(children.search_first_width(3).1.width, 6);
+        assert_eq!(children.search_first_width(6).0, 0);
+        assert_eq!(children.search_first_width(7).0, 1);
+        assert_eq!(children.search_first_width(6).1.width, 0);
+        assert_eq!(children.search_first_width(7).1.width, 7);
 
-        assert_eq!(children.search_first_width(4).0, 1);
-        assert_eq!(children.search_first_width(5).0, 2);
-        assert_eq!(children.search_first_width(4).1.width, 6);
-        assert_eq!(children.search_first_width(5).1.width, 12);
+        assert_eq!(children.search_first_width(7).0, 1);
+        assert_eq!(children.search_first_width(8).0, 2);
+        assert_eq!(children.search_first_width(7).1.width, 7);
+        assert_eq!(children.search_first_width(8).1.width, 7);
 
-        assert_eq!(children.search_first_width(6).0, 2);
-        assert_eq!(children.search_first_width(7).0, 2);
-        assert_eq!(children.search_first_width(6).1.width, 12);
-        assert_eq!(children.search_first_width(7).1.width, 12);
+        assert_eq!(children.search_first_width(16).0, 2);
+        assert_eq!(children.search_first_width(17).0, 2);
+        assert_eq!(children.search_first_width(16).1.width, 7);
+        assert_eq!(children.search_first_width(17).1.width, 7);
     }
 
     #[test]
     #[should_panic]
-    fn search_index_02() {
+    fn search_width_02() {
         let mut children = Branch::new();
         children.push((
             SliceInfo::new(),
@@ -876,11 +876,11 @@ mod tests {
         children.update_child_info(1);
         children.update_child_info(2);
 
-        children.search_first_width(7);
+        children.search_first_width(18);
     }
 
     #[test]
-    fn search_index_range_01() {
+    fn search_width_range_01() {
         let mut children = Branch::new();
         children.push((
             SliceInfo::new(),
@@ -902,62 +902,50 @@ mod tests {
         children.update_child_info(1);
         children.update_child_info(2);
 
-        let at_0_0 = children.search_index_range(0, 0);
-        let at_3_3 = children.search_index_range(3, 3);
-        let at_5_5 = children.search_index_range(5, 5);
-        let at_7_7 = children.search_index_range(7, 7);
+        let at_0_0 = children.search_width_range(0, 0);
+        let at_7_7 = children.search_width_range(7, 7);
+        let at_8_8 = children.search_width_range(8, 8);
+        let at_16_16 = children.search_width_range(16, 16);
 
         assert_eq!((at_0_0.0).0, 0);
         assert_eq!((at_0_0.1).0, 0);
         assert_eq!((at_0_0.0).1, 0);
         assert_eq!((at_0_0.1).1, 0);
 
-        assert_eq!((at_3_3.0).0, 1);
-        assert_eq!((at_3_3.1).0, 1);
-        assert_eq!((at_3_3.0).1, 3);
-        assert_eq!((at_3_3.1).1, 3);
-
-        assert_eq!((at_5_5.0).0, 2);
-        assert_eq!((at_5_5.1).0, 2);
-        assert_eq!((at_5_5.0).1, 5);
-        assert_eq!((at_5_5.1).1, 5);
-
         assert_eq!((at_7_7.0).0, 2);
         assert_eq!((at_7_7.1).0, 2);
-        assert_eq!((at_7_7.0).1, 5);
-        assert_eq!((at_7_7.1).1, 5);
+        assert_eq!((at_7_7.0).1, 7);
+        assert_eq!((at_7_7.1).1, 7);
 
-        let at_0_3 = children.search_index_range(0, 3);
-        let at_3_5 = children.search_index_range(3, 5);
-        let at_5_7 = children.search_index_range(5, 7);
+        assert_eq!((at_8_8.0).0, 2);
+        assert_eq!((at_8_8.1).0, 2);
+        assert_eq!((at_8_8.0).1, 7);
+        assert_eq!((at_8_8.1).1, 7);
+
+        assert_eq!((at_16_16.0).0, 2);
+        assert_eq!((at_16_16.1).0, 2);
+        assert_eq!((at_16_16.0).1, 7);
+        assert_eq!((at_16_16.1).1, 7);
+
+        let at_0_3 = children.search_width_range(0, 7);
+        let at_5_7 = children.search_width_range(7, 16);
 
         assert_eq!((at_0_3.0).0, 0);
         assert_eq!((at_0_3.1).0, 0);
         assert_eq!((at_0_3.0).1, 0);
         assert_eq!((at_0_3.1).1, 0);
 
-        assert_eq!((at_3_5.0).0, 1);
-        assert_eq!((at_3_5.1).0, 1);
-        assert_eq!((at_3_5.0).1, 3);
-        assert_eq!((at_3_5.1).1, 3);
-
         assert_eq!((at_5_7.0).0, 2);
         assert_eq!((at_5_7.1).0, 2);
-        assert_eq!((at_5_7.0).1, 5);
-        assert_eq!((at_5_7.1).1, 5);
+        assert_eq!((at_5_7.0).1, 7);
+        assert_eq!((at_5_7.1).1, 7);
 
-        let at_2_4 = children.search_index_range(2, 4);
-        let at_4_6 = children.search_index_range(4, 6);
+        let at_2_4 = children.search_width_range(6, 8);
 
         assert_eq!((at_2_4.0).0, 0);
-        assert_eq!((at_2_4.1).0, 1);
+        assert_eq!((at_2_4.1).0, 2);
         assert_eq!((at_2_4.0).1, 0);
-        assert_eq!((at_2_4.1).1, 3);
-
-        assert_eq!((at_4_6.0).0, 1);
-        assert_eq!((at_4_6.1).0, 2);
-        assert_eq!((at_4_6.0).1, 3);
-        assert_eq!((at_4_6.1).1, 5);
+        assert_eq!((at_2_4.1).1, 7);
     }
 
     #[test]
@@ -984,6 +972,6 @@ mod tests {
         children.update_child_info(1);
         children.update_child_info(2);
 
-        children.search_index_range(7, 8);
+        children.search_width_range(17, 18);
     }
 }

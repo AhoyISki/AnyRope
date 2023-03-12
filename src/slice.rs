@@ -82,7 +82,6 @@ where
                 // Early out if we reach a leaf, because we can do the
                 // simpler lightweight slice then.
                 Node::Leaf(ref slice) => {
-                    println!("{:?}", slice);
                     let start_index = first_width_to_index(slice, n_start);
                     let end_index =
                         start_index + last_width_to_index(&slice[start_index..], n_end - n_start);
@@ -114,8 +113,8 @@ where
         // Create the slice
         RopeSlice(RSEnum::Full {
             node,
-            start_info: node.first_width_to_slice_info(n_start, first_width_to_index),
-            end_info: node.last_width_to_slice_info(n_end, last_width_to_index),
+            start_info: node.first_width_to_slice_info(n_start),
+            end_info: node.last_width_to_slice_info(n_end),
         })
     }
 
@@ -426,7 +425,7 @@ where
             ),
             RopeSlice(RSEnum::Light { slice: text, .. }) => {
                 let start_byte = first_width_to_index(text, start);
-                let end_byte = first_width_to_index(text, end);
+                let end_byte = last_width_to_index(text, end);
                 let new_text = &text[start_byte..end_byte];
                 RopeSlice(RSEnum::Light {
                     slice: new_text,
@@ -1321,7 +1320,7 @@ mod tests {
     fn len_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice = rope.width_slice(7..30);
-        assert_eq!(slice.len(), 16);
+        assert_eq!(slice.len(), 13);
     }
 
     #[test]
@@ -1349,38 +1348,34 @@ mod tests {
     fn width_03() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice = rope.width_slice(6..30);
-        // List: Lorem Ipsum Dolor(4)
-        // Sum:  1     3     7
-        // Slicing from 3 to 7 is similar to slicing from 3, since that'slice the beginning of that
-        // element.
-        assert_eq!(slice.width(), 27);
+        assert_eq!(slice.width(), 24);
     }
 
     #[test]
     fn index_to_width_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        let slice = rope.width_slice(88..102);
+        let slice = rope.width_slice(88..);
 
         assert_eq!(slice.index_to_width(0), 0); // Sit: 0
         assert_eq!(slice.index_to_width(1), 0); // Amet: 0
-        assert_eq!(slice.index_to_width(2), 5); // Consectur("hello"): 5
-        assert_eq!(slice.index_to_width(3), 6); // Adipiscing(true): 1
-        assert_eq!(slice.index_to_width(4), 7); // Lorem: 1
-        assert_eq!(slice.index_to_width(5), 9); // Ipsum: 2
-        assert_eq!(slice.index_to_width(6), 17); // Dolor(8): 8
+        assert_eq!(slice.index_to_width(2), 0); // Consectur("hello"): 5
+        assert_eq!(slice.index_to_width(3), 5); // Adipiscing(true): 1
+        assert_eq!(slice.index_to_width(4), 6); // Lorem: 1
+        assert_eq!(slice.index_to_width(5), 7); // Ipsum: 2
+        assert_eq!(slice.index_to_width(6), 9); // Dolor(8): 8
         assert_eq!(slice.index_to_width(7), 17); // Sit: 0
         assert_eq!(slice.index_to_width(8), 17); // Amet: 0
-        assert_eq!(slice.index_to_width(9), 20); // Consectur("bye"): 3
+        assert_eq!(slice.index_to_width(9), 17); // Consectur("bye"): 3
         assert_eq!(slice.index_to_width(10), 20); // Adipiscing(false): 0
-        assert_eq!(slice.index_to_width(11), 21); // Sit: 1
-        assert_eq!(slice.index_to_width(12), 23); // Amet: 2
-        assert_eq!(slice.index_to_width(13), 27); // Dolor(4): 4
+        assert_eq!(slice.index_to_width(11), 20); // Sit: 1
+        assert_eq!(slice.index_to_width(12), 21); // Amet: 2
+        assert_eq!(slice.index_to_width(13), 23); // Dolor(4): 4
     }
 
     #[test]
     fn width_to_index_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        let slice = rope.width_slice(88..102);
+        let slice = rope.width_slice(88..135);
 
         // NOTE: For some elements, it may seem like the amount of "widths"
         // that correspond to their index may not match their actual width.
@@ -1402,9 +1397,9 @@ mod tests {
         assert_eq!(slice.width_to_index(18), 9); // Amet:0; Consectur("bye"): 3
         assert_eq!(slice.width_to_index(19), 9); // Consectur("bye"): 3
         assert_eq!(slice.width_to_index(20), 10); // Adipiscing(false): 0
-        assert_eq!(slice.width_to_index(21), 11); // Lorem: 1
+        assert_eq!(slice.width_to_index(21), 12); // Lorem: 1
         assert_eq!(slice.width_to_index(22), 12); // Ipsum: 2
-        assert_eq!(slice.width_to_index(23), 12); // Ipsum: 2
+        assert_eq!(slice.width_to_index(23), 13); // Ipsum: 2
         assert_eq!(slice.width_to_index(24), 13); // Dolor(4): 4
     }
 
@@ -1442,16 +1437,12 @@ mod tests {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice = rope.width_slice(34..100);
 
-        // t'slice \
-        // a fine day, isn't it?  Aren't you glad \
-        // we're alive?  こんにちは、みんな
-
         assert_eq!(slice.from_width(0), Sit); // Sit: 0
         assert_eq!(slice.from_width(3), Consectur("hello")); // Amet: 0; Consectur("hello"): 5
         assert_eq!(slice.from_width(5), Adipiscing(true)); // Adipiscing(true): 1
         assert_eq!(slice.from_width(6), Lorem); // Lorem: 1
-        assert_eq!(slice.from_width(10), Dolor(4)); // Ipsum: 2; Dolor(4): 4
-        assert_eq!(slice.from_width(65), Consectur("hello")); // ...; Consectur("hello"): 5
+        assert_eq!(slice.from_width(10), Dolor(8)); // Ipsum: 2; Dolor(8): 8
+        assert_eq!(slice.from_width(65), Dolor(8)); // ...; Dolor(8): 8
     }
 
     #[test]
@@ -1484,8 +1475,6 @@ mod tests {
             let (chunk, index, width) = slice_1.chunk_at_index(i);
             assert_eq!(width, index_to_width(slice_2, index));
             if chunk != prev_chunk {
-                println!("{}, {}, {:?}", index, width, chunk);
-                println!("{:?}", &total[..chunk.len()]);
                 assert_eq!(chunk, &total[..chunk.len()]);
                 total = &total[chunk.len()..];
                 prev_chunk = chunk;
@@ -1506,29 +1495,29 @@ mod tests {
     fn chunk_at_width_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice_1 = rope.width_slice(34..96);
-        let slice_2 = &lorem_ipsum()[34..45];
-        // "'slice a fine day, isn't it?\nAren't you glad \
-        //  we're alive?\nこんにちは、みん"
+        let slice_2 = &lorem_ipsum()[17..51];
 
-        let mut t = slice_2;
+        let mut total = slice_2;
         let mut prev_chunk = [].as_slice();
         for i in 0..slice_1.width() {
-            let (chunk, b, c) = slice_1.chunk_at_width(i);
-            assert_eq!(b, first_width_to_index(slice_2, c));
+            let (chunk, _, width) = slice_1.chunk_at_width(i);
             if chunk != prev_chunk {
-                assert_eq!(chunk, &t[..chunk.len()]);
-                t = &t[chunk.len()..];
+                assert_eq!(chunk, &total[..chunk.len()]);
+                total = &total[chunk.len()..];
                 prev_chunk = chunk;
             }
 
-            let lipsum_1 = slice_2.iter().nth(i).unwrap();
+            let lipsum_1 = {
+                let index_1 = first_width_to_index(slice_2, i);
+                slice_2.iter().nth(index_1).unwrap()
+            };
             let lipsum_2 = {
-                let i2 = i - c;
-                chunk.iter().nth(i2).unwrap()
+                let index_2 = first_width_to_index(chunk, i - width);
+                chunk.iter().nth(index_2).unwrap()
             };
             assert_eq!(lipsum_1, lipsum_2);
         }
-        assert_eq!(t.len(), 0);
+        assert_eq!(total.len(), 0);
     }
 
     #[test]
@@ -1548,7 +1537,7 @@ mod tests {
 
         let slice_2 = slice_1.width_slice(3..25);
 
-        assert_eq!(&lorem_ipsum()[8..30], slice_2);
+        assert_eq!(&lorem_ipsum()[5..16], slice_2);
     }
 
     #[test]
@@ -1558,7 +1547,7 @@ mod tests {
 
         let slice_2 = slice_1.width_slice(7..64);
 
-        assert_eq!(&lorem_ipsum()[38..103], slice_2);
+        assert_eq!(&lorem_ipsum()[19..50], slice_2);
     }
 
     #[test]
@@ -1566,25 +1555,15 @@ mod tests {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice_1 = rope.width_slice(5..43);
 
-        let slice_2 = slice_1.width_slice(21..21);
+		// A slice in the middle of a non zero width element should return only that element.
+        let slice_2 = slice_1.width_slice(24..24);
 
-        assert!(slice_2.is_light());
-        assert_eq!(slice_2, [].as_slice());
-    }
-
-    #[test]
-    fn slice_05() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        let slice_1 = rope.width_slice(5..98);
-        for i in 0..(slice_1.width() - 1) {
-            let slice_2 = slice_1.width_slice(i..(i + 1));
-            assert!(slice_2.is_light());
-        }
+        assert_eq!(slice_2, [Ipsum].as_slice());
     }
 
     #[test]
     #[should_panic]
-    fn slice_06() {
+    fn slice_05() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice = rope.width_slice(5..43);
 

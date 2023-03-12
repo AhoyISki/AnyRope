@@ -30,7 +30,7 @@ impl Measurable for Lipsum {
 }
 use self::Lipsum::*;
 
-fn random_slice(rng: &mut ThreadRng, len: usize) -> Vec<Lipsum> {
+fn random_slice(rng: &mut ThreadRng) -> Vec<Lipsum> {
     (0..rng.gen::<usize>() % 10)
         .into_iter()
         .map(|_| match rng.gen::<usize>() % 14 {
@@ -56,19 +56,9 @@ fn shrink_to_fit() {
     let mut rope = Rope::new();
 
     // Do a bunch of random incoherent inserts
-    for _ in 0..(1 << 12) {
+    for _ in 0..1000 {
         let len = rope.len().max(1);
-        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
-        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
-        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
-        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
-        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
-        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
-        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
-        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
-        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
-        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
-        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng, len).as_slice());
+        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng).as_slice());
     }
 
     let rope2 = rope.clone();

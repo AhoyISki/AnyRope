@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::rope::Measurable;
-use crate::slice_utils::{index_to_width, first_width_to_index, last_width_to_index};
+use crate::slice_utils::{first_width_to_index, index_to_width, last_width_to_index};
 use crate::tree::{
     Branch, Count, Leaf, SliceInfo, MAX_BYTES, MAX_CHILDREN, MIN_BYTES, MIN_CHILDREN,
 };
@@ -220,7 +220,7 @@ where
 
                 // Get child info for the two char indices
                 let ((l_child_i, l_char_acc), (r_child_i, r_char_acc)) =
-                    children.search_index_range(start_width, end_width);
+                    children.search_width_range(start_width, end_width);
 
                 // Both indices point into the same child
                 if l_child_i == r_child_i {
@@ -523,12 +523,10 @@ where
 
     /// Returns the [SliceInfo] at the given `width`, given an index finding function.
     #[inline(always)]
-    pub fn first_width_to_slice_info<F>(&self, width: usize, width_fn: F) -> SliceInfo
-    where
-        F: Fn(&[M], usize) -> usize,
-    {
+    pub fn first_width_to_slice_info(&self, width: usize) -> SliceInfo {
         let (chunk, info) = self.get_first_chunk_at_width(width);
-        let bi = width_fn(chunk, width - info.width as usize);
+        let bi = first_width_to_index(chunk, width - info.width as usize);
+        println!("chunk: {:?}, first: {}, {}, {}", chunk, width, bi, info.width);
         SliceInfo {
             len: info.len + bi as Count,
             width: width as Count,
@@ -537,12 +535,10 @@ where
 
     /// Returns the [SliceInfo] at the given `width`, given an index finding function.
     #[inline(always)]
-    pub fn last_width_to_slice_info<F>(&self, width: usize, width_fn: F) -> SliceInfo
-    where
-        F: Fn(&[M], usize) -> usize,
-    {
+    pub fn last_width_to_slice_info(&self, width: usize) -> SliceInfo {
         let (chunk, info) = self.get_last_chunk_at_width(width);
-        let bi = width_fn(chunk, width - info.width as usize);
+        let bi = last_width_to_index(chunk, width - info.width as usize);
+        println!("chunk: {:?}, last: {}, {}, {}", chunk, width, bi, info.width);
         SliceInfo {
             len: info.len + bi as Count,
             width: width as Count,

@@ -181,7 +181,7 @@ where
             }
 
             if node_stack.last().unwrap().is_leaf() {
-                builder.append(node_stack.last().unwrap().leaf_slice());
+                builder.append(node_stack.pop().unwrap().leaf_slice());
             } else if node_stack.last().unwrap().child_count() == 0 {
                 node_stack.pop();
             } else {
@@ -1153,7 +1153,6 @@ where
                     root: Arc::clone(node),
                 };
 
-                println!("{:#?}, {:?}", node, end_info);
                 // Chop off right end if needed
                 if end_info.width < node.slice_info().width {
                     {
@@ -1623,7 +1622,6 @@ mod tests {
 
         rope.remove(0..11); // Removes Dolor(15).
         rope.remove(24..31); // Removes [Lorem, Ipsum, Dolor(7)].
-        println!("{:?}", rope);
         rope.remove(0..0); // Removes Dolor(24).
         assert_eq!(rope, [Dolor(24)].as_slice());
 
