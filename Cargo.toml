@@ -3,13 +3,13 @@ name = "any-rope"
 version = "1.0.0"
 authors = ["Mateus Yoshiaki <ahoyiski@gmail.com>"]
 description = "A fast and robust arbitrary rope for Rust. Based on Ropey."
-documentation = "https://docs.rs/any-ropey"
-repository = "https://github.com/AhoyISki/any-ropey"
+documentation = "https://docs.rs/any-rope"
+repository = "https://github.com/AhoyISki/AnyRope"
 readme = "README.md"
 license = "MIT"
 keywords = ["rope", "data", "edit", "buffer"]
 categories = ["data-structures"]
-exclude = ["/design/*", "/benches/*.txt", "/fuzz/**", "/.github/*"]
+exclude = ["/.github/*"]
 edition = "2021"
 
 [dependencies]

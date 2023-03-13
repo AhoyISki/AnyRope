@@ -1,149 +1,119 @@
-# Ropey
+# AnyRope
 
 [![CI Build Status][github-ci-img]][github-ci]
 [![Latest Release][crates-io-badge]][crates-io-url]
 [![Documentation][docs-rs-img]][docs-rs-url]
 
-Ropey is a utf8 text rope for Rust, designed to be the backing text-buffer for
-applications such as text editors.  Ropey is fast, robust, and can handle huge
-texts and memory-incoherent edits with ease.
+AnyRope is an arbitrary data type rope for Rust, designed for similar operations
+that a rope would do, but targeted at data types that are not text.
 
 
 ## Example Usage
 
+An example of where this would be useful is in the tagging of text in a text editor,
+for example, one may assossiate a rope of text with a rope of tags.
+
 ```rust
-// Load a text file.
-let mut text = ropey::Rope::from_reader(
-    File::open("my_great_book.txt")?
-)?;
+// The tags that will be assossiated with a piece of text, that could be a rope.
+struct Tag {
+	PrintRed,
+	Underline,
+	Normal,
+	Skip(usize)
+}
 
-// Print the 516th line (zero-indexed).
-println!("{}", text.line(515));
+use Tag::*;
+impl any_rope::Measurable for Tag {
+	fn width(&self) -> usize {
+		match self {
+			// The zero here represents the fact that multiple tags may be placed
+			// in the same character.
+			PrintRed | Underline | Normal => 0,
+			// Skip here is an amount of characters with no tags in them.
+			Skip(amount) => *amount
+		}
+	}
+}
 
-// Get the start/end char indices of the line.
-let start_idx = text.line_to_char(515);
-let end_idx = text.line_to_char(516);
+// An `&str` that will be colored.
+let my_str = "This word will be red!";
 
-// Remove the line...
-text.remove(start_idx..end_idx);
+// Here's what this means:
+// - Skip 5 characters;
+// - Change the color to red;
+// - Skip 4 characters;
+// - Change the rendering back to normal.
+let mut tags = any_rope::Rope::from_slice(&[Skip(5), PrintRed, Skip(4), Normal]);
+// Do note that Tag::Skip only represents characters because we are also iterating
+// over a `Chars` iterator, and have chosen to do so.
 
-// ...and replace it with something better.
-text.insert(start_idx, "The flowers are... so... dunno.\n");
+// An empty range will remove all 0 width elements in that specific width.
+// In this case, that would be `Tag::PrintRed`
+tags.remove(5..5);
+// In place of that `Tag::PrintRed`, we will insert `Tag::Underline`.
+tags.insert(5, Underline);
 
-// Print the changes, along with the previous few lines for context.
-let start_idx = text.line_to_char(511);
-let end_idx = text.line_to_char(516);
-println!("{}", text.slice(start_idx..end_idx));
+// The AnyRope iterator not only returns the element in question, but also the width
+// where it starts.
+let mut tags_iter = my_tagger.iter().peekable();
 
-// Write the file back out to disk.
-text.write_to(
-    BufWriter::new(File::create("my_great_book.txt")?)
-)?;
+for (cur_index, ch) in my_str.chars().enumerate() {
+	// The while let loop here is a useful way to activate all tags within the same
+	// character. For example, we could have a sequence of [Tag::UnderLine, Tag::PrintRed]
+	// in the `Rope`, both of which have a width of 0, allowing one to execute multiple
+	// `Tag`s in a single character.
+	while let Some((index, tag)) = tags_iter.peek() {
+		if *index == cur_index {
+			activate_tag(tag);
+			tags_iter.next();
+		} else {
+			break;
+		}
+	}
+	print!("{}", ch);
+}
 ```
 
-## When Should I Use Ropey?
+## When Should I Use AnyRope?
 
-Ropey is designed and built to be the backing text buffer for applications
-such as text editors, and its design trade-offs reflect that.  Ropey is good
-at:
-
-- Handling frequent edits to medium-to-large texts.  Even on texts that are
-  multiple gigabytes large, edits are measured in single-digit microseconds.
-- Handling Unicode correctly.  It is impossible to create invalid utf8 through
-  Ropey, and all Unicode line endings are correctly tracked including CRLF.
-- Having flat, predictable performance characteristics.  Ropey will never be
-  the source of hiccups or stutters in your software.
-
-On the other hand, Ropey is _not_ good at:
-
-- Handling texts smaller than a couple of kilobytes or so.  That is to say,
-  Ropey will handle them fine, but Ropey allocates space in kilobyte chunks,
-  which introduces unnecessary bloat if your texts are almost always small.
-- Handling texts that are larger than available memory.  Ropey is an in-memory
-  data structure.
-- Getting the best performance for every possible use-case.  Ropey puts work
-  into tracking both line endings and unicode scalar values, which is
-  performance overhead you may not need depending on your use-case.
-
-Keep this in mind when selecting Ropey for your project.  Ropey is very good
-at what it does, but like all software it is designed with certain
-applications in mind.
-
+So far, I haven't found a use for AnyRope, other than text editors, but I'm not
+discounting the possibility that it may be useful somewhere else.
 
 ## Features
 
-### Strong Unicode support
-Ropey's atomic unit of text is
-[Unicode scalar values](https://www.unicode.org/glossary/#unicode_scalar_value)
-(or [`char`](https://doc.rust-lang.org/std/primitive.char.html)s in Rust)
-encoded as utf8.  All of Ropey's editing and slicing operations are done
-in terms of char indices, which prevents accidental creation of invalid
-utf8 data.
+### Concept of widths
 
-Ropey also supports converting between scalar value indices and utf16 code unit
-indices, for interoperation with external APIs that may still use utf16.
-
-### Line-aware
-
-Ropey knows about line breaks, allowing you to index into and iterate over
-lines of text.
-
-The line breaks Ropey recognizes are also configurable at build time via
-feature flags.  See Ropey's documentation for details.
+The width of the element that implements Measurable can be whatever the end user wants
+it to be, allowing for great flexibility in how AnyRope could be useful.
 
 ### Rope slices
 
-Ropey has rope slices that allow you to work with just parts of a rope, using
+AnyRope has rope slices that allow you to work with just parts of a rope, using
 all the read-only operations of a full rope including iterators and making
 sub-slices.
 
 ### Flexible APIs with low-level access
 
-Although Ropey is intentionally limited in scope, it also provides APIs for
-efficiently accessing and working with its internal text chunk
+Although AnyRope is intentionally limited in scope, it also provides APIs for
+efficiently accessing and working with its internal slice chunk
 representation, allowing additional functionality to be efficiently
 implemented by client code with minimal overhead.
 
-### Efficient
-
-Ropey is fast and minimizes memory usage:
-
-- On a recent mobile i7 Intel CPU, Ropey performed over 1.8 million small
-  incoherent insertions per second while building up a text roughly 100 MB
-  large.  Coherent insertions (i.e. all near the same place in the text) are
-  even faster, doing the same task at over 3.3 million insertions per
-  second.
-- Freshly loading a file from disk only incurs about 10% memory overhead.  For
-  example, a 100 MB text file will occupy about 110 MB of memory when loaded
-  by Ropey.
-- Cloning ropes is _extremely_ cheap.  Rope clones share data, so an initial
-  clone only takes 8 bytes of memory.  After that, memory usage will grow
-  incrementally as the clones diverge due to edits.
-
 ### Thread safe
 
-Ropey ensures that even though clones share memory, everything is thread-safe.
+AnyRope ensures that even though clones share memory, everything is thread-safe.
 Clones can be sent to other threads for both reading and writing.
-
 
 ## Unsafe code
 
-Ropey uses unsafe code to help achieve some of its space and performance
-characteristics.  Although effort has been put into keeping the unsafe code
-compartmentalized and making it correct, please be cautious about using Ropey
+AnyRope uses unsafe code to help achieve some of its space and performance
+characteristics. Although effort has been put into keeping the unsafe code
+compartmentalized and making it correct, please be cautious about using AnyRope
 in software that may face adversarial conditions.
-
-Auditing, fuzzing, etc. of the unsafe code in Ropey is extremely welcome.
-If you find any unsoundness, _please_ file an issue!  Also welcome are
-recommendations for how to remove any of the unsafe code without introducing
-significant space or performance regressions, or how to compartmentalize the
-unsafe code even better.
-
 
 ## License
 
-Ropey is licensed under the MIT license (LICENSE.md or http://opensource.org/licenses/MIT)
-
+AnyRope is licensed under the MIT license (LICENSE.md or http://opensource.org/licenses/MIT)
 
 ## Contributing
 
@@ -151,14 +121,13 @@ Contributions are absolutely welcome!  However, please open an issue or email
 me to discuss larger changes, to avoid doing a lot of work that may get
 rejected.
 
-An overview of Ropey's design can be found [here](https://github.com/cessen/ropey/blob/master/design/design.md).
-
 Unless you explicitly state otherwise, any contribution intentionally
-submitted for inclusion in Ropey by you will be licensed as above, without any additional terms or conditions.
+submitted for inclusion in AnyRope by you will be licensed as above,
+without any additional terms or conditions.
 
-[crates-io-badge]: https://img.shields.io/crates/v/ropey.svg
-[crates-io-url]: https://crates.io/crates/ropey
-[github-ci-img]: https://github.com/cessen/ropey/workflows/ci/badge.svg
-[github-ci]: https://github.com/cessen/ropey/actions?query=workflow%3Aci
-[docs-rs-img]: https://docs.rs/ropey/badge.svg
-[docs-rs-url]: https://docs.rs/ropey
+[crates-io-badge]: https://img.shields.io/crates/v/any-rope.svg
+[crates-io-url]:   https://crates.io/crates/any-rope
+[github-ci-img]:   https://github.com/AhoyISki/AnyRope/actions/workflows/ci.yml/badge.svg
+[github-ci]:       https://github.com/AhoyISki/AnyRope/actions/workflows/ci.yml
+[docs-rs-img]:     https://docs.rs/any-rope/badge.svg
+[docs-rs-url]:     https://docs.rs/any-rope
