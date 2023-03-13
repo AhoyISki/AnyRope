@@ -833,22 +833,22 @@ where
 
     /// Non-panicking version of [`bytes_at()`](RopeSlice::bytes_at).
     #[inline]
-    pub fn get_iter_at(&self, index: usize) -> Option<Iter<'a, M>> {
+    pub fn get_iter_at(&self, width: usize) -> Option<Iter<'a, M>> {
         // Bounds check
-        if index <= self.len() {
+        if width <= self.width() {
             match *self {
                 RopeSlice(RSEnum::Full {
                     node,
                     start_info,
                     end_info,
-                }) => Some(Iter::new_with_range_at(
+                }) => Some(Iter::new_with_range_at_width(
                     node,
-                    start_info.len as usize + index,
+                    start_info.width as usize + width,
                     (start_info.len as usize, end_info.len as usize),
                     (start_info.width as usize, end_info.width as usize),
                 )),
                 RopeSlice(RSEnum::Light { slice: text, .. }) => {
-                    Some(Iter::from_slice_at(text, index))
+                    Some(Iter::from_slice_at(text, width))
                 }
             }
         } else {
@@ -1529,7 +1529,7 @@ mod tests {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice_1 = rope.width_slice(5..43);
 
-		// A slice in the middle of a non zero width element should return only that element.
+        // A slice in the middle of a non zero width element should return only that element.
         let slice_2 = slice_1.width_slice(24..24);
 
         assert_eq!(slice_2, [Ipsum].as_slice());

@@ -1,8 +1,8 @@
+extern crate any_ropey;
 extern crate rand;
-extern crate ropey;
 
+use any_ropey::{Measurable, Rope};
 use rand::{rngs::ThreadRng, Rng};
-use ropey::{Measurable, Rope};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Lipsum {

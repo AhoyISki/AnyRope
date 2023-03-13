@@ -9,12 +9,12 @@
 
 #![allow(clippy::redundant_field_names)]
 
-extern crate ropey;
+extern crate any_ropey;
 
 use std::fs::File;
 use std::io;
 
-use ropey::{iter::Iter, Measurable, Rope, RopeSlice};
+use any_ropey::{iter::Iter, Measurable, Rope, RopeSlice};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Lipsum {
@@ -154,7 +154,7 @@ struct SearchIter<'a, M>
 where
     M: Measurable,
 {
-    char_iter: Iter<'a, M>,
+    iter: Iter<'a, M>,
     search_pattern: &'a [M],
     search_pattern_char_len: usize,
     cur_index: usize,                   // The current char index of the search head.
@@ -171,7 +171,7 @@ where
             "Can't search using an empty search pattern."
         );
         SearchIter {
-            char_iter: slice.iter(),
+            iter: slice.iter(),
             search_pattern: search_pattern,
             search_pattern_char_len: search_pattern.iter().count(),
             cur_index: 0,
@@ -189,7 +189,7 @@ where
     // Return the start/end char indices of the next match.
     fn next(&mut self) -> Option<(usize, usize)> {
         #[allow(clippy::while_let_on_iterator)]
-        while let Some(next_char) = self.char_iter.next() {
+        while let Some((_, next_element)) = self.iter.next() {
             self.cur_index += 1;
 
             // Push new potential match, for a possible match starting at the
@@ -203,7 +203,7 @@ where
             let mut i = 0;
             while i < self.possible_matches.len() {
                 let pattern_char = self.possible_matches[i].next().unwrap();
-                if next_char == *pattern_char {
+                if next_element == *pattern_char {
                     if let None = self.possible_matches[i].clone().next() {
                         // We have a match!  Reset possible matches and
                         // return the successful match's char indices.

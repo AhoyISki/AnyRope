@@ -357,10 +357,7 @@ where
 
         debug_assert!(
             width <= (accum.width + self.info()[index].0.width) as usize,
-            "Index out of bounds., {}, {}, {}",
-            width,
-            accum.width,
-            self.info()[index].0.width
+            "Index out of bounds."
         );
 
         (index, accum)

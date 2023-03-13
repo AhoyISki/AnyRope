@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::iter::{Chunks, Iter};
 use crate::rope_builder::RopeBuilder;
 use crate::slice::RopeSlice;
-use crate::slice_utils::{index_to_width, first_width_to_index, last_width_to_index};
+use crate::slice_utils::{first_width_to_index, index_to_width, last_width_to_index};
 use crate::tree::{Branch, Node, SliceInfo, MAX_BYTES, MIN_BYTES};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
@@ -1083,12 +1083,11 @@ where
     pub fn get_iter_at_index(&self, index: usize) -> Option<Iter<M>> {
         // Bounds check
         if index <= self.len() {
-            let info = self.root.slice_info();
-            Some(Iter::new_with_range_at(
+            Some(Iter::new_with_range_at_width(
                 &self.root,
                 index,
-                (0, info.len as usize),
-                (0, info.width as usize),
+                (0, self.len()),
+                (0, self.width()),
             ))
         } else {
             None
@@ -1459,8 +1458,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::Lipsum::*;
+    use super::*;
 
     /// 70 elements, total width of 135.
     fn lorem_ipsum() -> Vec<Lipsum> {

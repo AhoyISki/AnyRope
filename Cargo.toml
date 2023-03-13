@@ -1,14 +1,14 @@
 [package]
-name = "ropey"
+name = "any-ropey"
 version = "1.6.0"
-authors = ["Nathan Vegdahl <cessen@cessen.com>"]
-description = "A fast and robust text rope for Rust"
-documentation = "https://docs.rs/ropey"
-repository = "https://github.com/cessen/ropey"
+authors = ["Nathan Vegdahl <cessen@cessen.com>", "Mateus Yoshiaki <ahoyiski@gmail.com>"]
+description = "A fast and robust arbitrary rope for Rust. Based on Ropey."
+documentation = "https://docs.rs/any-ropey"
+repository = "https://github.com/AhoyISki/any-ropey"
 readme = "README.md"
 license = "MIT"
-keywords = ["rope", "text", "edit", "buffer"]
-categories = ["text-processing", "data-structures"]
+keywords = ["rope", "data", "edit", "buffer"]
+categories = ["data-structures"]
 exclude = ["/design/*", "/benches/*.txt", "/fuzz/**", "/.github/*"]
 
 [features]

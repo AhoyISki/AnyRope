@@ -8,58 +8,61 @@
 //!
 //! The library is made up of four main components:
 //!
-//! - [`Rope`]: the main rope type.
-//! - [`RopeSlice`]: an immutable view into part of a
-//!   `Rope`.
-//! - [`iter`]: iterators over `Rope`/`RopeSlice` data.
-//! - [`RopeBuilder`]: an efficient incremental
-//!   `Rope` builder.
+//! - [Rope]: the main rope type.
+//! - [RopeSlice]: an immutable view into part of a [Rope].
+//! - [iter]: iterators over [Rope]/[RopeSlice] data.
+//! - [RopeBuilder]: an efficient incremental [Rope] builder.
 //!
 //!
 //! # A Basic Example
 //!
-//! Let's say we want to open up a text file, replace the 516th line (the
-//! writing was terrible!), and save it back to disk.  It's contrived, but will
-//! give a good sampling of the APIs and how they work together.
+//! Let's say we want create a tagging system that will be applied to text,
+//! in which the tags either tell you to print normally, print in red, or skip:
 //!
 //! ```no_run
 //! # use std::io::Result;
 //! use std::fs::File;
 //! use std::io::{BufReader, BufWriter};
-//! use ropey::Rope;
+//! use any-ropey::{Rope, Measurable};
+//!
+//! // A simple tag structure that our program can understand.
+//! enum Tagger {
+//! 	InRed,
+//! 	Normal,
+//! 	// The `usize` in here represents an amount of characters that won't change
+//! 	// the color of the text.
+//! 	Skip(usize)
+//! }
+//!
+//! impl Measurable for Tagger {
+//! 	fn width(&self) -> usize {
+//! 		match self {
+//! 			// The coloring tags are only meant to color, not to "move forward".
+//! 			Tagger::InRed | Tagger::Normal => 0,
+//! 			// The Skip tag represents an amount of characters in which no
+//! 			// tags are applied.
+//! 			Tagger::Skip(amount) => amount
+//! 		}
+//! 	}
+//! }
+//! use self::Tagger::*;
 //!
 //! # fn do_stuff() -> Result<()> {
-//! // Load a text file.
-//! let mut text = Rope::from_reader(
-//!     BufReader::new(File::open("my_great_book.txt")?)
-//! )?;
+//! // An `&str` that will be colored.
+//! let my_str = "This word will be red!";
 //!
-//! // Print the 516th line (zero-indexed) to see the terrible
-//! // writing.
-//! println!("{}", text.line(515));
+//! // Here's what this means:
+//! // - Skip 5 characters;
+//! // - Change the color to red;
+//! // - Skip 4 characters;
+//! // - Change the color back to normal
+//! let my_tagger = Rope::from_slice(&[Skip(5), InRed, Skip(4), Normal]);
 //!
-//! // Get the start/end char indices of the line.
-//! let start_idx = text.line_to_char(515);
-//! let end_idx = text.line_to_char(516);
+//!	let tags_iter = my_tagger.iter();
+//!	let mut cur_char = 0;
+//! for ch in my_str.chars().enumerate() {
+//! }
 //!
-//! // Remove the line...
-//! text.remove(start_idx..end_idx);
-//!
-//! // ...and replace it with something better.
-//! text.insert(start_idx, "The flowers are... so... dunno.\n");
-//!
-//! // Print the changes, along with the previous few lines for context.
-//! let start_idx = text.line_to_char(511);
-//! let end_idx = text.line_to_char(516);
-//! println!("{}", text.slice(start_idx..end_idx));
-//!
-//! // Write the file back out to disk.
-//! text.write_to(
-//!     BufWriter::new(File::create("my_great_book.txt")?)
-//! )?;
-//! # Ok(())
-//! # }
-//! # do_stuff().unwrap();
 //! ```
 //!
 //! More examples can be found in the `examples` directory of the git
@@ -183,6 +186,9 @@ use std::ops::Bound;
 pub use crate::rope::{Rope, Measurable};
 pub use crate::rope_builder::RopeBuilder;
 pub use crate::slice::RopeSlice;
+
+#[cfg(test)]
+pub use crate::rope::Lipsum;
 
 //==============================================================
 // Error reporting types.
