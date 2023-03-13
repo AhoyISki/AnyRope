@@ -16,23 +16,23 @@ for example, one may assossiate a rope of text with a rope of tags.
 ```rust
 // The tags that will be assossiated with a piece of text, that could be a rope.
 struct Tag {
-	PrintRed,
-	Underline,
-	Normal,
-	Skip(usize)
+    PrintRed,
+    Underline,
+    Normal,
+    Skip(usize)
 }
 
 use Tag::*;
 impl any_rope::Measurable for Tag {
-	fn width(&self) -> usize {
-		match self {
-			// The zero here represents the fact that multiple tags may be placed
-			// in the same character.
-			PrintRed | Underline | Normal => 0,
-			// Skip here is an amount of characters with no tags in them.
-			Skip(amount) => *amount
-		}
-	}
+    fn width(&self) -> usize {
+        match self {
+            // The zero here represents the fact that multiple tags may be placed
+            // in the same character.
+            PrintRed | Underline | Normal => 0,
+            // Skip here is an amount of characters with no tags in them.
+            Skip(amount) => *amount
+        }
+    }
 }
 
 // An `&str` that will be colored.
@@ -58,19 +58,19 @@ tags.insert(5, Underline);
 let mut tags_iter = my_tagger.iter().peekable();
 
 for (cur_index, ch) in my_str.chars().enumerate() {
-	// The while let loop here is a useful way to activate all tags within the same
-	// character. For example, we could have a sequence of [Tag::UnderLine, Tag::PrintRed]
-	// in the `Rope`, both of which have a width of 0, allowing one to execute multiple
-	// `Tag`s in a single character.
-	while let Some((index, tag)) = tags_iter.peek() {
-		if *index == cur_index {
-			activate_tag(tag);
-			tags_iter.next();
-		} else {
-			break;
-		}
-	}
-	print!("{}", ch);
+    // The while let loop here is a useful way to activate all tags within the same
+    // character. For example, we could have a sequence of [Tag::UnderLine, Tag::PrintRed]
+    // in the `Rope`, both of which have a width of 0, allowing one to execute multiple
+    // `Tag`s in a single character.
+    while let Some((index, tag)) = tags_iter.peek() {
+        if *index == cur_index {
+            activate_tag(tag);
+            tags_iter.next();
+        } else {
+            break;
+        }
+    }
+    print!("{}", ch);
 }
 ```
 
