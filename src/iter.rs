@@ -71,7 +71,7 @@
 use std::sync::Arc;
 
 use crate::rope::Measurable;
-use crate::slice_utils::{first_width_to_index, index_to_width, width_of};
+use crate::slice_utils::{first_width_to_index, index_to_width, last_width_to_index, width_of};
 use crate::tree::{Node, SliceInfo};
 
 //==========================================================
@@ -130,12 +130,12 @@ where
         index_range: (usize, usize),
         width_range: (usize, usize),
     ) -> Self {
-        let (mut chunks, mut chunk_start_index, mut chunk_start_width) =
+        let (mut chunks, mut chunk_start_index, mut chunk_start_width, start_width) =
             Chunks::new_with_range_at_width(node, at_width, index_range, width_range);
 
         let cur_chunk = if index_range.0 == index_range.1 {
             &[]
-        } else if at_width < index_range.1 {
+        } else if at_width < width_range.1 {
             chunks.next().unwrap()
         } else {
             let chunk = chunks.prev().unwrap();
@@ -148,9 +148,9 @@ where
             chunk
         };
 
-		println!("{}, {}", at_width, chunk_start_width);
+        println!("{:?}, {}, {}", cur_chunk, at_width, chunk_start_width);
         let index = first_width_to_index(cur_chunk, at_width - chunk_start_width);
-        let width = chunk_start_width + index_to_width(cur_chunk, index);
+        let width = index_to_width(cur_chunk, index) + chunk_start_width;
 
         Iter {
             chunks,
@@ -177,7 +177,7 @@ where
             &[]
         };
 
-		let index = first_width_to_index(slice, width);
+        let index = first_width_to_index(slice, width);
         let width = index_to_width(slice, index);
 
         Iter {
@@ -402,7 +402,7 @@ where
         at_index: usize,
         index_range: (usize, usize),
         width_range: (usize, usize),
-    ) -> (Chunks<M>, usize, usize) {
+    ) -> (Chunks<M>, usize, usize, usize) {
         debug_assert!(at_index >= index_range.0);
         debug_assert!(at_index <= index_range.1);
 
@@ -422,6 +422,7 @@ where
                 },
                 0,
                 0,
+                0,
             );
         }
 
@@ -439,6 +440,7 @@ where
                     },
                     slice.len(),
                     width_of(slice),
+                    index_to_width(node.leaf_slice(), at_index),
                 );
             } else {
                 return (
@@ -449,6 +451,7 @@ where
                         },
                         is_reversed: false,
                     },
+                    0,
                     0,
                     0,
                 );
@@ -490,8 +493,9 @@ where
             node_stack
         };
 
-		let (chunk, chunk_info) = node.get_chunk_at_index(info.len as usize);
-		let width = index_to_width(chunk, at_index - info.len as usize);
+        let (chunk, _) = node.get_chunk_at_index(info.len as usize);
+        println!("other: {}, {}", at_index, info.len as usize);
+        let width = index_to_width(chunk, at_index - info.len as usize);
 
         // Create the iterator.
         (
@@ -504,7 +508,8 @@ where
                 is_reversed: false,
             },
             (info.len as usize).max(index_range.0),
-            width + info.width as usize
+            (info.width as usize).max(width_range.0),
+            width + info.width as usize,
         )
     }
 
@@ -514,7 +519,7 @@ where
         at_width: usize,
         index_range: (usize, usize),
         width_range: (usize, usize),
-    ) -> (Self, usize, usize) {
+    ) -> (Self, usize, usize, usize) {
         let at_index = if at_width == width_range.1 {
             index_range.1
         } else {
@@ -875,20 +880,31 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn iter_at_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        let lorem_ipsum = lorem_ipsum();
+        let slice = rope.width_slice(..79);
+        let mut iter = slice.iter_at(55);
 
-        let mut iter_1 = lorem_ipsum.iter().map(|lipsum| *lipsum);
-        for i in 0..(rope.len() + 1) {
-            let mut iter_2 = rope.iter_at_index(i);
-            assert_eq!(iter_1.next(), iter_2.next().map(|(_, element)| element));
-        }
+        assert_eq!(iter.next(), Some((55, Ipsum)));
+        assert_eq!(iter.next(), Some((57, Dolor(4))));
+        assert_eq!(iter.next(), Some((61, Sit)));
+        assert_eq!(iter.next(), Some((61, Amet)));
+        assert_eq!(iter.next(), Some((61, Consectur("hello"))));
+        assert_eq!(iter.next(), Some((66, Adipiscing(true))));
+        assert_eq!(iter.next(), Some((67, Lorem)));
+        assert_eq!(iter.next(), Some((68, Ipsum)));
+        assert_eq!(iter.next(), Some((70, Dolor(8))));
+        assert_eq!(iter.next(), Some((78, Sit)));
+        assert_eq!(iter.next(), Some((78, Amet)));
+        assert_eq!(iter.next(), Some((78, Consectur("bye"))));
+        assert_eq!(iter.next(), None);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_at_02() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        let mut bytes = rope.iter_at_index(rope.len());
+        let mut bytes = rope.iter_at_width(rope.width());
+        // Iterating at the end, when there are zero width elements, always yields them.
+        assert_eq!(bytes.next(), Some((2700, Adipiscing(false))));
         assert_eq!(bytes.next(), None);
     }
 
@@ -896,9 +912,10 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn iter_at_03() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        let mut iter_1 = rope.iter_at_index(rope.len());
+        let mut iter_1 = rope.iter_at_width(rope.width());
         let lorem_ipsum = lorem_ipsum();
-        let mut iter_2 = lorem_ipsum.iter().map(|lipsum| *lipsum);
+        // Skip the last element, since it's zero width.
+        let mut iter_2 = lorem_ipsum.iter().take(1399).map(|lipsum| *lipsum);
 
         while let Some(b) = iter_2.next_back() {
             assert_eq!(iter_1.prev().map(|(_, element)| element), Some(b));
@@ -909,10 +926,15 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn exact_size_iter_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        let slice = rope.width_slice(34..301);
+        let slice = rope.width_slice(34..75);
 
         let mut len = slice.len();
         let mut iter = slice.iter();
+        println!(
+            "{:?},\n{:?}",
+            slice,
+            iter.clone().collect::<Vec<(usize, Lipsum)>>()
+        );
 
         assert_eq!(len, iter.len());
 
@@ -936,23 +958,10 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn exact_size_iter_02() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        let slice = rope.width_slice(58..301);
-        let bytes = slice.iter_at(0).collect::<Vec<(usize, Lipsum)>>();
-        println!("{:#?}", &bytes[..4]);
-
-        for i in 0..=slice.width() {
-            assert_eq!(slice.len() - i, bytes.len());
-        }
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn exact_size_iter_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice = rope.width_slice(34..301);
 
         let mut len = 0;
-        let mut iter = slice.iter_at(slice.len());
+        let mut iter = slice.iter_at(slice.width());
 
         assert_eq!(len, iter.len());
 
@@ -993,7 +1002,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn iter_reverse_02() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        let mut iter = rope.iter_at_index(rope.len() / 3);
+        let mut iter = rope.iter_at_width(rope.len() / 3);
         let mut stack = Vec::new();
 
         for _ in 0..32 {
@@ -1061,11 +1070,12 @@ mod tests {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
         for i in 0..rope.len() {
-            let (chunk, b, c) = rope.chunk_at_index(i);
-            let (mut chunks, bs, cs) = rope.chunks_at_index(i);
+            println!("success");
+            let (chunk, index, width) = rope.chunk_at_index(i);
+            let (mut chunks, slice_index, slice_width, _) = rope.chunks_at_index(i);
 
-            assert_eq!(b, bs);
-            assert_eq!(c, cs);
+            assert_eq!(index, slice_index);
+            assert_eq!(width, slice_width);
             assert_eq!(Some(chunk), chunks.next());
         }
     }
@@ -1190,8 +1200,9 @@ mod tests {
     fn iter_at_sliced_02() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice = rope.width_slice(34..301);
-        let mut bytes = slice.iter_at(slice.len());
-        assert_eq!(bytes.next(), None);
+        let mut iter = slice.iter_at(slice.width());
+        // Yields None, since we're iterating in the middle of a Dolor(4) element.
+        assert_eq!(iter.next(), None);
     }
 
     #[test]
@@ -1207,7 +1218,7 @@ mod tests {
         let slice_1 = rope.width_slice(slice_start..slice_end);
         let slice_2 = &lorem_ipsum()[slice_start_byte..s_end_byte];
 
-        let mut bytes_1 = slice_1.iter_at(slice_1.len());
+        let mut bytes_1 = slice_1.iter_at(slice_1.width());
         let mut bytes_2 = slice_2.iter().map(|lipsum| *lipsum);
         while let Some(b) = bytes_2.next_back() {
             assert_eq!(bytes_1.prev().map(|(_, element)| element), Some(b));

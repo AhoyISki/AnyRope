@@ -867,7 +867,7 @@ where
                     start_info,
                     end_info,
                 }) => {
-                    let (chunks, chunk_byte_index, chunk_char_index) =
+                    let (chunks, chunk_byte_index, chunk_char_index, _) =
                         Chunks::new_with_range_at_index(
                             node,
                             byte_index + start_info.len as usize,
@@ -911,7 +911,7 @@ where
                     start_info,
                     end_info,
                 }) => {
-                    let (chunks, chunk_byte_index, chunk_char_index) =
+                    let (chunks, chunk_byte_index, chunk_char_index, _) =
                         Chunks::new_with_range_at_width(
                             node,
                             width + start_info.width as usize,

@@ -635,8 +635,8 @@ where
     ///
     /// Panics if `byte_index` is out of bounds (i.e. `byte_index > len_bytes()`).
     #[inline]
-    pub fn iter_at_index(&self, index: usize) -> Iter<M> {
-        if let Some(out) = self.get_iter_at_index(index) {
+    pub fn iter_at_width(&self, index: usize) -> Iter<M> {
+        if let Some(out) = self.get_iter_at_width(index) {
             out
         } else {
             panic!(
@@ -673,7 +673,7 @@ where
     ///
     /// Panics if `byte_index` is out of bounds (i.e. `byte_index > len_bytes()`).
     #[inline]
-    pub fn chunks_at_index(&self, index: usize) -> (Chunks<M>, usize, usize) {
+    pub fn chunks_at_index(&self, index: usize) -> (Chunks<M>, usize, usize, usize) {
         if let Some(out) = self.get_chunks_at_index(index) {
             out
         } else {
@@ -703,7 +703,7 @@ where
     ///
     /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
     #[inline]
-    pub fn chunks_at_width(&self, width: usize) -> (Chunks<M>, usize, usize) {
+    pub fn chunks_at_width(&self, width: usize) -> (Chunks<M>, usize, usize, usize) {
         if let Some(out) = self.get_chunks_at_width(width) {
             out
         } else {
@@ -1080,12 +1080,12 @@ where
 
     /// Non-panicking version of [`iter_at()`](Self::iter_at).
     #[inline]
-    pub fn get_iter_at_index(&self, index: usize) -> Option<Iter<M>> {
+    pub fn get_iter_at_width(&self, width: usize) -> Option<Iter<M>> {
         // Bounds check
-        if index <= self.len() {
+        if width <= self.width() {
             Some(Iter::new_with_range_at_width(
                 &self.root,
-                index,
+                width,
                 (0, self.len()),
                 (0, self.width()),
             ))
@@ -1096,7 +1096,7 @@ where
 
     /// Non-panicking version of [`chunks_at_byte()`](Rope::chunks_at_byte).
     #[inline]
-    pub fn get_chunks_at_index(&self, index: usize) -> Option<(Chunks<M>, usize, usize)> {
+    pub fn get_chunks_at_index(&self, index: usize) -> Option<(Chunks<M>, usize, usize, usize)> {
         // Bounds check
         if index <= self.len() {
             Some(Chunks::new_with_range_at_index(
@@ -1112,7 +1112,10 @@ where
 
     /// Non-panicking version of [`chunks_at_char()`](Rope::chunks_at_char).
     #[inline]
-    pub fn get_chunks_at_width(&self, char_index: usize) -> Option<(Chunks<M>, usize, usize)> {
+    pub fn get_chunks_at_width(
+        &self,
+        char_index: usize,
+    ) -> Option<(Chunks<M>, usize, usize, usize)> {
         // Bounds check
         if char_index <= self.width() {
             Some(Chunks::new_with_range_at_width(

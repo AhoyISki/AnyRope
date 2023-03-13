@@ -754,8 +754,8 @@ mod inner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tree::{Leaf, Node, SliceInfo};
     use crate::rope::Lipsum::*;
+    use crate::tree::{Leaf, Node, SliceInfo};
     use std::sync::Arc;
 
     #[test]
