@@ -1,20 +1,20 @@
 mod node;
-mod node_children;
-mod node_slice;
+mod branch_children;
+mod leaf_slice;
 mod slice_info;
 
 pub(crate) use self::node::Node;
-pub(crate) use self::node_children::BranchChildren;
-pub(crate) use self::node_slice::LeafSlice;
+pub(crate) use self::branch_children::BranchChildren;
+pub(crate) use self::leaf_slice::LeafSlice;
 pub(crate) use self::slice_info::SliceInfo;
 
-// Type used for storing tree metadata, such as byte and char length.
+// Type used for storing tree metadata, such as indices and widths.
 pub(crate) type Count = u64;
 
 // Real constants used in release builds.
 #[cfg(not(any(test, feature = "small_chunks")))]
 mod constants {
-    use super::{SliceInfo};
+    use super::SliceInfo;
     use smallvec::SmallVec;
     use std::{
         mem::{align_of, size_of},
@@ -66,34 +66,33 @@ mod constants {
 
         target_size / (size_of::<Arc<u8>>() + size_of::<SliceInfo>())
     };
-    pub(crate) const MAX_BYTES: usize = {
+    pub(crate) const MAX_LEN: usize = {
         let smallvec_overhead = size_of::<SmallVec<[u8; 16]>>() - 16;
         TARGET_TOTAL_SIZE - START_OFFSET - smallvec_overhead
     };
 
     // Node minimums.
-    // Note: MIN_BYTES is intentionally a little smaller than half
-    // MAX_BYTES, to give a little wiggle room when on the edge of
+    // Note: MIN_LEN is intentionally a little smaller than half
+    // MAX_LEN, to give a little wiggle room when on the edge of
     // merging/splitting.
     pub(crate) const MIN_CHILDREN: usize = MAX_CHILDREN / 2;
-    pub(crate) const MIN_BYTES: usize = (MAX_BYTES / 2) - (MAX_BYTES / 32);
+    pub(crate) const MIN_LEN: usize = (MAX_LEN / 2) - (MAX_LEN / 32);
 }
 
-// Smaller constants used in debug builds.  These are different from release
-// in order to trigger deeper trees without having to use huge text data in
+// Smaller constants used in debug builds. These are different from release
+// in order to trigger deeper trees without having to use huge slice data in
 // the tests.
 #[cfg(any(test, feature = "small_chunks"))]
 mod test_constants {
     pub(crate) const MAX_CHILDREN: usize = 5;
     pub(crate) const MIN_CHILDREN: usize = MAX_CHILDREN / 2;
 
-    // MAX_BYTES must be >= 4 to allow for 4-byte utf8 characters.
-    pub(crate) const MAX_BYTES: usize = 9; // Note: can't be 8, because 3-byte characters.
-    pub(crate) const MIN_BYTES: usize = (MAX_BYTES / 2) - (MAX_BYTES / 32);
+    pub(crate) const MAX_LEN: usize = 9;
+    pub(crate) const MIN_LEN: usize = (MAX_LEN / 2) - (MAX_LEN / 32);
 }
 
-#[cfg(not(any(test, feature = "small_chunks")))]
-pub(crate) use self::constants::{MAX_BYTES, MAX_CHILDREN, MIN_BYTES, MIN_CHILDREN};
+#[cfg(not(test))]
+pub(crate) use self::constants::{MAX_CHILDREN, MAX_LEN, MIN_CHILDREN, MIN_LEN};
 
-#[cfg(any(test, feature = "small_chunks"))]
-pub(crate) use self::test_constants::{MAX_BYTES, MAX_CHILDREN, MIN_BYTES, MIN_CHILDREN};
+#[cfg(test)]
+pub(crate) use self::test_constants::{MAX_CHILDREN, MAX_LEN, MIN_CHILDREN, MIN_LEN};

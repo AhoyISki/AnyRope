@@ -34,7 +34,7 @@
 //!
 //! # Creating iterators at any position
 //!
-//! Iterators in Ropey can be created starting at any position in the text.
+//! Iterators in Ropey can be created starting at any position in the rope.
 //! This is accomplished with the [Iter<T>] and [Chunks<T>] iterators, which can be created by
 //! various functions on a [Rope<M>].
 //!
@@ -62,7 +62,7 @@
 //!
 //! The [reverse()][Iter::reverse] method on AnyRopey's iterators, on the other
 //! hand, reverses the direction of the iterator in-place, without changing its
-//! position in the text.
+//! position in the rope.
 //!
 //! [Rope<M>]: crate::rope::Rope
 //! [RopeSlice<T>]: crate::slice::RopeSlice
@@ -71,7 +71,7 @@
 use std::sync::Arc;
 
 use crate::rope::Measurable;
-use crate::slice_utils::{first_width_to_index, index_to_width, width_of};
+use crate::slice_utils::{start_width_to_index, index_to_width, width_of};
 use crate::tree::{Node, SliceInfo};
 
 //==========================================================
@@ -148,7 +148,7 @@ where
             chunk
         };
 
-        let index = first_width_to_index(cur_chunk, at_width - chunk_start_width);
+        let index = start_width_to_index(cur_chunk, at_width - chunk_start_width);
         let width = index_to_width(cur_chunk, index) + chunk_start_width;
 
         Iter {
@@ -176,7 +176,7 @@ where
             &[]
         };
 
-        let index = first_width_to_index(slice, width);
+        let index = start_width_to_index(slice, width);
         let width = index_to_width(slice, index);
 
         Iter {
@@ -409,7 +409,7 @@ where
         let start_index = index_range.0;
         let end_index = index_range.1;
 
-        // Special-case for empty text contents.
+        // Special-case for empty slice contents.
         if start_index == end_index {
             return (
                 Chunks {
@@ -610,12 +610,12 @@ where
                 *child_i -= 1;
 
                 // Get the slice in the appropriate range.
-                let text = node.children().nodes()[*child_i].leaf_slice();
-                *index -= text.len() as isize;
+                let slice = node.children().nodes()[*child_i].leaf_slice();
+                *index -= slice.len() as isize;
                 let slice = {
                     let start_byte = if *index < 0 { (-*index) as usize } else { 0 };
-                    let end_byte = text.len().min((len as isize - *index) as usize);
-                    &text[start_byte..end_byte]
+                    let end_byte = slice.len().min((len as isize - *index) as usize);
+                    &slice[start_byte..end_byte]
                 };
 
                 // Return the slice.
@@ -678,7 +678,7 @@ where
                 // Fetch the node and child index.
                 let (node, ref mut child_i) = node_stack.last_mut().unwrap();
 
-                // Get the text, sliced to the appropriate range.
+                // Get the slice, sliced to the appropriate range.
                 let leaf_slice = node.children().nodes()[*child_i].leaf_slice();
                 let slice = {
                     let start_byte = if *index < 0 { (-*index) as usize } else { 0 };
@@ -690,7 +690,7 @@ where
                 *index += leaf_slice.len() as isize;
                 *child_i += 1;
 
-                // Return the text.
+                // Return the slice.
                 return Some(slice);
             }
 
@@ -1040,12 +1040,12 @@ mod tests {
         let mut chunks = Vec::new();
         let mut iter = rope.chunks();
 
-        while let Some(text) = iter.next() {
-            chunks.push(text);
+        while let Some(slice) = iter.next() {
+            chunks.push(slice);
         }
 
-        while let Some(text) = iter.prev() {
-            assert_eq!(text, chunks.pop().unwrap());
+        while let Some(slice) = iter.prev() {
+            assert_eq!(slice, chunks.pop().unwrap());
         }
 
         assert!(chunks.is_empty());
@@ -1059,7 +1059,7 @@ mod tests {
         for i in 0..rope.len() {
             println!("success");
             let (chunk, index, width) = rope.chunk_at_index(i);
-            let (mut chunks, slice_index, slice_width, _) = rope.chunks_at_index(i);
+            let (mut chunks, slice_index, slice_width) = rope.chunks_at_index(i);
 
             assert_eq!(index, slice_index);
             assert_eq!(width, slice_width);
@@ -1199,8 +1199,8 @@ mod tests {
 
         let slice_start = 34;
         let slice_end = 301;
-        let slice_start_byte = rope.first_width_to_index(slice_start);
-        let s_end_byte = rope.last_width_to_index(slice_end);
+        let slice_start_byte = rope.start_width_to_index(slice_start);
+        let s_end_byte = rope.end_width_to_index(slice_end);
 
         let slice_1 = rope.width_slice(slice_start..slice_end);
         let slice_2 = &lorem_ipsum()[slice_start_byte..s_end_byte];
@@ -1239,8 +1239,8 @@ mod tests {
 
         let slice_start = 34;
         let slice_end = 301;
-        let slice_start_index = rope.first_width_to_index(slice_start);
-        let slice_end_index = rope.last_width_to_index(slice_end);
+        let slice_start_index = rope.start_width_to_index(slice_start);
+        let slice_end_index = rope.end_width_to_index(slice_end);
 
         let slice_1 = rope.width_slice(slice_start..slice_end);
         let slice_2 = &lorem_ipsum()[slice_start_index..slice_end_index];

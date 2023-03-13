@@ -6,8 +6,8 @@ use std::sync::Arc;
 use crate::iter::{Chunks, Iter};
 use crate::rope_builder::RopeBuilder;
 use crate::slice::RopeSlice;
-use crate::slice_utils::{first_width_to_index, index_to_width, last_width_to_index};
-use crate::tree::{BranchChildren, Node, SliceInfo, MAX_BYTES, MIN_BYTES};
+use crate::slice_utils::{start_width_to_index, index_to_width, end_width_to_index};
+use crate::tree::{BranchChildren, Node, SliceInfo, MAX_LEN, MIN_LEN};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
 /// A object that has a definite size, that can be interpreted by a [Rope<M>].
@@ -58,12 +58,12 @@ pub trait Measurable: Clone + Copy {
 /// #
 /// let rope = Rope::from_slice(&[Sit, Sit, Lorem, Lorem, Ipsum, Dolor(25), Amet, Amet, Lorem]);
 ///
-/// assert_eq!(rope.first_width_to_index(0), 0);
-/// assert_eq!(rope.last_width_to_index(0), 2);
-/// assert_eq!(rope.first_width_to_index(2), 4);
-/// assert_eq!(rope.first_width_to_index(3), 4);
-/// assert_eq!(rope.first_width_to_index(16), 5);
-/// assert_eq!(rope.first_width_to_index(29), 6);
+/// assert_eq!(rope.start_width_to_index(0), 0);
+/// assert_eq!(rope.end_width_to_index(0), 2);
+/// assert_eq!(rope.start_width_to_index(2), 4);
+/// assert_eq!(rope.start_width_to_index(3), 4);
+/// assert_eq!(rope.start_width_to_index(16), 5);
+/// assert_eq!(rope.start_width_to_index(29), 6);
 /// ```
 ///
 /// # Slicing
@@ -159,7 +159,7 @@ where
     pub fn capacity(&self) -> usize {
         let mut byte_count = 0;
         for chunk in self.chunks() {
-            byte_count += chunk.len().max(MAX_BYTES);
+            byte_count += chunk.len().max(MAX_LEN);
         }
         byte_count
     }
@@ -250,10 +250,10 @@ where
             root_info,
             |index, cur_info, leaf_slice| {
                 // Find our byte index
-                let index = last_width_to_index(leaf_slice, index);
+                let index = end_width_to_index(leaf_slice, index);
 
                 // No node splitting
-                if (leaf_slice.len() + ins_slice.len()) <= MAX_BYTES {
+                if (leaf_slice.len() + ins_slice.len()) <= MAX_LEN {
                     // Calculate new info without doing a full re-scan of cur_slice.
                     let new_info = cur_info + SliceInfo::from_slice(ins_slice);
                     leaf_slice.insert_slice(index, ins_slice);
@@ -412,7 +412,7 @@ where
 
             // Fix up any mess left behind.
             let root = Arc::make_mut(&mut self.root);
-            if (left_info.len as usize) < MIN_BYTES || (right_info.len as usize) < MIN_BYTES {
+            if (left_info.len as usize) < MIN_LEN || (right_info.len as usize) < MIN_LEN {
                 root.fix_tree_seam(left_info.width as usize);
             }
             self.pull_up_singular_nodes();
@@ -638,7 +638,7 @@ where
     /// actually corelate to the `width` given to the function.
     ///
     /// If `width == Rope::width()` then an iterator at the end of the
-    /// [Rope<M>] is created (i.e. [next()][crate::iter::Iter::next] will return `None`).
+    /// [Rope<M>] is created (i.e. [next()][crate::iter::Iter::next] will return [None]).
     ///
     /// Runs in O(log N) time.
     ///
@@ -673,7 +673,7 @@ where
     /// chunk to be yielded.
     ///
     /// If `index == Rope::len()` an iterator at the end of the [Rope<M>]
-    /// (yielding `None` on a call to [next()][crate::iter::Iter::next]) is created.
+    /// (yielding [None] on a call to [next()][crate::iter::Iter::next]) is created.
     ///
     /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
     ///
@@ -702,7 +702,7 @@ where
     /// chunk to be yielded.
     ///
     /// If `width == Rope::width()` an iterator at the end of the [Rope<M>]
-    /// (yielding `None` on a call to [next()][crate::iter::Iter::next]) is created.
+    /// (yielding [None] on a call to [next()][crate::iter::Iter::next]) is created.
     ///
     /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
     ///
@@ -820,7 +820,7 @@ where
             // The boundary for what constitutes "very large" slice was arrived at
             // experimentally, by testing at what point Rope build + splice becomes
             // faster than split + repeated insert.
-            if slice.len() > MAX_BYTES * 6 {
+            if slice.len() > MAX_LEN * 6 {
                 // Case #1: very large slice, build rope and splice it in.
                 let rope = Rope::from_slice(slice);
                 let right = self.split_off(width);
@@ -833,7 +833,7 @@ where
                     // We do this from the end instead of the front so that
                     // the repeated insertions can keep re-using the same
                     // insertion point.
-                    let split_index = slice.len() - (MAX_BYTES - 4).min(slice.len());
+                    let split_index = slice.len() - (MAX_LEN - 4).min(slice.len());
                     let ins_slice = &slice[split_index..];
                     slice = &slice[..split_index];
 
@@ -912,7 +912,7 @@ where
             } else {
                 // Do the split
                 let mut new_rope = Rope {
-                    root: Arc::new(Arc::make_mut(&mut self.root).last_split(width)),
+                    root: Arc::new(Arc::make_mut(&mut self.root).end_split(width)),
                 };
 
                 // Fix up the edges
@@ -946,7 +946,7 @@ where
         // Bounds check
         if width <= self.width() {
             let (chunk, b, c) = self.chunk_at_width(width);
-            Ok(b + first_width_to_index(chunk, width - c))
+            Ok(b + start_width_to_index(chunk, width - c))
         } else {
             Err(Error::WidthOutOfBounds(width, self.width()))
         }
@@ -958,7 +958,7 @@ where
         // Bounds check
         if width <= self.width() {
             let (chunk, b, c) = self.chunk_at_width(width);
-            Ok(b + last_width_to_index(chunk, width - c))
+            Ok(b + end_width_to_index(chunk, width - c))
         } else {
             Err(Error::WidthOutOfBounds(width, self.width()))
         }
@@ -983,7 +983,7 @@ where
         // Bounds check
         if width < self.width() {
             let (chunk, _, chunk_width) = self.chunk_at_width(width);
-            Some(chunk[first_width_to_index(chunk, width - chunk_width)])
+            Some(chunk[start_width_to_index(chunk, width - chunk_width)])
         } else {
             None
         }
@@ -1189,7 +1189,7 @@ where
                 if end_info.width < node.slice_info().width {
                     {
                         let root = Arc::make_mut(&mut rope.root);
-                        root.last_split(end_info.width as usize);
+                        root.end_split(end_info.width as usize);
                         root.zip_fix_right();
                     }
                     rope.pull_up_singular_nodes();
@@ -1199,7 +1199,7 @@ where
                 if start_info.width > 0 {
                     {
                         let root = Arc::make_mut(&mut rope.root);
-                        *root = root.first_split(start_info.width as usize);
+                        *root = root.start_split(start_info.width as usize);
                         root.zip_fix_left();
                     }
                     rope.pull_up_singular_nodes();
@@ -1947,11 +1947,11 @@ mod tests {
             }
 
             let lipsum_1 = {
-                let index_1 = first_width_to_index(&lorem_ipsum, i);
+                let index_1 = start_width_to_index(&lorem_ipsum, i);
                 lorem_ipsum.iter().nth(index_1).unwrap()
             };
             let lipsum_2 = {
-                let index_2 = first_width_to_index(&chunk, i - width);
+                let index_2 = start_width_to_index(&chunk, i - width);
                 chunk.iter().nth(index_2).unwrap()
             };
 
