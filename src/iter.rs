@@ -1,6 +1,6 @@
-//! Iterators over a [Rope<T>]'s data.
+//! Iterators over a [Rope<M>]'s data.
 //!
-//! The iterators in Any-Ropey can be created from both [Rope<T>]s and [RopeSlice<T>]s.
+//! The iterators in Any-Ropey can be created from both [Rope<M>]s and [RopeSlice<T>]s.
 //! When created from a [RopeSlice<T>], they iterate over only the data that the
 //! [RopeSlice<T>] refers to.  For the [Chunks] iterator, the data of the first
 //! and last yielded item will be correctly truncated to match the bounds of
@@ -36,17 +36,17 @@
 //!
 //! Iterators in Ropey can be created starting at any position in the text.
 //! This is accomplished with the [Iter<T>] and [Chunks<T>] iterators, which can be created by
-//! various functions on a [Rope<T>].
+//! various functions on a [Rope<M>].
 //!
 //! When an iterator is created this way, it is positioned such that a call to
 //! `next()` will return the specified element, and a call to `prev()` will
 //! return the element just before the specified one.
 //!
 //! Importantly, iterators created this way still have access to the entire
-//! contents of the [Rope<T>]/[RopeSlice<T>] they were created from and the
+//! contents of the [Rope<M>]/[RopeSlice<T>] they were created from and the
 //! contents before the specified position is not truncated.  For example, you
-//! can create an [Iter<T>] iterator starting at the end of a [Rope<T>], and then
-//! use the [prev()][Iter::prev] method to iterate backwards over all of that [Rope<T>]'s
+//! can create an [Iter<T>] iterator starting at the end of a [Rope<M>], and then
+//! use the [prev()][Iter::prev] method to iterate backwards over all of that [Rope<M>]'s
 //! elements.
 //!
 //! # A possible point of confusion
@@ -64,7 +64,7 @@
 //! hand, reverses the direction of the iterator in-place, without changing its
 //! position in the text.
 //!
-//! [Rope<T>]: crate::rope::Rope
+//! [Rope<M>]: crate::rope::Rope
 //! [RopeSlice<T>]: crate::slice::RopeSlice
 //! [rev()]: DoubleEndedIterator::rev
 
@@ -76,7 +76,7 @@ use crate::tree::{Node, SliceInfo};
 
 //==========================================================
 
-/// An iterator over a [Rope<T>][crate::rope::Rope]'s elements.
+/// An iterator over a [Rope<M>][crate::rope::Rope]'s elements.
 #[derive(Debug, Clone)]
 pub struct Iter<'a, M>
 where
@@ -130,7 +130,7 @@ where
         index_range: (usize, usize),
         width_range: (usize, usize),
     ) -> Self {
-        let (mut chunks, mut chunk_start_index, mut chunk_start_width, start_width) =
+        let (mut chunks, mut chunk_start_index, mut chunk_start_width) =
             Chunks::new_with_range_at_width(node, at_width, index_range, width_range);
 
         let cur_chunk = if index_range.0 == index_range.1 {
@@ -318,20 +318,20 @@ impl<'a, M> ExactSizeIterator for Iter<'a, M> where M: Measurable {}
 
 //==========================================================
 
-/// An iterator over a [Rope<T>]'s contiguous [T] chunks.
+/// An iterator over a [Rope<M>]'s contiguous [T] chunks.
 ///
-/// Internally, each [Rope<T>] stores [T]s as a segemented collection of [&[[T]]].
+/// Internally, each [Rope<M>] stores [T]s as a segemented collection of [&[[T]]].
 /// It is useful for situations such as:
 ///
-/// - Streaming a [Rope<T>]'s elements data somewhere.
-/// - Writing custom iterators over a [Rope<T>]'s data.
+/// - Streaming a [Rope<M>]'s elements data somewhere.
+/// - Writing custom iterators over a [Rope<M>]'s data.
 ///
 /// There are no guarantees about the size of yielded chunks, and there are
 /// no guarantees about where the chunks are split.  For example, they may
 /// be zero-sized.
 ///
 /// [T]: crate::rope::Measurable
-/// [Rope<T>]: crate::rope::Rope
+/// [Rope<M>]: crate::rope::Rope
 /// [RopeSlice<T>]: crate::slice::RopeSlice
 /// [rev()]: DoubleEndedIterator::rev
 #[derive(Debug, Clone)]
@@ -401,7 +401,7 @@ where
         at_index: usize,
         index_range: (usize, usize),
         width_range: (usize, usize),
-    ) -> (Chunks<M>, usize, usize, usize) {
+    ) -> (Chunks<M>, usize, usize) {
         debug_assert!(at_index >= index_range.0);
         debug_assert!(at_index <= index_range.1);
 
@@ -421,7 +421,6 @@ where
                 },
                 0,
                 0,
-                0,
             );
         }
 
@@ -439,7 +438,6 @@ where
                     },
                     slice.len(),
                     width_of(slice),
-                    index_to_width(node.leaf_slice(), at_index),
                 );
             } else {
                 return (
@@ -450,7 +448,6 @@ where
                         },
                         is_reversed: false,
                     },
-                    0,
                     0,
                     0,
                 );
@@ -492,9 +489,6 @@ where
             node_stack
         };
 
-        let (chunk, _) = node.get_chunk_at_index(info.len as usize);
-        let width = index_to_width(chunk, at_index - info.len as usize);
-
         // Create the iterator.
         (
             Chunks {
@@ -507,7 +501,6 @@ where
             },
             (info.len as usize).max(index_range.0),
             (info.width as usize).max(width_range.0),
-            width + info.width as usize,
         )
     }
 
@@ -517,7 +510,7 @@ where
         at_width: usize,
         index_range: (usize, usize),
         width_range: (usize, usize),
-    ) -> (Self, usize, usize, usize) {
+    ) -> (Self, usize, usize) {
         let at_index = if at_width == width_range.1 {
             index_range.1
         } else {
@@ -1170,8 +1163,8 @@ mod tests {
 
         let slice_start = 34;
         let slice_end = 301;
-        let slice_start_byte = rope.first_width_to_index(slice_start);
-        let s_end_byte = rope.last_width_to_index(slice_end);
+        let slice_start_byte = rope.start_width_to_index(slice_start);
+        let s_end_byte = rope.end_width_to_index(slice_end);
 
         let slice_1 = rope.width_slice(slice_start..slice_end);
         let slice_2 = &lorem_ipsum()[slice_start_byte..s_end_byte];

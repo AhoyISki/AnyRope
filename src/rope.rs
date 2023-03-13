@@ -10,17 +10,17 @@ use crate::slice_utils::{first_width_to_index, index_to_width, last_width_to_ind
 use crate::tree::{BranchChildren, Node, SliceInfo, MAX_BYTES, MIN_BYTES};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
-/// A object that has a definite size, that can be interpreted by a [Rope<T>].
+/// A object that has a definite size, that can be interpreted by a [Rope<M>].
 pub trait Measurable: Clone + Copy {
     /// The width of this element, it need not be the actual lenght in bytes,
-    /// but just a representative value, to be fed to the [Rope<T>].
+    /// but just a representative value, to be fed to the [Rope<M>].
     fn width(&self) -> usize;
 }
 
 /// A rope of elements that are [Measurable].
 ///
-/// The time complexity of nearly all edit and query operations on [Rope<T>] are
-/// worst-case `O(log N)` in the length of the rope.  [Rope<T>] is designed to
+/// The time complexity of nearly all edit and query operations on [Rope<M>] are
+/// worst-case `O(log N)` in the length of the rope. [Rope<M>] is designed to
 /// work efficiently even for huge (in the gigabytes) arrays of [T][Measurable].
 ///
 /// In the examples below, a struct called [Lipsum][crate::Lipsum] will be used in
@@ -28,7 +28,7 @@ pub trait Measurable: Clone + Copy {
 ///
 /// # Editing Operations
 ///
-/// The primary editing operations on [Rope<T>] are insertion and removal of slices
+/// The primary editing operations on [Rope<M>] are insertion and removal of slices
 /// or individual elements.
 /// For example:
 ///
@@ -47,7 +47,7 @@ pub trait Measurable: Clone + Copy {
 ///
 /// # Query Operations
 ///
-/// [Rope<T>] gives you the ability to query an element at any given index or
+/// [Rope<M>] gives you the ability to query an element at any given index or
 /// width, and the convertion between the two. You can either convert an index to
 /// a width, or convert the width at the start or end of an element to an index.
 /// For example:
@@ -68,7 +68,8 @@ pub trait Measurable: Clone + Copy {
 ///
 /// # Slicing
 ///
-/// You can take immutable slices of a [Rope<T>] using `slice()`:
+/// You can take immutable slices of a [Rope<M>] using [width_slice()][Rope::width_slice]
+/// or [index_slice()][Rope::index_slice]:
 ///
 /// ```
 /// # use any_rope::Rope;
@@ -85,16 +86,15 @@ pub trait Measurable: Clone + Copy {
 ///
 /// # Cloning
 ///
-/// Cloning [Rope<T>]s is extremely cheap, running in `O(1)` time and taking a
-/// small constant amount of memory for the new clone, regardless of text size.
-/// This is accomplished by data sharing between [Rope<T>] clones.  The memory
+/// Cloning [Rope<M>]s is extremely cheap, running in `O(1)` time and taking a
+/// small constant amount of memory for the new clone, regardless of slice size.
+/// This is accomplished by data sharing between [Rope<M>] clones. The memory
 /// used by clones only grows incrementally as the their contents diverge due
-/// to edits.  All of this is thread safe, so clones can be sent freely
+/// to edits. All of this is thread safe, so clones can be sent freely
 /// between threads.
 ///
 /// The primary intended use-case for this feature is to allow asynchronous
-/// processing of [Rope<T>]s.  For example, saving a large document to disk in a
-/// separate thread while the user continues to perform edits.
+/// processing of [Rope<M>]s.
 #[derive(Clone)]
 pub struct Rope<M>
 where
@@ -110,7 +110,7 @@ where
     //-----------------------------------------------------------------------
     // Constructors
 
-    /// Creates an empty [Rope<T>].
+    /// Creates an empty [Rope<M>].
     #[inline]
     pub fn new() -> Self {
         Rope {
@@ -118,7 +118,7 @@ where
         }
     }
 
-    /// Creates a [Rope<T>] from a string slice.
+    /// Creates a [Rope<M>] from an [M][Measurable] slice.
     ///
     /// Runs in O(N) time.
     #[inline]
@@ -130,7 +130,7 @@ where
     //-----------------------------------------------------------------------
     // Informational methods
 
-    /// Total number of bytes in the [Rope<T>].
+    /// Total number of elements in [Rope<M>].
     ///
     /// Runs in O(1) time.
     #[inline]
@@ -138,7 +138,7 @@ where
         self.root.len()
     }
 
-    /// Total number of chars in the [Rope<T>].
+    /// Sum of all widths of in [Rope<M>].
     ///
     /// Runs in O(1) time.
     #[inline]
@@ -149,10 +149,10 @@ where
     //-----------------------------------------------------------------------
     // Memory management methods
 
-    /// Total size of the [Rope<T>]'s text buffer space, in bytes.
+    /// Total size of the [Rope<M>]'s buffer space.
     ///
-    /// This includes unoccupied text buffer space.  You can calculate
-    /// the unoccupied space with `capacity() - len_bytes()`.  In general,
+    /// This includes unoccupied buffer space. You can calculate
+    /// the unoccupied space with `Rope::capacity() - Rope::len()`. In general,
     /// there will always be some unoccupied buffer space.
     ///
     /// Runs in O(N) time.
@@ -164,21 +164,19 @@ where
         byte_count
     }
 
-    /// Shrinks the [Rope<T>]'s capacity to the minimum possible.
+    /// Shrinks the [Rope<M>]'s capacity to the minimum possible.
     ///
-    /// This will rarely result in `capacity() == len_bytes()`.  [Rope<T>]
-    /// stores text in a sequence of fixed-capacity chunks, so an exact fit
-    /// only happens for texts that are both a precise multiple of that
-    /// capacity _and_ have code point boundaries that line up exactly with
-    /// the capacity boundaries.
+    /// This will rarely result in `capacity() == len_bytes()`. [Rope<M>]
+    /// stores [M][Measurable]s in a sequence of fixed-capacity chunks, so an exact fit
+    /// only happens for lists of a lenght that is a multiple of that capacity.
     ///
     /// After calling this, the difference between `capacity()` and
-    /// `len_bytes()` is typically under 1KB per megabyte of text in the
-    /// [Rope<T>].
+    /// `len()` is typically under 1000 for each 1000000 [M][Measurable] in the
+    /// [Rope<M>].
     ///
-    /// **NOTE:** calling this on a [Rope<T>] clone causes it to stop sharing
-    /// all data with its other clones.  In such cases you will very likely
-    /// be _increasing_ total memory usage despite shrinking the [Rope<T>]'s
+    /// **NOTE:** calling this on a [Rope<M>] clone causes it to stop sharing
+    /// all data with its other clones. In such cases you will very likely
+    /// be _increasing_ total memory usage despite shrinking the [Rope<M>]'s
     /// capacity.
     ///
     /// Runs in O(N) time, and uses O(log N) additional space during
@@ -213,41 +211,37 @@ where
     //-----------------------------------------------------------------------
     // Edit methods
 
-    /// Inserts `text` at char index `char_index`.
+    /// Inserts [`slice`][Measurable] at `width`.
     ///
-    /// Runs in O(M + log N) time, where N is the length of the [Rope<T>] and M
-    /// is the length of `text`.
+    /// Runs in O(L + log N) time, where N is the length of the [Rope<M>] and L
+    /// is the length of [`slice`][Measurable].
     ///
     /// # Panics
     ///
-    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
+    /// Panics if the `width` is out of bounds (i.e. `width > Rope::width()`).
     #[inline]
-    pub fn insert_slice(&mut self, char_index: usize, slice: &[M]) {
+    pub fn insert_slice(&mut self, width: usize, slice: &[M]) {
         // Bounds check
-        self.try_insert(char_index, slice).unwrap()
+        self.try_insert_slice(width, slice).unwrap()
     }
 
-    /// Inserts a single char `ch` at char index `char_index`.
+    /// Inserts a single [M][Measurable] at `width`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
+    /// Panics if the `width` is out of bounds (i.e. `width > Rope::width()`).
     #[inline]
-    pub fn insert(&mut self, char_index: usize, measurable: M) {
-        self.try_insert_single(char_index, measurable).unwrap()
+    pub fn insert(&mut self, width: usize, measurable: M) {
+        self.try_insert(width, measurable).unwrap()
     }
 
     /// Private internal-only method that does a single insertion of
-    /// sufficiently small text.
+    /// a sufficiently small slice.
     ///
-    /// This only works correctly for insertion texts smaller than or equal to
+    /// This only works correctly for insertion slices smaller than or equal to
     /// `MAX_BYTES - 4`.
-    ///
-    /// Note that a lot of the complexity in this method comes from avoiding
-    /// splitting CRLF pairs and, when possible, avoiding re-scanning text for
-    /// text info.  It is otherwise conceptually fairly straightforward.
     fn insert_internal(&mut self, width: usize, ins_slice: &[M]) {
         let root_info = self.root.slice_info();
 
@@ -260,30 +254,24 @@ where
 
                 // No node splitting
                 if (leaf_slice.len() + ins_slice.len()) <= MAX_BYTES {
-                    // Calculate new info without doing a full re-scan of cur_text.
-                    let new_info = {
-                        // Get summed info of current text and to-be-inserted text.
-                        #[allow(unused_mut)]
-                        let mut info = cur_info + SliceInfo::from_slice(ins_slice);
-
-                        info
-                    };
+                    // Calculate new info without doing a full re-scan of cur_slice.
+                    let new_info = cur_info + SliceInfo::from_slice(ins_slice);
                     leaf_slice.insert_slice(index, ins_slice);
                     (new_info, None)
                 }
                 // We're splitting the node
                 else {
-                    let r_text = leaf_slice.insert_slice_split(index, ins_slice);
-                    let l_text_info = SliceInfo::from_slice(leaf_slice);
-                    if r_text.len() > 0 {
-                        let r_text_info = SliceInfo::from_slice(&r_text);
+                    let r_slice = leaf_slice.insert_slice_split(index, ins_slice);
+                    let l_slice_info = SliceInfo::from_slice(leaf_slice);
+                    if r_slice.len() > 0 {
+                        let r_slice_info = SliceInfo::from_slice(&r_slice);
                         (
-                            l_text_info,
-                            Some((r_text_info, Arc::new(Node::Leaf(r_text)))),
+                            l_slice_info,
+                            Some((r_slice_info, Arc::new(Node::Leaf(r_slice)))),
                         )
                     } else {
                         // Leaf couldn't be validly split, so leave it oversized
-                        (l_text_info, None)
+                        (l_slice_info, None)
                     }
                 }
             },
@@ -302,15 +290,33 @@ where
         }
     }
 
-    /// Removes the text in the given char index range.
+    /// Removes the slice in the given width range.
     ///
-    /// Uses range syntax, e.g. `2..7`, `2..`, etc.  The range is in `char`
-    /// indices.
+    /// Uses range syntax, e.g. `2..7`, `2..`, etc.
     ///
-    /// Runs in O(M + log N) time, where N is the length of the [Rope<T>] and M
+    /// Runs in O(M + log N) time, where N is the length of the [Rope<M>] and M
     /// is the length of the range being removed.
     ///
-    /// # Example
+    /// The first removed [M][Measurable] will be the first with a end width sum
+    /// greater than the starting bound if its [width()][Measurable::width] is greater
+    /// than 0, or equal to the starting bound if its [width()][Measurable::width] is
+    /// equal to 0.
+    ///
+    /// The last removed [M][Measurable] will be the first with a start width sum greater
+    /// than the ending bound if its [width()][Measurable::width] is greater than 0,
+    /// or the last one with a start width sum equal to the ending bound if its
+    /// [width()][Measurable::width] is equal to 0.
+    ///
+    /// In essence, this means the following:
+    /// - A range starting between a [M][Measurable]'s start and end width sums will remove
+    /// said [M][Measurable].
+    /// - A range ending in the start of a list of 0 width [M][Measurable]s will remove
+    /// all of them.
+    /// - An empty range that starts and ends in a list of 0 width [M][Measurable]s will
+    /// remove all of them, and nothing else. This contrasts with Rust's usual definition
+    /// of an empty range.
+    ///
+    /// # Examples
     ///
     /// ```rust
     /// # use any_rope::Rope;
@@ -318,35 +324,57 @@ where
     /// let mut rope = Rope::from_slice(
     /// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
     /// );
+    /// // Removing in the middle of `Dolor(5)`.
     /// rope.remove(5..);
     ///
     /// assert_eq!(rope, [Lorem, Ipsum].as_slice());
+    /// ```
+    /// ```rust
+    /// # use any_rope::Rope;
+    /// # use any_rope::Lipsum::*;
+    /// let mut rope = Rope::from_slice(
+    /// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
+    /// );
+    /// // End bound coincides with a 0 width list.
+    /// rope.remove(1..6);
+    ///
+    /// assert_eq!(rope, [Lorem, Consectur("hi"), Adipiscing(true)].as_slice());
+    /// ```
+    /// ```rust
+    /// # use any_rope::Rope;
+    /// # use any_rope::Lipsum::*;
+    /// let mut rope = Rope::from_slice(
+    /// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
+    /// );
+    /// // Empty range at the start of a 0 width list.
+    /// rope.remove(6..6);
+    ///
+    /// assert_eq!(rope, [Lorem, Ipsum, Dolor(3), Consectur("hi"), Adipiscing(true)].as_slice());
     /// ```
     ///
     /// # Panics
     ///
     /// Panics if the start of the range is greater than the end, or if the
-    /// end is out of bounds (i.e. `end > len_chars()`).
-    pub fn remove<R>(&mut self, char_range: R)
+    /// end is out of bounds (i.e. `end > self.width()`).
+    pub fn remove<R>(&mut self, width_range: R)
     where
         R: RangeBounds<usize>,
     {
-        self.try_remove(char_range).unwrap()
+        self.try_remove(width_range).unwrap()
     }
 
-    /// Splits the [Rope<T>] at `char_index`, returning the right part of
-    /// the split.
+    /// Splits the [Rope<M>] at `width`, returning the right part of the split.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
-    pub fn split_off(&mut self, char_index: usize) -> Self {
-        self.try_split_off(char_index).unwrap()
+    /// Panics if the `width` is out of bounds (i.e. `width > self.width()`).
+    pub fn split_off(&mut self, width: usize) -> Self {
+        self.try_split_off(width).unwrap()
     }
 
-    /// Appends a [Rope<T>] to the end of this one, consuming the other [Rope<T>].
+    /// Appends a [Rope<M>] to the end of this one, consuming the other [Rope<M>].
     ///
     /// Runs in O(log N) time.
     pub fn append(&mut self, mut other: Self) {
@@ -394,69 +422,54 @@ where
     //-----------------------------------------------------------------------
     // Index conversion methods
 
-    /// Returns the char index of the given byte.
+    /// Returns the width sum at the start of the given index.
     ///
     /// Notes:
-    ///
-    /// - If the byte is in the middle of a multi-byte char, returns the
-    ///   index of the char that the byte belongs to.
-    /// - `byte_index` can be one-past-the-end, which will return
-    ///   one-past-the-end char index.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `byte_index` is out of bounds (i.e. `byte_index > len_bytes()`).
+    /// Panics if the `index` is out of bounds (i.e. `index > Rope::len()`).
     #[inline]
-    pub fn index_to_width(&self, byte_index: usize) -> usize {
-        self.try_index_to_width(byte_index).unwrap()
+    pub fn index_to_width(&self, index: usize) -> usize {
+        self.try_index_to_width(index).unwrap()
     }
 
-    /// Returns the byte index of the given char.
-    ///
-    /// Notes:
-    ///
-    /// - `char_index` can be one-past-the-end, which will return
-    ///   one-past-the-end byte index.
+    /// Returns an index, given a starting width sum.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
+    /// Panics if the `width` is out of bounds (i.e. `width > Rope::width()`).
     #[inline]
-    pub fn first_width_to_index(&self, width: usize) -> usize {
-        self.try_first_width_to_index(width).unwrap()
+    pub fn start_width_to_index(&self, width: usize) -> usize {
+        self.try_start_width_to_index(width).unwrap()
     }
 
-    /// Returns the byte index of the given char.
-    ///
-    /// Notes:
-    ///
-    /// - `char_index` can be one-past-the-end, which will return
-    ///   one-past-the-end byte index.
+    /// Returns an index, given an ending width sum.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
+    /// Panics if the `width` is out of bounds (i.e. `width > Rope::width()`).
     #[inline]
-    pub fn last_width_to_index(&self, width: usize) -> usize {
-        self.try_last_width_to_index(width).unwrap()
+    pub fn end_width_to_index(&self, width: usize) -> usize {
+        self.try_end_width_to_index(width).unwrap()
     }
 
     //-----------------------------------------------------------------------
     // Fetch methods
 
-    /// Returns the byte at `byte_index`.
+    /// Returns the [M][Measurable] at `index`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `byte_index` is out of bounds (i.e. `byte_index >= len_bytes()`).
+    /// Panics if the `index` is out of bounds (i.e. `index > Rope::len()`).
     #[inline]
     pub fn from_index(&self, index: usize) -> M {
         // Bounds check
@@ -471,13 +484,13 @@ where
         }
     }
 
-    /// Returns the char at `char_index`.
+    /// Returns the [M][Measurable] at `width`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_index` is out of bounds (i.e. `char_index >= len_chars()`).
+    /// Panics if the `width` is out of bounds (i.e. `width > Rope::width()`).
     #[inline]
     pub fn from_width(&self, width: usize) -> M {
         if let Some(out) = self.get_from_width(width) {
@@ -491,22 +504,21 @@ where
         }
     }
 
-    /// Returns the chunk containing the given byte index.
+    /// Returns the chunk containing the given index.
     ///
-    /// Also returns the byte and char indices of the beginning of the chunk
-    /// and the index of the line that the chunk starts on.
+    /// Also returns the index and widht of the beginning of the chunk.
     ///
-    /// Note: for convenience, a one-past-the-end `byte_index` returns the last
+    /// Note: for convenience, a one-past-the-end `index` returns the last
     /// chunk of the `RopeSlice`.
     ///
     /// The return value is organized as
-    /// `(chunk, chunk_byte_index, chunk_char_index, chunk_line_index)`.
+    /// `(chunk, chunk_index, chunk_width)`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `byte_index` is out of bounds (i.e. `byte_index > len_bytes()`).
+    /// Panics if the `index` is out of bounds (i.e. `index > Rope::len()`).
     #[inline]
     pub fn chunk_at_index(&self, index: usize) -> (&[M], usize, usize) {
         // Bounds check
@@ -521,22 +533,21 @@ where
         }
     }
 
-    /// Returns the chunk containing the given char index.
+    /// Returns the chunk containing the given width.
     ///
-    /// Also returns the byte and char indices of the beginning of the chunk
-    /// and the index of the line that the chunk starts on.
+    /// Also returns the index and width of the beginning of the chunk.
     ///
-    /// Note: for convenience, a one-past-the-end `char_index` returns the last
+    /// Note: for convenience, a one-past-the-end `width` returns the last
     /// chunk of the `RopeSlice`.
     ///
     /// The return value is organized as
-    /// `(chunk, chunk_byte_index, chunk_char_index, chunk_line_index)`.
+    /// `(chunk, chunk_index, chunk_width)`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
+    /// Panics if the `width` is out of bounds (i.e. `width > Rope::width()`).
     #[inline]
     pub fn chunk_at_width(&self, width: usize) -> (&[M], usize, usize) {
         if let Some(out) = self.get_chunk_at_width(width) {
@@ -553,7 +564,7 @@ where
     //-----------------------------------------------------------------------
     // Slicing
 
-    /// Gets an immutable slice of the [Rope<T>], using char indices.
+    /// Gets an immutable slice of the [Rope<M>], using a width range.
     ///
     /// Uses range syntax, e.g. `2..7`, `2..`, etc.
     ///
@@ -575,7 +586,7 @@ where
     /// # Panics
     ///
     /// Panics if the start of the range is greater than the end, or if the
-    /// end is out of bounds (i.e. `end > len_chars()`).
+    /// end is out of bounds (i.e. `end > Rope::width()`).
     #[inline]
     pub fn width_slice<R>(&self, width_range: R) -> RopeSlice<M>
     where
@@ -584,7 +595,7 @@ where
         self.get_width_slice(width_range).unwrap()
     }
 
-    /// Gets and immutable slice of the [Rope<T>], using byte indices.
+    /// Gets and immutable slice of the [Rope<M>], using an index range.
     ///
     /// Uses range syntax, e.g. `2..7`, `2..`, etc.
     ///
@@ -594,8 +605,7 @@ where
     ///
     /// Panics if:
     /// - The start of the range is greater than the end.
-    /// - The end is out of bounds (i.e. `end > len_bytes()`).
-    /// - The range doesn't align with char boundaries.
+    /// - The end is out of bounds (i.e. `end > Rope::len()`).
     pub fn index_slice<R>(&self, index_range: R) -> RopeSlice<M>
     where
         R: RangeBounds<usize>,
@@ -609,7 +619,10 @@ where
     //-----------------------------------------------------------------------
     // Iterator methods
 
-    /// Creates an iterator over the bytes of the [Rope<T>].
+    /// Creates an iterator over the [Rope<M>].
+    ///
+    /// This iterator will return values of type [Option<(usize, M)>], where the `usize`
+    /// is the width sum where the given [M][Measurable] starts.
     ///
     /// Runs in O(log N) time.
     #[inline]
@@ -617,31 +630,35 @@ where
         Iter::new(&self.root)
     }
 
-    /// Creates an iterator over the bytes of the [Rope<T>], starting at byte
-    /// `byte_index`.
+    /// Creates an iterator over the bytes of the [Rope<M>], starting at `width`.
     ///
-    /// If `byte_index == len_bytes()` then an iterator at the end of the
-    /// [Rope<T>] is created (i.e. `next()` will return `None`).
+    /// This iterator will return values of type [Option<(usize, M)>], where the `usize`
+    /// is the width where the given [M][Measurable] starts. Since one can iterate in
+    /// between an [M][Measurable]s start and end width sums. the first `usize` may not
+    /// actually corelate to the `width` given to the function.
+    ///
+    /// If `width == Rope::width()` then an iterator at the end of the
+    /// [Rope<M>] is created (i.e. [next()][crate::iter::Iter::next] will return `None`).
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `byte_index` is out of bounds (i.e. `byte_index > len_bytes()`).
+    /// Panics if the `width` is out of bounds (i.e. `width > Rope::width()`).
     #[inline]
-    pub fn iter_at_width(&self, index: usize) -> Iter<M> {
-        if let Some(out) = self.get_iter_at_width(index) {
+    pub fn iter_at_width(&self, width: usize) -> Iter<M> {
+        if let Some(out) = self.get_iter_at_width(width) {
             out
         } else {
             panic!(
                 "Attempt to index past end of Rope: byte index {}, Rope byte length {}",
-                index,
+                width,
                 self.len()
             );
         }
     }
 
-    /// Creates an iterator over the chunks of the [Rope<T>].
+    /// Creates an iterator over the chunks of the [Rope<M>].
     ///
     /// Runs in O(log N) time.
     #[inline]
@@ -649,25 +666,24 @@ where
         Chunks::new(&self.root)
     }
 
-    /// Creates an iterator over the chunks of the [Rope<T>], with the
-    /// iterator starting at the chunk containing `byte_index`.
+    /// Creates an iterator over the chunks of the [Rope<M>], with the
+    /// iterator starting at the chunk containing the `index`.
     ///
-    /// Also returns the byte and char indices of the beginning of the first
-    /// chunk to be yielded, and the index of the line that chunk starts on.
+    /// Also returns the index and width of the beginning of the first
+    /// chunk to be yielded.
     ///
-    /// If `byte_index == len_bytes()` an iterator at the end of the [Rope<T>]
-    /// (yielding `None` on a call to `next()`) is created.
+    /// If `index == Rope::len()` an iterator at the end of the [Rope<M>]
+    /// (yielding `None` on a call to [next()][crate::iter::Iter::next]) is created.
     ///
-    /// The return value is organized as
-    /// `(iterator, chunk_byte_index, chunk_char_index, chunk_line_index)`.
+    /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `byte_index` is out of bounds (i.e. `byte_index > len_bytes()`).
+    /// Panics if the `index` is out of bounds (i.e. `index > Rope::len()`).
     #[inline]
-    pub fn chunks_at_index(&self, index: usize) -> (Chunks<M>, usize, usize, usize) {
+    pub fn chunks_at_index(&self, index: usize) -> (Chunks<M>, usize, usize) {
         if let Some(out) = self.get_chunks_at_index(index) {
             out
         } else {
@@ -679,25 +695,24 @@ where
         }
     }
 
-    /// Creates an iterator over the chunks of the [Rope<T>], with the
-    /// iterator starting at the chunk containing `char_index`.
+    /// Creates an iterator over the chunks of the [Rope<M>], with the
+    /// iterator starting at the chunk containing the `width`.
     ///
-    /// Also returns the byte and char indices of the beginning of the first
-    /// chunk to be yielded, and the index of the line that chunk starts on.
+    /// Also returns the index and width of the beginning of the first
+    /// chunk to be yielded.
     ///
-    /// If `char_index == len_chars()` an iterator at the end of the [Rope<T>]
-    /// (yielding `None` on a call to `next()`) is created.
+    /// If `width == Rope::width()` an iterator at the end of the [Rope<M>]
+    /// (yielding `None` on a call to [next()][crate::iter::Iter::next]) is created.
     ///
-    /// The return value is organized as
-    /// `(iterator, chunk_byte_index, chunk_char_index, chunk_line_index)`.
+    /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `char_index` is out of bounds (i.e. `char_index > len_chars()`).
+    /// Panics if the `width` is out of bounds (i.e. `width > Rope::width()`).
     #[inline]
-    pub fn chunks_at_width(&self, width: usize) -> (Chunks<M>, usize, usize, usize) {
+    pub fn chunks_at_width(&self, width: usize) -> (Chunks<M>, usize, usize) {
         if let Some(out) = self.get_chunks_at_width(width) {
             out
         } else {
@@ -713,14 +728,14 @@ where
     /// in-memory data.
     ///
     /// This happens when one of the ropes is a clone of the other and
-    /// neither have been modified since then.  Because clones initially
+    /// neither have been modified since then. Because clones initially
     /// share all the same data, it can be useful to check if they still
     /// point to precisely the same memory as a way of determining
     /// whether they are both still unmodified.
     ///
     /// Note: this is distinct from checking for equality: two ropes can
     /// have the same *contents* (equal) but be stored in different
-    /// memory locations (not instances).  Importantly, two clones that
+    /// memory locations (not instances). Importantly, two clones that
     /// post-cloning are modified identically will *not* be instances
     /// anymore, even though they will have equal contents.
     ///
@@ -750,7 +765,6 @@ where
     /// - The tree is the same height everywhere.
     /// - All internal nodes have the minimum number of children.
     /// - All leaf nodes are non-empty.
-    /// - CRLF pairs are never split over chunk boundaries.
     #[doc(hidden)]
     pub fn assert_invariants(&self) {
         self.root.assert_balance();
@@ -773,83 +787,69 @@ where
             self.root = child;
         }
     }
-
-    /// Non-panicking version of [`char_to_byte()`](Rope::char_to_byte).
-    #[inline]
-    pub fn try_last_width_to_index(&self, width: usize) -> Result<usize> {
-        // Bounds check
-        if width <= self.width() {
-            let (chunk, b, c) = self.chunk_at_width(width);
-            Ok(b + last_width_to_index(chunk, width - c))
-        } else {
-            Err(Error::WidthOutOfBounds(width, self.width()))
-        }
-    }
 }
 
 /// # Non-Panicking
 ///
 /// The methods in this impl block provide non-panicking versions of
-/// [Rope<T>]'s panicking methods.  They return either `Option::None` or
+/// [Rope<M>]'s panicking methods. They return either `Option::None` or
 /// `Result::Err()` when their panicking counterparts would have panicked.
 impl<M> Rope<M>
 where
     M: Measurable,
 {
-    /// Non-panicking version of [`insert()`](Rope::insert).
+    /// Non-panicking version of [insert()][Rope::insert].
     #[inline]
-    pub fn try_insert(&mut self, char_index: usize, elements: &[M]) -> Result<()> {
+    pub fn try_insert_slice(&mut self, width: usize, mut slice: &[M]) -> Result<()> {
         // Bounds check
-        if char_index <= self.width() {
+        if width <= self.width() {
             // We have three cases here:
-            // 1. The insertion text is very large, in which case building a new
+            // 1. The insertion slice is very large, in which case building a new
             //    Rope out of it and splicing it into the existing Rope is most
             //    efficient.
-            // 2. The insertion text is somewhat large, in which case splitting it
+            // 2. The insertion slice is somewhat large, in which case splitting it
             //    up into chunks and repeatedly inserting them is the most
-            //    efficient.  The splitting is necessary because the insertion code
+            //    efficient. The splitting is necessary because the insertion code
             //    only works correctly below a certain insertion size.
-            // 3. The insertion text is small, in which case we can simply insert
+            // 3. The insertion slice is small, in which case we can simply insert
             //    it.
             //
             // Cases #2 and #3 are rolled into one case here, where case #3 just
-            // results in the text being "split" into only one chunk.
+            // results in the slice being "split" into only one chunk.
             //
-            // The boundary for what constitutes "very large" text was arrived at
+            // The boundary for what constitutes "very large" slice was arrived at
             // experimentally, by testing at what point Rope build + splice becomes
-            // faster than split + repeated insert.  This constant is likely worth
-            // revisiting from time to time as Ropey evolves.
-            if elements.len() > MAX_BYTES * 6 {
-                // Case #1: very large text, build rope and splice it in.
-                let text_rope = Rope::from_slice(elements);
-                let right = self.split_off(char_index);
-                self.append(text_rope);
+            // faster than split + repeated insert.
+            if slice.len() > MAX_BYTES * 6 {
+                // Case #1: very large slice, build rope and splice it in.
+                let rope = Rope::from_slice(slice);
+                let right = self.split_off(width);
+                self.append(rope);
                 self.append(right);
             } else {
                 // Cases #2 and #3: split into chunks and repeatedly insert.
-                let mut text = elements;
-                while !text.is_empty() {
-                    // Split a chunk off from the end of the text.
+                while !slice.is_empty() {
+                    // Split a chunk off from the end of the slice.
                     // We do this from the end instead of the front so that
                     // the repeated insertions can keep re-using the same
                     // insertion point.
-                    let split_index = text.len() - (MAX_BYTES - 4).min(text.len());
-                    let ins_text = &text[split_index..];
-                    text = &text[..split_index];
+                    let split_index = slice.len() - (MAX_BYTES - 4).min(slice.len());
+                    let ins_slice = &slice[split_index..];
+                    slice = &slice[..split_index];
 
                     // Do the insertion.
-                    self.insert_internal(char_index, ins_text);
+                    self.insert_internal(width, ins_slice);
                 }
             }
             Ok(())
         } else {
-            Err(Error::WidthOutOfBounds(char_index, self.width()))
+            Err(Error::WidthOutOfBounds(width, self.width()))
         }
     }
 
-    /// Non-panicking version of [`insert_char()`](Rope::insert_char).
+    /// Non-panicking version of [insert()][Rope::insert].
     #[inline]
-    pub fn try_insert_single(&mut self, width: usize, measurable: M) -> Result<()> {
+    pub fn try_insert(&mut self, width: usize, measurable: M) -> Result<()> {
         // Bounds check
         if width <= self.width() {
             self.insert_internal(width, &[measurable]);
@@ -859,13 +859,13 @@ where
         }
     }
 
-    /// Non-panicking version of [`remove()`](Rope::remove).
-    pub fn try_remove<R>(&mut self, char_range: R) -> Result<()>
+    /// Non-panicking version of [remove()][Rope::remove].
+    pub fn try_remove<R>(&mut self, width_range: R) -> Result<()>
     where
         R: RangeBounds<usize>,
     {
-        let start_opt = start_bound_to_num(char_range.start_bound());
-        let end_opt = end_bound_to_num(char_range.end_bound());
+        let start_opt = start_bound_to_num(width_range.start_bound());
+        let end_opt = end_bound_to_num(width_range.end_bound());
         let start = start_opt.unwrap_or(0);
         let end = end_opt.unwrap_or_else(|| self.width());
         if end.max(start) > self.width() {
@@ -897,7 +897,7 @@ where
         }
     }
 
-    /// Non-panicking version of [`split_off()`](Rope::split_off).
+    /// Non-panicking version of [split_off()][Rope::split_off].
     pub fn try_split_off(&mut self, width: usize) -> Result<Self> {
         // Bounds check
         if width <= self.width() {
@@ -928,7 +928,7 @@ where
         }
     }
 
-    /// Non-panicking version of [`byte_to_char()`](Rope::byte_to_char).
+    /// Non-panicking version of [index_to_width()][Rope::index_to_width].
     #[inline]
     pub fn try_index_to_width(&self, index: usize) -> Result<usize> {
         // Bounds check
@@ -940,9 +940,9 @@ where
         }
     }
 
-    /// Non-panicking version of [`char_to_byte()`](Rope::char_to_byte).
+    /// Non-panicking version of [start_width_to_index()][Rope::start_width_to_index].
     #[inline]
-    pub fn try_first_width_to_index(&self, width: usize) -> Result<usize> {
+    pub fn try_start_width_to_index(&self, width: usize) -> Result<usize> {
         // Bounds check
         if width <= self.width() {
             let (chunk, b, c) = self.chunk_at_width(width);
@@ -952,7 +952,19 @@ where
         }
     }
 
-    /// Non-panicking version of [`byte()`](Rope::byte).
+    /// Non-panicking version of [end_width_to_index()][Rope::end_width_to_index].
+    #[inline]
+    pub fn try_end_width_to_index(&self, width: usize) -> Result<usize> {
+        // Bounds check
+        if width <= self.width() {
+            let (chunk, b, c) = self.chunk_at_width(width);
+            Ok(b + last_width_to_index(chunk, width - c))
+        } else {
+            Err(Error::WidthOutOfBounds(width, self.width()))
+        }
+    }
+
+    /// Non-panicking version of [from_index()][Rope::from_index].
     #[inline]
     pub fn get_from_index(&self, index: usize) -> Option<M> {
         // Bounds check
@@ -965,7 +977,7 @@ where
         }
     }
 
-    /// Non-panicking version of [`char()`](Rope::char).
+    /// Non-panicking version of [from_width()][Rope::from_width].
     #[inline]
     pub fn get_from_width(&self, width: usize) -> Option<M> {
         // Bounds check
@@ -977,7 +989,7 @@ where
         }
     }
 
-    /// Non-panicking version of [`chunk_at_byte()`](Rope::chunk_at_byte).
+    /// Non-panicking version of [chunk_at_index()][Rope::chunk_at_index].
     #[inline]
     pub fn get_chunk_at_index(&self, byte_index: usize) -> Option<(&[M], usize, usize)> {
         // Bounds check
@@ -989,7 +1001,7 @@ where
         }
     }
 
-    /// Non-panicking version of [`chunk_at_char()`](Rope::chunk_at_char).
+    /// Non-panicking version of [chunk_at_width()][Rope::chunk_at_width].
     #[inline]
     pub fn get_chunk_at_width(&self, width: usize) -> Option<(&[M], usize, usize)> {
         // Bounds check
@@ -1001,7 +1013,7 @@ where
         }
     }
 
-    /// Non-panicking version of [`slice()`](Rope::slice).
+    /// Non-panicking version of [width_slice()][Rope::width_slice].
     #[inline]
     pub fn get_width_slice<R>(&self, width_range: R) -> Option<RopeSlice<M>>
     where
@@ -1018,21 +1030,21 @@ where
         }
     }
 
-    /// Non-panicking version of [`byte_slice()`](Rope::byte_slice).
+    /// Non-panicking version of [index_slice()][Rope::index_slice].
     #[inline]
-    pub fn get_index_slice<R>(&self, byte_range: R) -> Option<RopeSlice<M>>
+    pub fn get_index_slice<R>(&self, index_range: R) -> Option<RopeSlice<M>>
     where
         R: RangeBounds<usize>,
     {
-        self.get_index_slice_impl(byte_range).ok()
+        self.get_index_slice_impl(index_range).ok()
     }
 
-    pub(crate) fn get_index_slice_impl<R>(&self, byte_range: R) -> Result<RopeSlice<M>>
+    pub(crate) fn get_index_slice_impl<R>(&self, index_range: R) -> Result<RopeSlice<M>>
     where
         R: RangeBounds<usize>,
     {
-        let start_range = start_bound_to_num(byte_range.start_bound());
-        let end_range = end_bound_to_num(byte_range.end_bound());
+        let start_range = start_bound_to_num(index_range.start_bound());
+        let end_range = end_bound_to_num(index_range.end_bound());
 
         // Bounds checks.
         match (start_range, end_range) {
@@ -1072,7 +1084,7 @@ where
         RopeSlice::new_with_index_range(&self.root, start, end)
     }
 
-    /// Non-panicking version of [`iter_at()`](Self::iter_at).
+    /// Non-panicking version of [iter_at_width()][Rope::iter_at_width].
     #[inline]
     pub fn get_iter_at_width(&self, width: usize) -> Option<Iter<M>> {
         // Bounds check
@@ -1088,9 +1100,9 @@ where
         }
     }
 
-    /// Non-panicking version of [`chunks_at_byte()`](Rope::chunks_at_byte).
+    /// Non-panicking version of [chunks_at_index()][Rope::chunks_at_index].
     #[inline]
-    pub fn get_chunks_at_index(&self, index: usize) -> Option<(Chunks<M>, usize, usize, usize)> {
+    pub fn get_chunks_at_index(&self, index: usize) -> Option<(Chunks<M>, usize, usize)> {
         // Bounds check
         if index <= self.len() {
             Some(Chunks::new_with_range_at_index(
@@ -1104,17 +1116,14 @@ where
         }
     }
 
-    /// Non-panicking version of [`chunks_at_char()`](Rope::chunks_at_char).
+    /// Non-panicking version of [chunks_at_width()][Rope::chunks_at_width].
     #[inline]
-    pub fn get_chunks_at_width(
-        &self,
-        char_index: usize,
-    ) -> Option<(Chunks<M>, usize, usize, usize)> {
+    pub fn get_chunks_at_width(&self, width: usize) -> Option<(Chunks<M>, usize, usize)> {
         // Bounds check
-        if char_index <= self.width() {
+        if width <= self.width() {
             Some(Chunks::new_with_range_at_width(
                 &self.root,
-                char_index,
+                width,
                 (0, self.len()),
                 (0, self.width()),
             ))
@@ -1241,8 +1250,8 @@ where
     }
 }
 
-/// Attempts to borrow the contents of the [Rope<T>], but will convert to an
-/// owned string if the contents is not contiguous in memory.
+/// Attempts to borrow the contents of the [Rope<M>], but will convert to an
+/// owned [`[M]`][Measurable] if the contents is not contiguous in memory.
 ///
 /// Runs in best case O(1), worst case O(N).
 impl<'a, M> From<&'a Rope<M>> for std::borrow::Cow<'a, [M]>
@@ -1833,17 +1842,17 @@ mod tests {
     fn width_to_index_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        assert_eq!(rope.first_width_to_index(0), 0);
-        assert_eq!(rope.first_width_to_index(1), 1);
-        assert_eq!(rope.first_width_to_index(2), 1);
+        assert_eq!(rope.start_width_to_index(0), 0);
+        assert_eq!(rope.start_width_to_index(1), 1);
+        assert_eq!(rope.start_width_to_index(2), 1);
 
-        assert_eq!(rope.first_width_to_index(91), 47);
-        assert_eq!(rope.first_width_to_index(92), 47);
-        assert_eq!(rope.first_width_to_index(93), 48);
-        assert_eq!(rope.first_width_to_index(94), 49);
+        assert_eq!(rope.start_width_to_index(91), 47);
+        assert_eq!(rope.start_width_to_index(92), 47);
+        assert_eq!(rope.start_width_to_index(93), 48);
+        assert_eq!(rope.start_width_to_index(94), 49);
 
-        assert_eq!(rope.first_width_to_index(102), 51);
-        assert_eq!(rope.first_width_to_index(103), 51);
+        assert_eq!(rope.start_width_to_index(102), 51);
+        assert_eq!(rope.start_width_to_index(103), 51);
     }
 
     #[test]
@@ -2113,7 +2122,7 @@ mod tests {
     }
 
     #[test]
-    fn to_string_01() {
+    fn to_vec_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice: Vec<Lipsum> = (&rope).into();
 
