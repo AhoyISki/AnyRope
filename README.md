@@ -125,9 +125,9 @@ Unless you explicitly state otherwise, any contribution intentionally
 submitted for inclusion in AnyRope by you will be licensed as above,
 without any additional terms or conditions.
 
-[crates-io-badge]: https://img.shields.io/crates/v/any-rope.svg?style=for-the-badge&logo=appveyor
+[crates-io-badge]: https://img.shields.io/crates/v/any-rope.svg?style=for-the-badge
 [crates-io-url]:   https://crates.io/crates/any-rope
-[github-ci-img]:   https://github.com/AhoyISki/AnyRope/actions/workflows/ci.yml/badge.svg?style=for-the-badge&logo=appveyor
+[github-ci-img]:   https://github.com/AhoyISki/AnyRope/actions/workflows/ci.yml/badge.svg?style=for-the-badge
 [github-ci]:       https://github.com/AhoyISki/AnyRope/actions/workflows/ci.yml
-[docs-rs-img]:     https://docs.rs/any-rope/badge.svg?style=for-the-badge&logo=appveyor
+[docs-rs-img]:     https://docs.rs/any-rope/badge.svg?style=for-the-badge
 [docs-rs-url]:     https://docs.rs/any-rope
