@@ -1265,8 +1265,8 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
-        rope::Lipsum::{self, *},
         slice_utils::{first_width_to_index, index_to_width},
+        Lipsum::{self, *},
         Rope,
     };
 

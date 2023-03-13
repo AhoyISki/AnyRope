@@ -8,13 +8,7 @@
 //! stdout.
 
 #![allow(clippy::redundant_field_names)]
-
-extern crate any_ropey;
-
-use std::fs::File;
-use std::io;
-
-use any_ropey::{iter::Iter, Measurable, Rope, RopeSlice};
+use any_rope::{iter::Iter, Measurable, Rope, RopeSlice};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Lipsum {

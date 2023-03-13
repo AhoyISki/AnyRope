@@ -71,12 +71,12 @@
 use std::sync::Arc;
 
 use crate::rope::Measurable;
-use crate::slice_utils::{first_width_to_index, index_to_width, last_width_to_index, width_of};
+use crate::slice_utils::{first_width_to_index, index_to_width, width_of};
 use crate::tree::{Node, SliceInfo};
 
 //==========================================================
 
-/// An iterator over a [Rope<T>][crate::rope::Rope]'s bytes.
+/// An iterator over a [Rope<T>][crate::rope::Rope]'s elements.
 #[derive(Debug, Clone)]
 pub struct Iter<'a, M>
 where
@@ -148,7 +148,6 @@ where
             chunk
         };
 
-        println!("{:?}, {}, {}", cur_chunk, at_width, chunk_start_width);
         let index = first_width_to_index(cur_chunk, at_width - chunk_start_width);
         let width = index_to_width(cur_chunk, index) + chunk_start_width;
 
@@ -206,13 +205,13 @@ where
     /// This is useful when chaining iterator methods:
     ///
     /// ```rust
-    /// # use any_ropey::Lipsum::{self};
-    /// # use any_ropey::Rope;
-    /// # let rope = Rope::from_slice(&[Lipsum::Lorem, Lipsum::Ipsum, Lipsum::Dolor(5)]);
-    /// // Enumerate the rope's elements in reverse, starting from the end.
-    /// for (index, element) in rope.iter_at(rope.len()).reversed().enumerate() {
-    ///     println!("{} {:?}", index, element);
-    /// #   assert_eq!(element, rope.from_index(rope.len() - index - 1));
+    /// # use any_rope::Lipsum::*;
+    /// # use any_rope::Rope;
+    /// # let rope = Rope::from_slice(&[Lorem, Ipsum, Dolor(5)]);
+    /// // Print the rope's elements and their widths in reverse.
+    /// for (width, element) in rope.iter_at_width(rope.width()).reversed() {
+    ///     println!("{} {:?}", width, element);
+    /// #   assert_eq!(element, rope.from_width(width));
     /// }
     #[inline]
     #[must_use]
@@ -494,7 +493,6 @@ where
         };
 
         let (chunk, _) = node.get_chunk_at_index(info.len as usize);
-        println!("other: {}, {}", at_index, info.len as usize);
         let width = index_to_width(chunk, at_index - info.len as usize);
 
         // Create the iterator.
@@ -550,13 +548,15 @@ where
     /// This is useful when chaining iterator methods:
     ///
     /// ```rust
-    /// # use ropey::Lipsum::{self, *};
-    /// # use ropey::Rope;
-    /// # let rope = Rope::from_str(&[Lorem, Ipsum, Dolor(3), Sit, Amet]);
+    /// # use any_rope::Lipsum::*;
+    /// # use any_rope::Rope;
+    /// # let rope = Rope::from_slice(
+    /// #    &[Lorem, Ipsum, Dolor(3), Sit, Amet]
+    /// # );
     /// // Enumerate the rope's chunks in reverse, starting from the end.
     /// for (index, chunk) in rope.chunks_at_index(rope.len()).0.reversed().enumerate() {
-    ///     println!("{} {}", index, chunk);
-    /// #   assert_eq!(chunk, rope.chunks().nth(rope.chunks().count() - i - 1).unwrap());
+    ///     println!("{} {:?}", index, chunk);
+    /// #   assert_eq!(chunk, rope.chunks().nth(rope.chunks().count() - index - 1).unwrap());
     /// }
     #[inline]
     #[must_use]
@@ -744,7 +744,7 @@ mod tests {
     #![allow(clippy::while_let_on_iterator)]
     use super::*;
     use crate::{
-        rope::Lipsum::{self, *},
+        Lipsum::{self, *},
         Rope,
     };
 
@@ -881,7 +881,7 @@ mod tests {
     fn iter_at_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice = rope.width_slice(..79);
-        let mut iter = slice.iter_at(55);
+        let mut iter = slice.iter_at(56);
 
         assert_eq!(iter.next(), Some((55, Ipsum)));
         assert_eq!(iter.next(), Some((57, Dolor(4))));
@@ -930,12 +930,6 @@ mod tests {
 
         let mut len = slice.len();
         let mut iter = slice.iter();
-        println!(
-            "{:?},\n{:?}",
-            slice,
-            iter.clone().collect::<Vec<(usize, Lipsum)>>()
-        );
-
         assert_eq!(len, iter.len());
 
         while let Some(_) = iter.next() {

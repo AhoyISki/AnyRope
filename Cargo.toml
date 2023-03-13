@@ -1,7 +1,7 @@
 [package]
-name = "any-ropey"
-version = "1.6.0"
-authors = ["Nathan Vegdahl <cessen@cessen.com>", "Mateus Yoshiaki <ahoyiski@gmail.com>"]
+name = "any-rope"
+version = "1.0.0"
+authors = ["Mateus Yoshiaki <ahoyiski@gmail.com>"]
 description = "A fast and robust arbitrary rope for Rust. Based on Ropey."
 documentation = "https://docs.rs/any-ropey"
 repository = "https://github.com/AhoyISki/any-ropey"
@@ -10,21 +10,10 @@ license = "MIT"
 keywords = ["rope", "data", "edit", "buffer"]
 categories = ["data-structures"]
 exclude = ["/design/*", "/benches/*.txt", "/fuzz/**", "/.github/*"]
-
-[features]
-default = ["unicode_lines", "simd"]
-cr_lines = [] # Enable recognizing carriage returns as line breaks.
-unicode_lines = ["cr_lines"] # Enable recognizing all Unicode line breaks.
-simd = ["str_indices/simd"]
-
-# Internal feature: Not part of public stable API
-# enables a much smaller chunk size that makes it
-# easier to catch bugs without requiring huge text sizes during fuzzing.
-small_chunks = []
+edition = "2021"
 
 [dependencies]
-smallvec = "1.0.0"
-str_indices = { version = "0.4.0", default-features = false }
+smallvec = "1.10.0"
 
 [dev-dependencies]
 rand = "0.8"
@@ -34,28 +23,5 @@ unicode-segmentation = "1.3"
 fnv = "1"
 fxhash = "0.2"
 
-#-----------------------------------------
-
-[[bench]]
-name = "create"
-harness = false
-
-[[bench]]
-name = "insert"
-harness = false
-
-[[bench]]
-name = "hash"
-harness = false
-
-[[bench]]
-name = "remove"
-harness = false
-
-[[bench]]
-name = "queries"
-harness = false
-
-[[bench]]
-name = "iterators"
-harness = false
+[build]
+rustdocflags = ["--cfg", "test"]

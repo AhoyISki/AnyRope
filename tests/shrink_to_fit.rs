@@ -1,7 +1,4 @@
-extern crate any_ropey;
-extern crate rand;
-
-use any_ropey::{Measurable, Rope};
+use any_rope::{Measurable, Rope};
 use rand::{rngs::ThreadRng, Rng};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -57,8 +54,8 @@ fn shrink_to_fit() {
 
     // Do a bunch of random incoherent inserts
     for _ in 0..1000 {
-        let len = rope.len().max(1);
-        rope.insert_slice(rng.gen::<usize>() % len, random_slice(&mut rng).as_slice());
+        let width = rope.width().max(1);
+        rope.insert_slice(rng.gen::<usize>() % width, random_slice(&mut rng).as_slice());
     }
 
     let rope2 = rope.clone();

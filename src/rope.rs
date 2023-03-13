@@ -7,105 +7,93 @@ use crate::iter::{Chunks, Iter};
 use crate::rope_builder::RopeBuilder;
 use crate::slice::RopeSlice;
 use crate::slice_utils::{first_width_to_index, index_to_width, last_width_to_index};
-use crate::tree::{Branch, Node, SliceInfo, MAX_BYTES, MIN_BYTES};
+use crate::tree::{BranchChildren, Node, SliceInfo, MAX_BYTES, MIN_BYTES};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
-pub trait Measurable: Clone + Copy + Debug {
-    /// The width of this element, it need not be the actual lenght in bytes, but just a
-    /// representative value, to be fed to the [Rope][crate::rope::Rope].
+/// A object that has a definite size, that can be interpreted by a [Rope<T>].
+pub trait Measurable: Clone + Copy {
+    /// The width of this element, it need not be the actual lenght in bytes,
+    /// but just a representative value, to be fed to the [Rope<T>].
     fn width(&self) -> usize;
 }
 
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Lipsum {
-    Lorem,
-    Ipsum,
-    Dolor(usize),
-    Sit,
-    Amet,
-    Consectur(&'static str),
-    Adipiscing(bool),
-}
-
-#[cfg(test)]
-impl Measurable for Lipsum {
-    fn width(&self) -> usize {
-        match self {
-            Lipsum::Lorem => 1,
-            Lipsum::Ipsum => 2,
-            Lipsum::Dolor(width) => *width,
-            Lipsum::Sit => 0,
-            Lipsum::Amet => 0,
-            Lipsum::Consectur(text) => text.len(),
-            Lipsum::Adipiscing(boolean) => *boolean as usize,
-        }
-    }
-}
-
-/// A utf8 text rope.
+/// A rope of elements that are [Measurable].
 ///
-/// The time complexity of nearly all edit and query operations on `Rope` are
-/// worst-case `O(log N)` in the length of the rope.  `Rope` is designed to
-/// work efficiently even for huge (in the gigabytes) and pathological (all on
-/// one line) texts.
+/// The time complexity of nearly all edit and query operations on [Rope<T>] are
+/// worst-case `O(log N)` in the length of the rope.  [Rope<T>] is designed to
+/// work efficiently even for huge (in the gigabytes) arrays of [T][Measurable].
+///
+/// In the examples below, a struct called [Lipsum][crate::Lipsum] will be used in
+/// order to demonstrate AnyRope's features.
 ///
 /// # Editing Operations
 ///
-/// The primary editing operations on `Rope` are insertion and removal of text.
+/// The primary editing operations on [Rope<T>] are insertion and removal of slices
+/// or individual elements.
 /// For example:
 ///
 /// ```
-/// # use ropey::Rope;
+/// # use any_rope::Rope;
+/// # use any_rope::Lipsum::*;
 /// #
-/// let mut rope = Rope::from_str("Hello みんなさん!");
-/// rope.remove(6..11);
-/// rope.insert(6, "world");
+/// let mut rope = Rope::from_slice(
+/// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
+/// );
+/// rope.remove(6..8);
+/// rope.insert(6, Consectur("bye"));
 ///
-/// assert_eq!(rope, "Hello world!");
+/// assert_eq!(rope, [Lorem, Ipsum, Dolor(3), Consectur("bye"), Adipiscing(true)].as_slice());
 /// ```
 ///
 /// # Query Operations
 ///
-/// `Rope` provides a rich set of efficient query functions, including querying
-/// rope length in bytes/`char`s/lines, fetching individual `char`s or lines,
-/// and converting between byte/`char`/line indices.  For example, to find the
-/// starting `char` index of a given line:
+/// [Rope<T>] gives you the ability to query an element at any given index or
+/// width, and the convertion between the two. You can either convert an index to
+/// a width, or convert the width at the start or end of an element to an index.
+/// For example:
 ///
 /// ```
-/// # use ropey::Rope;
+/// # use any_rope::Rope;
+/// # use any_rope::Lipsum::*;
 /// #
-/// let rope = Rope::from_str("Hello みんなさん!\nHow are you?\nThis text has multiple lines!");
+/// let rope = Rope::from_slice(&[Sit, Sit, Lorem, Lorem, Ipsum, Dolor(25), Amet, Amet, Lorem]);
 ///
-/// assert_eq!(rope.line_to_char(0), 0);
-/// assert_eq!(rope.line_to_char(1), 13);
-/// assert_eq!(rope.line_to_char(2), 26);
+/// assert_eq!(rope.first_width_to_index(0), 0);
+/// assert_eq!(rope.last_width_to_index(0), 2);
+/// assert_eq!(rope.first_width_to_index(2), 4);
+/// assert_eq!(rope.first_width_to_index(3), 4);
+/// assert_eq!(rope.first_width_to_index(16), 5);
+/// assert_eq!(rope.first_width_to_index(29), 6);
 /// ```
 ///
 /// # Slicing
 ///
-/// You can take immutable slices of a `Rope` using `slice()`:
+/// You can take immutable slices of a [Rope<T>] using `slice()`:
 ///
 /// ```
-/// # use ropey::Rope;
+/// # use any_rope::Rope;
+/// # use any_rope::Lipsum::*;
 /// #
-/// let mut rope = Rope::from_str("Hello みんなさん!");
-/// let middle = rope.slice(3..8);
+/// let mut rope = Rope::from_slice(
+/// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
+/// );
+/// let width_slice = rope.width_slice(3..6);
+/// let index_slice = rope.index_slice(2..5);
 ///
-/// assert_eq!(middle, "lo みん");
+/// assert_eq!(width_slice, index_slice);
 /// ```
 ///
 /// # Cloning
 ///
-/// Cloning `Rope`s is extremely cheap, running in `O(1)` time and taking a
+/// Cloning [Rope<T>]s is extremely cheap, running in `O(1)` time and taking a
 /// small constant amount of memory for the new clone, regardless of text size.
-/// This is accomplished by data sharing between `Rope` clones.  The memory
+/// This is accomplished by data sharing between [Rope<T>] clones.  The memory
 /// used by clones only grows incrementally as the their contents diverge due
 /// to edits.  All of this is thread safe, so clones can be sent freely
 /// between threads.
 ///
 /// The primary intended use-case for this feature is to allow asynchronous
-/// processing of `Rope`s.  For example, saving a large document to disk in a
+/// processing of [Rope<T>]s.  For example, saving a large document to disk in a
 /// separate thread while the user continues to perform edits.
 #[derive(Clone)]
 pub struct Rope<M>
@@ -122,7 +110,7 @@ where
     //-----------------------------------------------------------------------
     // Constructors
 
-    /// Creates an empty `Rope`.
+    /// Creates an empty [Rope<T>].
     #[inline]
     pub fn new() -> Self {
         Rope {
@@ -130,7 +118,7 @@ where
         }
     }
 
-    /// Creates a `Rope` from a string slice.
+    /// Creates a [Rope<T>] from a string slice.
     ///
     /// Runs in O(N) time.
     #[inline]
@@ -142,7 +130,7 @@ where
     //-----------------------------------------------------------------------
     // Informational methods
 
-    /// Total number of bytes in the `Rope`.
+    /// Total number of bytes in the [Rope<T>].
     ///
     /// Runs in O(1) time.
     #[inline]
@@ -150,7 +138,7 @@ where
         self.root.len()
     }
 
-    /// Total number of chars in the `Rope`.
+    /// Total number of chars in the [Rope<T>].
     ///
     /// Runs in O(1) time.
     #[inline]
@@ -161,7 +149,7 @@ where
     //-----------------------------------------------------------------------
     // Memory management methods
 
-    /// Total size of the `Rope`'s text buffer space, in bytes.
+    /// Total size of the [Rope<T>]'s text buffer space, in bytes.
     ///
     /// This includes unoccupied text buffer space.  You can calculate
     /// the unoccupied space with `capacity() - len_bytes()`.  In general,
@@ -176,9 +164,9 @@ where
         byte_count
     }
 
-    /// Shrinks the `Rope`'s capacity to the minimum possible.
+    /// Shrinks the [Rope<T>]'s capacity to the minimum possible.
     ///
-    /// This will rarely result in `capacity() == len_bytes()`.  `Rope`
+    /// This will rarely result in `capacity() == len_bytes()`.  [Rope<T>]
     /// stores text in a sequence of fixed-capacity chunks, so an exact fit
     /// only happens for texts that are both a precise multiple of that
     /// capacity _and_ have code point boundaries that line up exactly with
@@ -186,11 +174,11 @@ where
     ///
     /// After calling this, the difference between `capacity()` and
     /// `len_bytes()` is typically under 1KB per megabyte of text in the
-    /// `Rope`.
+    /// [Rope<T>].
     ///
-    /// **NOTE:** calling this on a `Rope` clone causes it to stop sharing
+    /// **NOTE:** calling this on a [Rope<T>] clone causes it to stop sharing
     /// all data with its other clones.  In such cases you will very likely
-    /// be _increasing_ total memory usage despite shrinking the `Rope`'s
+    /// be _increasing_ total memory usage despite shrinking the [Rope<T>]'s
     /// capacity.
     ///
     /// Runs in O(N) time, and uses O(log N) additional space during
@@ -208,7 +196,7 @@ where
             }
 
             if node_stack.last().unwrap().is_leaf() {
-                builder.append(node_stack.pop().unwrap().leaf_slice());
+                builder.append_slice(node_stack.pop().unwrap().leaf_slice());
             } else if node_stack.last().unwrap().child_count() == 0 {
                 node_stack.pop();
             } else {
@@ -227,7 +215,7 @@ where
 
     /// Inserts `text` at char index `char_index`.
     ///
-    /// Runs in O(M + log N) time, where N is the length of the `Rope` and M
+    /// Runs in O(M + log N) time, where N is the length of the [Rope<T>] and M
     /// is the length of `text`.
     ///
     /// # Panics
@@ -306,7 +294,7 @@ where
             let mut l_node = Arc::new(Node::new());
             std::mem::swap(&mut l_node, &mut self.root);
 
-            let mut children = Branch::new();
+            let mut children = BranchChildren::new();
             children.push((l_info, l_node));
             children.push((r_info, r_node));
 
@@ -319,17 +307,20 @@ where
     /// Uses range syntax, e.g. `2..7`, `2..`, etc.  The range is in `char`
     /// indices.
     ///
-    /// Runs in O(M + log N) time, where N is the length of the `Rope` and M
+    /// Runs in O(M + log N) time, where N is the length of the [Rope<T>] and M
     /// is the length of the range being removed.
     ///
     /// # Example
     ///
-    /// ```
-    /// # use ropey::Rope;
-    /// let mut rope = Rope::from_str("Hello world!");
+    /// ```rust
+    /// # use any_rope::Rope;
+    /// # use any_rope::Lipsum::*;
+    /// let mut rope = Rope::from_slice(
+    /// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
+    /// );
     /// rope.remove(5..);
     ///
-    /// assert_eq!("Hello", rope);
+    /// assert_eq!(rope, [Lorem, Ipsum].as_slice());
     /// ```
     ///
     /// # Panics
@@ -343,7 +334,7 @@ where
         self.try_remove(char_range).unwrap()
     }
 
-    /// Splits the `Rope` at `char_index`, returning the right part of
+    /// Splits the [Rope<T>] at `char_index`, returning the right part of
     /// the split.
     ///
     /// Runs in O(log N) time.
@@ -355,7 +346,7 @@ where
         self.try_split_off(char_index).unwrap()
     }
 
-    /// Appends a `Rope` to the end of this one, consuming the other `Rope`.
+    /// Appends a [Rope<T>] to the end of this one, consuming the other [Rope<T>].
     ///
     /// Runs in O(log N) time.
     pub fn append(&mut self, mut other: Self) {
@@ -373,7 +364,7 @@ where
                 let extra =
                     Arc::make_mut(&mut self.root).append_at_depth(other.root, l_depth - r_depth);
                 if let Some(node) = extra {
-                    let mut children = Branch::new();
+                    let mut children = BranchChildren::new();
                     children.push((self.root.slice_info(), Arc::clone(&self.root)));
                     children.push((node.slice_info(), node));
                     self.root = Arc::new(Node::Branch(children));
@@ -383,7 +374,7 @@ where
                 let extra = Arc::make_mut(&mut other.root)
                     .prepend_at_depth(Arc::clone(&self.root), r_depth - l_depth);
                 if let Some(node) = extra {
-                    let mut children = Branch::new();
+                    let mut children = BranchChildren::new();
                     children.push((node.slice_info(), node));
                     children.push((other.root.slice_info(), Arc::clone(&other.root)));
                     other.root = Arc::new(Node::Branch(children));
@@ -562,18 +553,21 @@ where
     //-----------------------------------------------------------------------
     // Slicing
 
-    /// Gets an immutable slice of the `Rope`, using char indices.
+    /// Gets an immutable slice of the [Rope<T>], using char indices.
     ///
     /// Uses range syntax, e.g. `2..7`, `2..`, etc.
     ///
     /// # Example
     ///
     /// ```
-    /// # use ropey::Rope;
-    /// let rope = Rope::from_str("Hello world!");
-    /// let slice = rope.slice(..5);
+    /// # use any_rope::Rope;
+    /// # use any_rope::Lipsum::*;
+    /// let mut rope = Rope::from_slice(
+    /// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
+    /// );
+    /// let slice = rope.width_slice(..5);
     ///
-    /// assert_eq!("Hello", slice);
+    /// assert_eq!(slice, [Lorem, Ipsum, Dolor(3)].as_slice());
     /// ```
     ///
     /// Runs in O(log N) time.
@@ -590,7 +584,7 @@ where
         self.get_width_slice(width_range).unwrap()
     }
 
-    /// Gets and immutable slice of the `Rope`, using byte indices.
+    /// Gets and immutable slice of the [Rope<T>], using byte indices.
     ///
     /// Uses range syntax, e.g. `2..7`, `2..`, etc.
     ///
@@ -615,7 +609,7 @@ where
     //-----------------------------------------------------------------------
     // Iterator methods
 
-    /// Creates an iterator over the bytes of the `Rope`.
+    /// Creates an iterator over the bytes of the [Rope<T>].
     ///
     /// Runs in O(log N) time.
     #[inline]
@@ -623,11 +617,11 @@ where
         Iter::new(&self.root)
     }
 
-    /// Creates an iterator over the bytes of the `Rope`, starting at byte
+    /// Creates an iterator over the bytes of the [Rope<T>], starting at byte
     /// `byte_index`.
     ///
     /// If `byte_index == len_bytes()` then an iterator at the end of the
-    /// `Rope` is created (i.e. `next()` will return `None`).
+    /// [Rope<T>] is created (i.e. `next()` will return `None`).
     ///
     /// Runs in O(log N) time.
     ///
@@ -647,7 +641,7 @@ where
         }
     }
 
-    /// Creates an iterator over the chunks of the `Rope`.
+    /// Creates an iterator over the chunks of the [Rope<T>].
     ///
     /// Runs in O(log N) time.
     #[inline]
@@ -655,13 +649,13 @@ where
         Chunks::new(&self.root)
     }
 
-    /// Creates an iterator over the chunks of the `Rope`, with the
+    /// Creates an iterator over the chunks of the [Rope<T>], with the
     /// iterator starting at the chunk containing `byte_index`.
     ///
     /// Also returns the byte and char indices of the beginning of the first
     /// chunk to be yielded, and the index of the line that chunk starts on.
     ///
-    /// If `byte_index == len_bytes()` an iterator at the end of the `Rope`
+    /// If `byte_index == len_bytes()` an iterator at the end of the [Rope<T>]
     /// (yielding `None` on a call to `next()`) is created.
     ///
     /// The return value is organized as
@@ -685,13 +679,13 @@ where
         }
     }
 
-    /// Creates an iterator over the chunks of the `Rope`, with the
+    /// Creates an iterator over the chunks of the [Rope<T>], with the
     /// iterator starting at the chunk containing `char_index`.
     ///
     /// Also returns the byte and char indices of the beginning of the first
     /// chunk to be yielded, and the index of the line that chunk starts on.
     ///
-    /// If `char_index == len_chars()` an iterator at the end of the `Rope`
+    /// If `char_index == len_chars()` an iterator at the end of the [Rope<T>]
     /// (yielding `None` on a call to `next()`) is created.
     ///
     /// The return value is organized as
@@ -796,7 +790,7 @@ where
 /// # Non-Panicking
 ///
 /// The methods in this impl block provide non-panicking versions of
-/// `Rope`'s panicking methods.  They return either `Option::None` or
+/// [Rope<T>]'s panicking methods.  They return either `Option::None` or
 /// `Result::Err()` when their panicking counterparts would have panicked.
 impl<M> Rope<M>
 where
@@ -1247,7 +1241,7 @@ where
     }
 }
 
-/// Attempts to borrow the contents of the `Rope`, but will convert to an
+/// Attempts to borrow the contents of the [Rope<T>], but will convert to an
 /// owned string if the contents is not contiguous in memory.
 ///
 /// Runs in best case O(1), worst case O(N).
@@ -1257,8 +1251,8 @@ where
 {
     #[inline]
     fn from(r: &'a Rope<M>) -> Self {
-        if let Node::Leaf(ref text) = *r.root {
-            std::borrow::Cow::Borrowed(text)
+        if let Node::Leaf(ref slice) = *r.root {
+            std::borrow::Cow::Borrowed(slice)
         } else {
             std::borrow::Cow::Owned(Vec::from(r))
         }
@@ -1275,7 +1269,7 @@ where
     {
         let mut builder = RopeBuilder::new();
         for chunk in iter {
-            builder.append(chunk);
+            builder.append_slice(chunk);
         }
         builder.finish()
     }
@@ -1291,7 +1285,7 @@ where
     {
         let mut builder = RopeBuilder::new();
         for chunk in iter {
-            builder.append(&chunk);
+            builder.append_slice(&chunk);
         }
         builder.finish()
     }
@@ -1307,7 +1301,7 @@ where
     {
         let mut builder = RopeBuilder::new();
         for chunk in iter {
-            builder.append(&chunk);
+            builder.append_slice(&chunk);
         }
         builder.finish()
     }
@@ -1461,8 +1455,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::Lipsum::*;
     use super::*;
+    use crate::Lipsum::{self, *};
 
     /// 70 elements, total width of 135.
     fn lorem_ipsum() -> Vec<Lipsum> {

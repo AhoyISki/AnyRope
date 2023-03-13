@@ -3,7 +3,7 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use crate::rope::{Measurable, Rope};
-use crate::tree::{Branch, Leaf, Node, MAX_BYTES, MAX_CHILDREN, MIN_BYTES};
+use crate::tree::{BranchChildren, LeafSlice, Node, MAX_BYTES, MAX_CHILDREN, MIN_BYTES};
 
 /// An efficient incremental `Rope` builder.
 ///
@@ -23,19 +23,20 @@ use crate::tree::{Branch, Leaf, Node, MAX_BYTES, MAX_CHILDREN, MIN_BYTES};
 ///
 /// # Example
 /// ```
-/// # use ropey::RopeBuilder;
+/// # use any_rope::RopeBuilder;
+/// # use any_rope::Lipsum::*;
 /// #
 /// let mut builder = RopeBuilder::new();
 ///
-/// builder.append("Hello ");
-/// builder.append("world!\n");
-/// builder.append("How's ");
-/// builder.append("it goin");
-/// builder.append("g?");
+/// builder.append(Lorem);
+/// builder.append(Ipsum);
+/// builder.append(Dolor(70));
+/// builder.append(Sit);
+/// builder.append(Amet);
 ///
 /// let rope = builder.finish();
 ///
-/// assert_eq!(rope, "Hello world!\nHow's it going?");
+/// assert_eq!(rope, [Lorem, Ipsum, Dolor(70), Sit, Amet].as_slice());
 /// ```
 #[derive(Debug, Clone)]
 pub struct RopeBuilder<M>
@@ -71,8 +72,19 @@ where
     /// desired, but larger chunks are more efficient.
     ///
     /// `chunk` must be valid utf8 text.
-    pub fn append(&mut self, chunk: &[M]) {
+    pub fn append_slice(&mut self, chunk: &[M]) {
         self.append_internal(chunk, false);
+    }
+
+    /// Appends `chunk` to the end of the in-progress `Rope`.
+    ///
+    /// Call this method repeatedly to incrementally build up a
+    /// `Rope`.  The passed text chunk can be as large or small as
+    /// desired, but larger chunks are more efficient.
+    ///
+    /// `chunk` must be valid utf8 text.
+    pub fn append(&mut self, element: M) {
+        self.append_internal(&[element], false);
     }
 
     /// Finishes the build, and returns the `Rope`.
@@ -107,7 +119,7 @@ where
     /// method, and should not be used in conjunction with it.
     #[doc(hidden)]
     pub fn _append_chunk(&mut self, contents: &[M]) {
-        self.append_leaf_node(Arc::new(Node::Leaf(Leaf::from_slice(contents))));
+        self.append_leaf_node(Arc::new(Node::Leaf(LeafSlice::from_slice(contents))));
     }
 
     /// NOT PART OF THE PUBLIC API (hidden from docs for a reason!).
@@ -139,12 +151,12 @@ where
             match leaf_text {
                 NextSlice::None => break,
                 NextSlice::UseBuffer => {
-                    let leaf_text = Leaf::from_slice(self.buffer.as_slice());
+                    let leaf_text = LeafSlice::from_slice(self.buffer.as_slice());
                     self.append_leaf_node(Arc::new(Node::Leaf(leaf_text)));
                     self.buffer.clear();
                 }
                 NextSlice::Slice(s) => {
-                    self.append_leaf_node(Arc::new(Node::Leaf(Leaf::from_slice(s))));
+                    self.append_leaf_node(Arc::new(Node::Leaf(LeafSlice::from_slice(s))));
                 }
             }
         }
@@ -248,7 +260,7 @@ where
                 if last.leaf_slice().is_empty() {
                     self.stack.push(leaf);
                 } else {
-                    let mut children = Branch::new();
+                    let mut children = BranchChildren::new();
                     children.push((last.slice_info(), last));
                     children.push((leaf.slice_info(), leaf));
                     self.stack.push(Arc::new(Node::Branch(children)));
@@ -262,7 +274,7 @@ where
                 loop {
                     if stack_index < 0 {
                         // We're above the root, so do a root split.
-                        let mut children = Branch::new();
+                        let mut children = BranchChildren::new();
                         children.push((left.slice_info(), left));
                         self.stack.insert(0, Arc::new(Node::Branch(children)));
                         break;
@@ -311,7 +323,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rope::Lipsum::{self, *};
+    use crate::Lipsum::{self, *};
 
     /// 70 elements, total width of 135.
     fn lorem_ipsum() -> Vec<Lipsum> {
@@ -338,10 +350,37 @@ mod tests {
         let mut builder = RopeBuilder::new();
 
         for _ in 0..5 {
-            builder.append(&[Lorem, Ipsum, Dolor(4), Sit, Amet]);
-            builder.append(&[Consectur("hello"), Adipiscing(true)]);
-            builder.append(&[Lorem, Ipsum, Dolor(8), Sit, Amet]);
-            builder.append(&[Consectur("bye"), Adipiscing(false)]);
+            builder.append_slice(&[Lorem, Ipsum, Dolor(4), Sit, Amet]);
+            builder.append_slice(&[Consectur("hello"), Adipiscing(true)]);
+            builder.append_slice(&[Lorem, Ipsum, Dolor(8), Sit, Amet]);
+            builder.append_slice(&[Consectur("bye"), Adipiscing(false)]);
+        }
+
+        let rope = builder.finish();
+
+        assert_eq!(rope, lorem_ipsum());
+
+        rope.assert_integrity();
+        rope.assert_invariants();
+    }
+
+    #[test]
+    fn rope_builder_02() {
+        let mut builder = RopeBuilder::new();
+
+        for _ in 0..5 {
+            builder.append(Lorem);
+            builder.append(Ipsum);
+            builder.append(Dolor(4));
+            builder.append(Sit);
+            builder.append(Amet);
+            builder.append_slice(&[Consectur("hello"), Adipiscing(true)]);
+            builder.append(Lorem);
+            builder.append(Ipsum);
+            builder.append(Dolor(8));
+            builder.append(Sit);
+            builder.append(Amet);
+            builder.append_slice(&[Consectur("bye"), Adipiscing(false)]);
         }
 
         let rope = builder.finish();
@@ -357,10 +396,10 @@ mod tests {
         let mut builder = RopeBuilder::default();
 
         for _ in 0..5 {
-            builder.append(&[Lorem, Ipsum, Dolor(4), Sit, Amet]);
-            builder.append(&[Consectur("hello"), Adipiscing(true)]);
-            builder.append(&[Lorem, Ipsum, Dolor(8), Sit, Amet]);
-            builder.append(&[Consectur("bye"), Adipiscing(false)]);
+            builder.append_slice(&[Lorem, Ipsum, Dolor(4), Sit, Amet]);
+            builder.append_slice(&[Consectur("hello"), Adipiscing(true)]);
+            builder.append_slice(&[Lorem, Ipsum, Dolor(8), Sit, Amet]);
+            builder.append_slice(&[Consectur("bye"), Adipiscing(false)]);
         }
 
         let rope = builder.finish();

@@ -1,274 +1,221 @@
-//! Ropey is a utf8 text rope for Rust.  It is fast, robust, and can handle
-//! huge texts and memory-incoherent edits with ease.
+//! AnyRope is an arbitrary data rope for Rust.
 //!
-//! Ropey's atomic unit of text is Unicode scalar values (or `char`s in Rust)
-//! encoded as utf8.  All of Ropey's editing and slicing operations are done
-//! in terms of char indices which prevents accidental creation of invalid
-//! utf8 data.
+//! AnyRope's [Rope<T>] contains elements `T` that implement [Measurable], a
+//! trait that assigns an arbitrary "width" to each element, through the
+//! [width()][Measurable::width] function. AnyRope can then use these "widths"
+//! to retrieve and iterate over elements in any given "width" from the beginning
+//! of the [Rope<T>].
+//!
+//! Keep in mind that the "width" does not correspond to the actual size of a type
+//! in bits or bytes, but is instead decided by the implementor, and can be whatever
+//! value they want.
 //!
 //! The library is made up of four main components:
 //!
-//! - [Rope]: the main rope type.
-//! - [RopeSlice]: an immutable view into part of a [Rope].
-//! - [iter]: iterators over [Rope]/[RopeSlice] data.
-//! - [RopeBuilder]: an efficient incremental [Rope] builder.
-//!
+//! - [Rope<T>]: the main rope type.
+//! - [RopeSlice<T>]: an immutable view into part of a [Rope<T>].
+//! - [iter]: iterators over [Rope<T>]/[RopeSlice<T>] data.
+//! - [RopeBuilder<T>]: an efficient incremental [Rope<T>] builder.
 //!
 //! # A Basic Example
 //!
 //! Let's say we want create a tagging system that will be applied to text,
-//! in which the tags either tell you to print normally, print in red, or skip:
+//! in which the tags either tell you to print normally, print in red, underline, or skip:
 //!
-//! ```no_run
+//! ```rust
 //! # use std::io::Result;
 //! use std::fs::File;
 //! use std::io::{BufReader, BufWriter};
-//! use any-ropey::{Rope, Measurable};
+//! use any_rope::{Rope, Measurable};
 //!
 //! // A simple tag structure that our program can understand.
-//! enum Tagger {
+//! #[derive(Clone, Copy)]
+//! enum Tag {
 //! 	InRed,
+//! 	UnderLine,
 //! 	Normal,
 //! 	// The `usize` in here represents an amount of characters that won't change
 //! 	// the color of the text.
 //! 	Skip(usize)
 //! }
 //!
-//! impl Measurable for Tagger {
+//! impl Measurable for Tag {
 //! 	fn width(&self) -> usize {
 //! 		match self {
 //! 			// The coloring tags are only meant to color, not to "move forward".
-//! 			Tagger::InRed | Tagger::Normal => 0,
+//! 			Tag::InRed | Tag::UnderLine | Tag::Normal => 0,
 //! 			// The Skip tag represents an amount of characters in which no
 //! 			// tags are applied.
-//! 			Tagger::Skip(amount) => amount
+//! 			Tag::Skip(amount) => *amount
 //! 		}
 //! 	}
 //! }
-//! use self::Tagger::*;
+//! use Tag::*;
 //!
-//! # fn do_stuff() -> Result<()> {
+//! # fn activate_tag(tag: &Tag) {}
 //! // An `&str` that will be colored.
 //! let my_str = "This word will be red!";
 //!
 //! // Here's what this means:
 //! // - Skip 5 characters;
 //! // - Change the color to red;
+//! // - Start underlining;
 //! // - Skip 4 characters;
-//! // - Change the color back to normal
-//! let my_tagger = Rope::from_slice(&[Skip(5), InRed, Skip(4), Normal]);
+//! // - Change the rendering back to normal.
+//! let my_tagger = Rope::from_slice(&[Skip(5), InRed, UnderLine, Skip(4), Normal]);
+//! // Do note that Tag::Skip only represents characters because we are also iterating
+//! // over a `Chars` iterator, and have chosen to do so.
 //!
-//!	let tags_iter = my_tagger.iter();
-//!	let mut cur_char = 0;
-//! for ch in my_str.chars().enumerate() {
+//!	let mut tags_iter = my_tagger.iter().peekable();
+//! for (cur_index, ch) in my_str.chars().enumerate() {
+//! 	// The while let loop here is a useful way to activate all tags within the same
+//! 	// character. Note the sequence of [.., InRed, UnderLine, ..], both of which have
+//! 	// a width of 0. This means that both would be triggered before moving on to the next
+//! 	// character.
+//!		while let Some((index, tag)) = tags_iter.peek() {
+//!			// The returned index is always the width where an element began. In this
+//!			// case, `tags_iter.peek()` would return `Some((0, Skip(5)))`, and then
+//!			// `Some((5, InRed))`.
+//!			if *index == cur_index {
+//!				activate_tag(tag);
+//!				tags_iter.next();
+//!			} else {
+//!				break;
+//!			}
+//!		}
+//!
+//!		print!("{}", ch);
 //! }
-//!
 //! ```
 //!
-//! More examples can be found in the `examples` directory of the git
-//! repository.  Many of those examples demonstrate doing non-trivial things
-//! with Ropey such as grapheme handling, search-and-replace, and streaming
-//! loading of non-utf8 text files.
-//!
+//! An example can be found in the `examples` directory, detailing a "search and replace"
+//! functionality for [Rope<T>].
 //!
 //! # Low-level APIs
 //!
-//! Ropey also provides access to some of its low-level APIs, enabling client
-//! code to efficiently work with a `Rope`'s data and implement new
+//! AnyRope also provides access to some of its low-level APIs, enabling client
+//! code to efficiently work with a [Rope<T>]'s data and implement new
 //! functionality.  The most important of those API's are:
 //!
-//! - The [`chunk_at_*()`](Rope::chunk_at_byte)
-//!   chunk-fetching methods of `Rope` and `RopeSlice`.
-//! - The [`Chunks`](iter::Chunks) iterator.
-//! - The functions in [`str_utils`] for operating on
-//!   `&str` slices.
+//! - The [chunk_at_*()][Rope::chunk_at_width]
+//!   chunk-fetching methods of [Rope<T>] and [RopeSlice<T>].
+//! - The [Chunks](iter::Chunks) iterator.
+//! - The functions in [slice_utils] for operating on
+//!   [&`[M]`][Measurable] slices.
 //!
-//! Internally, each `Rope` stores text as a segemented collection of utf8
-//! strings.  The chunk-fetching methods and `Chunks` iterator provide direct
-//! access to those strings (or "chunks") as `&str` slices, allowing client
-//! code to work directly with the underlying utf8 data.
+//! As a reminder, if you notice similarities with the AnyRope crate, it is because this
+//! is a heavily modified fork of it.
 //!
-//! The chunk-fetching methods and `str_utils` functions are the basic
-//! building blocks that Ropey itself uses to build much of its functionality.
-//! For example, the [`Rope::byte_to_char()`]
-//! method can be reimplemented as a free function like this:
+//! # Note about documentation
 //!
-//! ```no_run
-//! use ropey::{
-//!     Rope,
-//!     str_utils::byte_to_char_idx
-//! };
-//!
-//! fn byte_to_char(rope: &Rope, byte_idx: usize) -> usize {
-//!     let (chunk, b, c, _) = rope.chunk_at_byte(byte_idx);
-//!     c + byte_to_char_idx(chunk, byte_idx - b)
-//! }
-//! ```
-//!
-//! And this will be just as efficient as Ropey's implementation.
-//!
-//! The chunk-fetching methods in particular are among the fastest functions
-//! that Ropey provides, generally operating in the sub-hundred nanosecond
-//! range for medium-sized (~200kB) documents on recent-ish computer systems.
-//!
-//!
-//! # A Note About Line Breaks
-//!
-//! Some of Ropey's APIs use the concept of line breaks or lines of text.
-//!
-//! Ropey considers the start of the rope and positions immediately
-//! _after_ line breaks to be the start of new lines.  And it treats
-//! line breaks as being a part of the lines they mark the end of.
-//!
-//! For example, the rope `"Hello"` has a single line: `"Hello"`.  The
-//! rope `"Hello\nworld"` has two lines: `"Hello\n"` and `"world"`.  And
-//! the rope `"Hello\nworld\n"` has three lines: `"Hello\n"`,
-//! `"world\n"`, and `""`.
-//!
-//! Ropey can be configured at build time via feature flags to recognize
-//! different line breaks.  Ropey always recognizes:
-//!
-//! - `U+000A`          &mdash; LF (Line Feed)
-//! - `U+000D` `U+000A` &mdash; CRLF (Carriage Return + Line Feed)
-//!
-//! With the `cr_lines` feature, the following are also recognized:
-//!
-//! - `U+000D`          &mdash; CR (Carriage Return)
-//!
-//! With the `unicode_lines` feature, in addition to all of the
-//! above, the following are also recognized (bringing Ropey into
-//! conformance with
-//! [Unicode Annex #14](https://www.unicode.org/reports/tr14/#BK)):
-//!
-//! - `U+000B`          &mdash; VT (Vertical Tab)
-//! - `U+000C`          &mdash; FF (Form Feed)
-//! - `U+0085`          &mdash; NEL (Next Line)
-//! - `U+2028`          &mdash; Line Separator
-//! - `U+2029`          &mdash; Paragraph Separator
-//!
-//! (Note: `unicode_lines` is enabled by default, and always implies
-//! `cr_lines`.)
-//!
-//! CRLF pairs are always treated as a single line break, and are never split
-//! across chunks.  Note, however, that slicing can still split them.
-//!
-//!
-//! # A Note About SIMD Acceleration
-//!
-//! Ropey has a `simd` feature flag (enabled by default) that enables
-//! explicit SIMD on supported platforms to improve performance.
-//!
-//! There is a bit of a footgun here: if you disable default features to
-//! configure line break behavior (as per the section above) then SIMD
-//! will also get disabled, and performance will suffer.  So be careful
-//! to explicitly re-enable the `simd` feature flag (if desired) when
-//! doing that.
-
+//! In the documentation of AnyRope, there will be a struct called [Lipsum],
+//! used to exemplify the features of the crate.
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::inline_always)]
 #![allow(clippy::needless_return)]
 #![allow(clippy::redundant_field_names)]
 #![allow(clippy::type_complexity)]
 
-extern crate smallvec;
-extern crate str_indices;
-
-mod slice_utils;
 mod rope;
 mod rope_builder;
 mod slice;
+mod slice_utils;
 mod tree;
 
 pub mod iter;
 
 use std::ops::Bound;
 
-pub use crate::rope::{Rope, Measurable};
+pub use crate::rope::{Measurable, Rope};
 pub use crate::rope_builder::RopeBuilder;
 pub use crate::slice::RopeSlice;
 
-#[cfg(test)]
-pub use crate::rope::Lipsum;
+/// Simple test struct, useful in making sure that the systems work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Lipsum {
+    Lorem,
+    Ipsum,
+    Dolor(usize),
+    Sit,
+    Amet,
+    Consectur(&'static str),
+    Adipiscing(bool),
+}
+
+impl Measurable for Lipsum {
+    fn width(&self) -> usize {
+        match self {
+            Lipsum::Lorem => 1,
+            Lipsum::Ipsum => 2,
+            Lipsum::Dolor(width) => *width,
+            Lipsum::Sit => 0,
+            Lipsum::Amet => 0,
+            Lipsum::Consectur(text) => text.len(),
+            Lipsum::Adipiscing(boolean) => *boolean as usize,
+        }
+    }
+}
 
 //==============================================================
 // Error reporting types.
 
-/// Ropey's result type.
+/// AnyRope's result type.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Ropey's error type.
+/// AnyRope's error type.
 #[derive(Clone, Copy)]
 #[non_exhaustive]
 pub enum Error {
-    /// Indicates that the passed byte index was out of bounds.
+    /// Indicates that the passed index was out of bounds.
     ///
     /// Contains the index attempted and the actual length of the
-    /// `Rope`/`RopeSlice` in bytes, in that order.
+    /// [Rope<T>]/[RopeSlice<T>], in that order.
     IndexOutOfBounds(usize, usize),
 
-    /// Indicates that the passed char index was out of bounds.
+    /// Indicates that the passed width was out of bounds.
     ///
-    /// Contains the index attempted and the actual length of the
-    /// `Rope`/`RopeSlice` in chars, in that order.
+    /// Contains the index attempted and the actual width of the
+    /// [Rope<T>]/[RopeSlice<T>], in that order.
     WidthOutOfBounds(usize, usize),
 
-    /// Indicates that a reversed byte-index range (end < start) was
-    /// encountered.
+    /// Indicates that a reversed index range (end < start) was encountered.
     ///
-    /// Contains the [start, end) byte indices of the range, in that order.
+    /// Contains the [start, end) indices of the range, in that order.
     IndexRangeInvalid(
         usize, // Start.
         usize, // End.
     ),
 
-    /// Indicates that a reversed char-index range (end < start) was
+    /// Indicates that a reversed width range (end < start) was
     /// encountered.
     ///
-    /// Contains the [start, end) char indices of the range, in that order.
+    /// Contains the [start, end) widths of the range, in that order.
     WidthRangeInvalid(
         usize, // Start.
         usize, // End.
     ),
 
-    /// Indicates that the passed byte-index range was partially or fully
-    /// out of bounds.
+    /// Indicates that the passed index range was partially or fully out of bounds.
     ///
-    /// Contains the [start, end) byte indices of the range and the actual
-    /// length of the `Rope`/`RopeSlice` in bytes, in that order.  When
-    /// either the start or end are `None`, that indicates a half-open range.
+    /// Contains the [start, end) indices of the range and the actual
+    /// length of the [Rope<T>]/[RopeSlice<T>], in that order.
+    /// When either the start or end are [None], that indicates a half-open range.
     IndexRangeOutOfBounds(
         Option<usize>, // Start.
         Option<usize>, // End.
         usize,         // Rope byte length.
     ),
 
-    /// Indicates that the passed char-index range was partially or fully
-    /// out of bounds.
+    /// Indicates that the passed width range was partially or fully out of bounds.
     ///
-    /// Contains the [start, end) char indices of the range and the actual
-    /// length of the `Rope`/`RopeSlice` in chars, in that order.  When
-    /// either the start or end are `None`, that indicates a half-open range.
+    /// Contains the [start, end) widths of the range and the actual
+    /// width of the [Rope<T>]/[RopeSlice<T>], in that order.
+    /// When either the start or end are [None], that indicates a half-open range.
     WidthRangeOutOfBounds(
         Option<usize>, // Start.
         Option<usize>, // End.
         usize,         // Rope char length.
     ),
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-
-    // Deprecated in std.
-    fn description(&self) -> &str {
-        ""
-    }
-
-    // Deprecated in std.
-    fn cause(&self) -> Option<&dyn std::error::Error> {
-        None
-    }
 }
 
 impl std::fmt::Debug for Error {
@@ -277,44 +224,46 @@ impl std::fmt::Debug for Error {
             Error::IndexOutOfBounds(index, len) => {
                 write!(
                     f,
-                    "Byte index out of bounds: byte index {}, Rope/RopeSlice byte length {}",
+                    "Index out of bounds: index {}, Rope/RopeSlice length {}",
                     index, len
                 )
             }
             Error::WidthOutOfBounds(index, len) => {
                 write!(
                     f,
-                    "Char index out of bounds: char index {}, Rope/RopeSlice char length {}",
+                    "Width out of bounds: width {}, Rope/RopeSlice char length {}",
                     index, len
                 )
             }
             Error::IndexRangeInvalid(start_idx, end_idx) => {
                 write!(
                     f,
-                    "Invalid byte range {}..{}: start must be <= end",
+                    "Invalid index range {}..{}: start must be <= end",
                     start_idx, end_idx
                 )
             }
             Error::WidthRangeInvalid(start_idx, end_idx) => {
                 write!(
                     f,
-                    "Invalid char range {}..{}: start must be <= end",
+                    "Invalid width range {}..{}: start must be <= end",
                     start_idx, end_idx
                 )
             }
             Error::IndexRangeOutOfBounds(start_idx_opt, end_idx_opt, len) => {
-                write!(f, "Byte range out of bounds: byte range ")?;
+                write!(f, "Index range out of bounds: index range ")?;
                 write_range(f, start_idx_opt, end_idx_opt)?;
                 write!(f, ", Rope/RopeSlice byte length {}", len)
             }
             Error::WidthRangeOutOfBounds(start_idx_opt, end_idx_opt, len) => {
-                write!(f, "Char range out of bounds: char range ")?;
+                write!(f, "Width range out of bounds: width range ")?;
                 write_range(f, start_idx_opt, end_idx_opt)?;
                 write!(f, ", Rope/RopeSlice char length {}", len)
             }
         }
     }
 }
+
+impl std::error::Error for Error {}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -329,21 +278,10 @@ fn write_range(
     end_idx: Option<usize>,
 ) -> std::fmt::Result {
     match (start_idx, end_idx) {
-        (None, None) => {
-            write!(f, "..")
-        }
-
-        (Some(start), None) => {
-            write!(f, "{}..", start)
-        }
-
-        (None, Some(end)) => {
-            write!(f, "..{}", end)
-        }
-
-        (Some(start), Some(end)) => {
-            write!(f, "{}..{}", start, end)
-        }
+        (None, None) => write!(f, ".."),
+        (Some(start), None) => write!(f, "{}..", start),
+        (None, Some(end)) => write!(f, "..{}", end),
+        (Some(start), Some(end)) => write!(f, "{}..{}", start, end),
     }
 }
 

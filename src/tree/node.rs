@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::rope::Measurable;
 use crate::slice_utils::{first_width_to_index, index_to_width, last_width_to_index};
 use crate::tree::{
-    Branch, Count, Leaf, SliceInfo, MAX_BYTES, MAX_CHILDREN, MIN_BYTES, MIN_CHILDREN,
+    BranchChildren, Count, LeafSlice, SliceInfo, MAX_BYTES, MAX_CHILDREN, MIN_BYTES, MIN_CHILDREN,
 };
 
 #[derive(Debug, Clone)]
@@ -12,8 +12,8 @@ pub(crate) enum Node<M>
 where
     M: Measurable,
 {
-    Leaf(Leaf<M>),
-    Branch(Branch<M>),
+    Leaf(LeafSlice<M>),
+    Branch(BranchChildren<M>),
 }
 
 impl<M> Node<M>
@@ -23,7 +23,7 @@ where
     /// Creates an empty node.
     #[inline(always)]
     pub fn new() -> Self {
-        Node::Leaf(Leaf::from_slice(&[]))
+        Node::Leaf(LeafSlice::from_slice(&[]))
     }
 
     /// Total number of items in the Rope.
@@ -70,7 +70,11 @@ where
         mut edit: F,
     ) -> (SliceInfo, Option<(SliceInfo, Arc<Node<M>>)>)
     where
-        F: FnMut(usize, SliceInfo, &mut Leaf<M>) -> (SliceInfo, Option<(SliceInfo, Arc<Node<M>>)>),
+        F: FnMut(
+            usize,
+            SliceInfo,
+            &mut LeafSlice<M>,
+        ) -> (SliceInfo, Option<(SliceInfo, Arc<Node<M>>)>),
     {
         match *self {
             Node::Leaf(ref mut leaf_text) => edit(width, node_info, leaf_text),
@@ -138,13 +142,13 @@ where
             Node::Leaf(ref mut leaf_text) => {
                 let start_index = first_width_to_index(leaf_text, start_width);
 
-                let end_index = start_index
-                    + if start_width == end_width {
-                        // Special case where every 0 width element is removed.
-                        first_width_to_index(&leaf_text[start_index..], 1)
-                    } else {
-                        last_width_to_index(&leaf_text[start_index..], end_width - start_width)
-                    };
+                // In this circumstance, nothing needs to be done, since we're removing
+                // in the middle of an element.
+                if start_width == end_width && leaf_text[start_index].width() > 0 {
+                    return (SliceInfo::from_slice(leaf_text), false);
+                }
+
+                let end_index = last_width_to_index(leaf_text, end_width);
 
                 // Remove text and calculate new info & seam info
                 if start_index > 0 || end_index < leaf_text.len() {
@@ -179,7 +183,7 @@ where
                 // - Whether there's a possible CRLF seam that needs fixing.
                 // - Whether the tree may need invariant fixing.
                 // - Updated TextInfo of the node.
-                let handle_child = |children: &mut Branch<M>,
+                let handle_child = |children: &mut BranchChildren<M>,
                                     child_i: usize,
                                     c_char_acc: usize|
                  -> (bool, SliceInfo) {
@@ -205,7 +209,7 @@ where
                 };
 
                 // Shared code for merging children
-                let merge_child = |children: &mut Branch<M>, child_i: usize| {
+                let merge_child = |children: &mut BranchChildren<M>, child_i: usize| {
                     if child_i < children.len()
                         && children.len() > 1
                         && children.nodes()[child_i].is_undersized()
@@ -526,7 +530,6 @@ where
     pub fn first_width_to_slice_info(&self, width: usize) -> SliceInfo {
         let (chunk, info) = self.get_first_chunk_at_width(width);
         let bi = first_width_to_index(chunk, width - info.width as usize);
-        println!("chunk: {:?}, first: {}, {}, {}", chunk, width, bi, info.width);
         SliceInfo {
             len: info.len + bi as Count,
             width: width as Count,
@@ -538,7 +541,6 @@ where
     pub fn last_width_to_slice_info(&self, width: usize) -> SliceInfo {
         let (chunk, info) = self.get_last_chunk_at_width(width);
         let bi = last_width_to_index(chunk, width - info.width as usize);
-        println!("chunk: {:?}, last: {}, {}, {}", chunk, width, bi, info.width);
         SliceInfo {
             len: info.len + bi as Count,
             width: width as Count,
@@ -573,14 +575,14 @@ where
         }
     }
 
-    pub fn children(&self) -> &Branch<M> {
+    pub fn children(&self) -> &BranchChildren<M> {
         match *self {
             Node::Branch(ref children) => children,
             _ => panic!(),
         }
     }
 
-    pub fn children_mut(&mut self) -> &mut Branch<M> {
+    pub fn children_mut(&mut self) -> &mut BranchChildren<M> {
         match *self {
             Node::Branch(ref mut children) => children,
             _ => panic!(),
@@ -594,7 +596,7 @@ where
         }
     }
 
-    pub fn leaf_slice_mut(&mut self) -> &mut Leaf<M> {
+    pub fn leaf_slice_mut(&mut self) -> &mut LeafSlice<M> {
         match *self {
             Node::Leaf(ref mut slice) => slice,
             _ => panic!(),

@@ -14,17 +14,17 @@ const MAX_LEN: usize = tree::MAX_CHILDREN;
 /// lower down in this file.
 #[derive(Clone)]
 #[repr(C)]
-pub(crate) struct Branch<M>(inner::NodeChildrenInternal<M>)
+pub(crate) struct BranchChildren<M>(inner::NodeChildrenInternal<M>)
 where
     M: Measurable;
 
-impl<M> Branch<M>
+impl<M> BranchChildren<M>
 where
     M: Measurable,
 {
     /// Creates a new empty array.
     pub fn new() -> Self {
-        Branch(inner::NodeChildrenInternal::new())
+        BranchChildren(inner::NodeChildrenInternal::new())
     }
 
     /// Current length of the array.
@@ -246,7 +246,7 @@ where
     pub fn split_off(&mut self, index: usize) -> Self {
         assert!(index <= self.len());
 
-        let mut other = Branch::new();
+        let mut other = BranchChildren::new();
         let count = self.len() - index;
         for _ in 0..count {
             other.push(self.remove(index));
@@ -481,7 +481,7 @@ where
     }
 }
 
-impl<M> fmt::Debug for Branch<M>
+impl<M> fmt::Debug for BranchChildren<M>
 where
     M: Measurable + fmt::Debug,
 {
@@ -754,24 +754,24 @@ mod inner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rope::Lipsum::*;
-    use crate::tree::{Leaf, Node, SliceInfo};
+    use crate::Lipsum::*;
+    use crate::tree::{LeafSlice, Node, SliceInfo};
     use std::sync::Arc;
 
     #[test]
     fn search_width_01() {
-        let mut children = Branch::new();
+        let mut children = BranchChildren::new();
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_slice(&[Sit, Amet]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Sit, Amet]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_slice(&[
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[
                 Consectur("text here"),
                 Adipiscing(true),
             ]))),
@@ -805,18 +805,18 @@ mod tests {
     #[test]
     #[should_panic]
     fn search_width_02() {
-        let mut children = Branch::new();
+        let mut children = BranchChildren::new();
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_slice(&[Sit, Amet]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Sit, Amet]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_slice(&[
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[
                 Consectur("text here"),
                 Adipiscing(true),
             ]))),
@@ -831,18 +831,18 @@ mod tests {
 
     #[test]
     fn search_width_range_01() {
-        let mut children = Branch::new();
+        let mut children = BranchChildren::new();
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_slice(&[Sit, Amet]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Sit, Amet]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_slice(&[
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[
                 Consectur("text here"),
                 Adipiscing(true),
             ]))),
@@ -901,18 +901,18 @@ mod tests {
     #[test]
     #[should_panic]
     fn search_index_range_02() {
-        let mut children = Branch::new();
+        let mut children = BranchChildren::new();
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_slice(&[Sit, Amet]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Sit, Amet]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(Leaf::from_slice(&[
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[
                 Consectur("text here"),
                 Adipiscing(true),
             ]))),

@@ -4,8 +4,8 @@ mod node_slice;
 mod slice_info;
 
 pub(crate) use self::node::Node;
-pub(crate) use self::node_children::Branch;
-pub(crate) use self::node_slice::Leaf;
+pub(crate) use self::node_children::BranchChildren;
+pub(crate) use self::node_slice::LeafSlice;
 pub(crate) use self::slice_info::SliceInfo;
 
 // Type used for storing tree metadata, such as byte and char length.

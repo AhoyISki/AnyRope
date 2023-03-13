@@ -1,7 +1,4 @@
-extern crate any_ropey;
-extern crate rand;
-
-use any_ropey::{Rope, Measurable};
+use any_rope::{Rope, Measurable};
 use rand::Rng;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
