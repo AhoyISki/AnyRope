@@ -71,7 +71,7 @@
 use std::sync::Arc;
 
 use crate::rope::Measurable;
-use crate::slice_utils::{start_width_to_index, index_to_width, width_of};
+use crate::slice_utils::{index_to_width, start_width_to_index, width_of};
 use crate::tree::{Node, SliceInfo};
 
 //==========================================================
@@ -135,16 +135,13 @@ where
 
         let cur_chunk = if index_range.0 == index_range.1 {
             &[]
-        } else if at_width < width_range.1 {
-            chunks.next().unwrap()
+        } else if let Some(chunk) = chunks.next() {
+            chunk
         } else {
             let chunk = chunks.prev().unwrap();
             chunks.next();
             chunk_start_index -= chunk.len();
-            chunk_start_width -= chunk
-                .iter()
-                .map(|measurable| measurable.width())
-                .sum::<usize>();
+            chunk_start_width -= chunk.iter().map(|m| m.width()).sum::<usize>();
             chunk
         };
 
@@ -511,11 +508,7 @@ where
         index_range: (usize, usize),
         width_range: (usize, usize),
     ) -> (Self, usize, usize) {
-        let at_index = if at_width == width_range.1 {
-            index_range.1
-        } else {
-            (node.get_first_chunk_at_width(at_width).1.len as usize).max(index_range.0)
-        };
+        let at_index = (node.get_first_chunk_at_width(at_width).1.len as usize).max(index_range.0);
 
         Chunks::new_with_range_at_index(node, at_index, index_range, width_range)
     }
@@ -945,7 +938,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn exact_size_iter_02() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        let slice = rope.width_slice(34..301);
+        let slice = rope.width_slice(34..300);
 
         let mut len = 0;
         let mut iter = slice.iter_at(slice.width());
@@ -967,6 +960,18 @@ mod tests {
         iter.prev();
         assert_eq!(iter.len(), slice.len());
         assert_eq!(len, slice.len());
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn exact_size_iter_03() {
+        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let slice = rope.width_slice(34..34);
+        let mut iter = slice.iter();
+
+        assert_eq!(iter.next(), Some((34, Sit)));
+        assert_eq!(iter.next(), Some((34, Amet)));
+        assert_eq!(iter.next(), None);
     }
 
     #[test]
@@ -1057,7 +1062,6 @@ mod tests {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
         for i in 0..rope.len() {
-            println!("success");
             let (chunk, index, width) = rope.chunk_at_index(i);
             let (mut chunks, slice_index, slice_width) = rope.chunks_at_index(i);
 
@@ -1085,7 +1089,6 @@ mod tests {
     fn chunks_at_03() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice = rope.width_slice(34..34);
-        println!("{}", slice);
 
         let (mut chunks, _, _) = slice.chunks_at_index(0);
         assert_eq!(chunks.next(), Some([Sit].as_slice()));
@@ -1186,7 +1189,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn iter_at_sliced_02() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        let slice = rope.width_slice(34..301);
+        let slice = rope.width_slice(34..300);
         let mut iter = slice.iter_at(slice.width());
         // Yields None, since we're iterating in the middle of a Dolor(4) element.
         assert_eq!(iter.next(), None);
@@ -1198,7 +1201,7 @@ mod tests {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
         let slice_start = 34;
-        let slice_end = 301;
+        let slice_end = 300;
         let slice_start_byte = rope.start_width_to_index(slice_start);
         let s_end_byte = rope.end_width_to_index(slice_end);
 
@@ -1244,7 +1247,6 @@ mod tests {
 
         let slice_1 = rope.width_slice(slice_start..slice_end);
         let slice_2 = &lorem_ipsum()[slice_start_index..slice_end_index];
-        println!("{:#?}, {:#?}", slice_1, slice_2);
 
         let mut index = 0;
         for chunk in slice_1.chunks() {
