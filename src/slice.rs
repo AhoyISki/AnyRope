@@ -255,7 +255,8 @@ where
     //-----------------------------------------------------------------------
     // Fetch methods
 
-    /// Returns the [M][Measurable] at `index`.
+    /// Returns the [M][Measurable] at `index` and the starting width sum of
+    /// that element.
     ///
     /// Runs in O(log N) time.
     ///
@@ -263,7 +264,7 @@ where
     ///
     /// Panics if the `index` is out of bounds (i.e. `index > RopeSlice::len()`).
     #[inline]
-    pub fn from_index(&self, index: usize) -> M {
+    pub fn from_index(&self, index: usize) -> (usize, M) {
         // Bounds check
         if let Some(out) = self.get_from_index(index) {
             out
@@ -276,7 +277,8 @@ where
         }
     }
 
-    /// Returns the [M][Measurable] at `width`.
+    /// Returns the [M][Measurable] at `width` and the starting width sum of
+    /// that element.
     ///
     /// Runs in O(log N) time.
     ///
@@ -284,7 +286,7 @@ where
     ///
     /// Panics if the `width` is out of bounds (i.e. `width > RopeSlice::width()`).
     #[inline]
-    pub fn from_width(&self, width: usize) -> M {
+    pub fn from_width(&self, width: usize) -> (usize, M) {
         if let Some(out) = self.get_from_width(width) {
             out
         } else {
@@ -477,7 +479,7 @@ where
         }
     }
 
-    /// Creates an iterator over the bytes of the [RopeSlice<M>], starting at `width`.
+    /// Creates an iterator over the [RopeSlice<M>], starting at `width`.
     ///
     /// This iterator will return values of type [Option<(usize, M)>], where the `usize`
     /// is the width where the given [M][Measurable] starts. Since one can iterate in
@@ -594,13 +596,13 @@ where
 {
     /// Non-panicking version of [index_to_width()][RopeSlice::index_to_width].
     #[inline]
-    pub fn try_index_to_width(&self, byte_index: usize) -> Result<usize> {
+    pub fn try_index_to_width(&self, index: usize) -> Result<usize> {
         // Bounds check
-        if byte_index <= self.len() {
-            let (chunk, b, c) = self.chunk_at_index(byte_index);
-            Ok(c + index_to_width(chunk, byte_index - b))
+        if index <= self.len() {
+            let (chunk, b, c) = self.chunk_at_index(index);
+            Ok(c + index_to_width(chunk, index - b))
         } else {
-            Err(Error::IndexOutOfBounds(byte_index, self.len()))
+            Err(Error::IndexOutOfBounds(index, self.len()))
         }
     }
 
@@ -630,12 +632,13 @@ where
 
     /// Non-panicking version of [from_index()][RopeSlice::from_index].
     #[inline]
-    pub fn get_from_index(&self, index: usize) -> Option<M> {
+    pub fn get_from_index(&self, index: usize) -> Option<(usize, M)> {
         // Bounds check
         if index < self.len() {
-            let (chunk, chunk_byte_index, _) = self.chunk_at_index(index);
-            let chunk_rel_byte_index = index - chunk_byte_index;
-            Some(chunk[chunk_rel_byte_index])
+            let (chunk, chunk_index, chunk_width) = self.chunk_at_index(index);
+            let chunk_rel_index = index - chunk_index;
+            let width = index_to_width(chunk, chunk_rel_index);
+            Some((width + chunk_width, chunk[chunk_rel_index]))
         } else {
             None
         }
@@ -643,12 +646,13 @@ where
 
     /// Non-panicking version of [from_width()][RopeSlice::from_width].
     #[inline]
-    pub fn get_from_width(&self, width: usize) -> Option<M> {
+    pub fn get_from_width(&self, width: usize) -> Option<(usize, M)> {
         // Bounds check
         if width < self.width() {
             let (chunk, _, chunk_width) = self.chunk_at_width(width);
             let index = start_width_to_index(chunk, width - chunk_width);
-            Some(chunk[index])
+            let width = index_to_width(chunk, index);
+            Some((width + chunk_width, chunk[index]))
         } else {
             None
         }
@@ -668,15 +672,15 @@ where
                     let (chunk, chunk_start_info) =
                         node.get_chunk_at_index(index + start_info.len as usize);
 
-                    // Calculate clipped start/end byte indices within the chunk.
-                    let chunk_start_byte_index =
+                    // Calculate clipped start/end indices within the chunk.
+                    let chunk_start_index =
                         start_info.len.saturating_sub(chunk_start_info.len);
-                    let chunk_end_byte_index =
+                    let chunk_end_index =
                         (chunk.len() as Count).min(end_info.len - chunk_start_info.len);
 
-                    // Return the clipped chunk and byte offset.
+                    // Return the clipped chunk and index offset.
                     Ok((
-                        &chunk[chunk_start_byte_index as usize..chunk_end_byte_index as usize],
+                        &chunk[chunk_start_index as usize..chunk_end_index as usize],
                         chunk_start_info.len.saturating_sub(start_info.len) as usize,
                         chunk_start_info.width.saturating_sub(start_info.width) as usize,
                     ))
@@ -1352,23 +1356,23 @@ mod tests {
         // This is because there are 0 width elements preceding it, and the
         // width in `width_to_index()` merely corresponds to the end of an
         // element, and has no relation to the referred element's width.
-        assert_eq!(slice.start_width_to_index(0), 0); // Sit: 0
-        assert_eq!(slice.start_width_to_index(1), 2); // Amet: 0; Consectur("hello"): 5
-        assert_eq!(slice.start_width_to_index(4), 2); // Consectur("hello"): 5
-        assert_eq!(slice.start_width_to_index(5), 3); // Adipiscing(true): 1
-        assert_eq!(slice.start_width_to_index(6), 4); // Lorem: 1
-        assert_eq!(slice.start_width_to_index(7), 5); // Ipsum: 2
-        assert_eq!(slice.start_width_to_index(8), 5); // Ipsum: 2
-        assert_eq!(slice.start_width_to_index(9), 6); // Dolor(8): 8
-        assert_eq!(slice.start_width_to_index(16), 6); // Dolor(8): 8
-        assert_eq!(slice.start_width_to_index(17), 7); // Sit: 0
-        assert_eq!(slice.start_width_to_index(18), 9); // Amet:0; Consectur("bye"): 3
-        assert_eq!(slice.start_width_to_index(19), 9); // Consectur("bye"): 3
-        assert_eq!(slice.start_width_to_index(20), 10); // Adipiscing(false): 0
-        assert_eq!(slice.start_width_to_index(21), 12); // Lorem: 1
-        assert_eq!(slice.start_width_to_index(22), 12); // Ipsum: 2
-        assert_eq!(slice.start_width_to_index(23), 13); // Ipsum: 2
-        assert_eq!(slice.start_width_to_index(24), 13); // Dolor(4): 4
+        assert_eq!(slice.start_width_to_index(0), 0);
+        assert_eq!(slice.start_width_to_index(1), 2);
+        assert_eq!(slice.start_width_to_index(4), 2);
+        assert_eq!(slice.start_width_to_index(5), 3);
+        assert_eq!(slice.start_width_to_index(6), 4);
+        assert_eq!(slice.start_width_to_index(7), 5);
+        assert_eq!(slice.start_width_to_index(8), 5);
+        assert_eq!(slice.start_width_to_index(9), 6);
+        assert_eq!(slice.start_width_to_index(16), 6);
+        assert_eq!(slice.start_width_to_index(17), 7);
+        assert_eq!(slice.start_width_to_index(18), 9);
+        assert_eq!(slice.start_width_to_index(19), 9);
+        assert_eq!(slice.start_width_to_index(20), 10);
+        assert_eq!(slice.start_width_to_index(21), 12);
+        assert_eq!(slice.start_width_to_index(22), 12);
+        assert_eq!(slice.start_width_to_index(23), 13);
+        assert_eq!(slice.start_width_to_index(24), 13);
     }
 
     #[test]
@@ -1376,12 +1380,12 @@ mod tests {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice = rope.width_slice(34..100);
 
-        assert_eq!(slice.from_index(0), Sit);
-        assert_eq!(slice.from_index(10), Adipiscing(false));
+        assert_eq!(slice.from_index(0), (0, Sit));
+        assert_eq!(slice.from_index(10), (20, Adipiscing(false)));
 
-        assert_eq!(slice.from_index(slice.len() - 3), Lorem);
-        assert_eq!(slice.from_index(slice.len() - 2), Ipsum);
-        assert_eq!(slice.from_index(slice.len() - 1), Dolor(8));
+        assert_eq!(slice.from_index(slice.len() - 3), (60, Lorem));
+        assert_eq!(slice.from_index(slice.len() - 2), (61, Ipsum));
+        assert_eq!(slice.from_index(slice.len() - 1), (63, Dolor(8)));
     }
 
     #[test]
@@ -1405,12 +1409,12 @@ mod tests {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice = rope.width_slice(34..100);
 
-        assert_eq!(slice.from_width(0), Sit); // Sit: 0
-        assert_eq!(slice.from_width(3), Consectur("hello")); // Amet: 0; Consectur("hello"): 5
-        assert_eq!(slice.from_width(5), Adipiscing(true)); // Adipiscing(true): 1
-        assert_eq!(slice.from_width(6), Lorem); // Lorem: 1
-        assert_eq!(slice.from_width(10), Dolor(8)); // Ipsum: 2; Dolor(8): 8
-        assert_eq!(slice.from_width(65), Dolor(8)); // ...; Dolor(8): 8
+        assert_eq!(slice.from_width(0), (0, Sit)); // Sit: 0
+        assert_eq!(slice.from_width(3), (0, Consectur("hello"))); // Amet: 0; Consectur("hello"): 5
+        assert_eq!(slice.from_width(5), (5, Adipiscing(true))); // Adipiscing(true): 1
+        assert_eq!(slice.from_width(6), (6, Lorem)); // Lorem: 1
+        assert_eq!(slice.from_width(10), (9, Dolor(8))); // Ipsum: 2; Dolor(8): 8
+        assert_eq!(slice.from_width(65), (63, Dolor(8))); // ...; Dolor(8): 8
     }
 
     #[test]

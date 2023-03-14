@@ -211,7 +211,7 @@ where
     /// // Print the rope's elements and their widths in reverse.
     /// for (width, element) in rope.iter_at_width(rope.width()).reversed() {
     ///     println!("{} {:?}", width, element);
-    /// #   assert_eq!(element, rope.from_width(width));
+    /// #   assert_eq!((width, element), rope.from_width(width));
     /// }
     #[inline]
     #[must_use]
@@ -1173,7 +1173,7 @@ mod tests {
         let mut slice_2_iter = slice_2.iter().map(|lipsum| *lipsum);
 
         assert_eq!(slice_1, slice_2);
-        assert_eq!(slice_1.from_index(0), slice_2[0]);
+        assert_eq!(slice_1.from_index(0).1, slice_2[0]);
         for _ in 0..(slice_2.len() + 1) {
             assert_eq!(
                 slice_1_iter.next().map(|(_, element)| element),

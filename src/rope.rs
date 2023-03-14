@@ -157,16 +157,16 @@ where
     ///
     /// Runs in O(N) time.
     pub fn capacity(&self) -> usize {
-        let mut byte_count = 0;
+        let mut count = 0;
         for chunk in self.chunks() {
-            byte_count += chunk.len().max(MAX_LEN);
+            count += chunk.len().max(MAX_LEN);
         }
-        byte_count
+        count
     }
 
     /// Shrinks the [Rope<M>]'s capacity to the minimum possible.
     ///
-    /// This will rarely result in `capacity() == len_bytes()`. [Rope<M>]
+    /// This will rarely result in `Rope::capacity() == Rope::len()`. [Rope<M>]
     /// stores [M][Measurable]s in a sequence of fixed-capacity chunks, so an exact fit
     /// only happens for lists of a lenght that is a multiple of that capacity.
     ///
@@ -249,7 +249,7 @@ where
             width,
             root_info,
             |index, cur_info, leaf_slice| {
-                // Find our byte index
+                // Find our index
                 let index = end_width_to_index(leaf_slice, index);
 
                 // No node splitting
@@ -463,7 +463,8 @@ where
     //-----------------------------------------------------------------------
     // Fetch methods
 
-    /// Returns the [M][Measurable] at `index`.
+    /// Returns the [M][Measurable] at `index` and the starting width sum of
+    /// that element.
     ///
     /// Runs in O(log N) time.
     ///
@@ -471,20 +472,21 @@ where
     ///
     /// Panics if the `index` is out of bounds (i.e. `index > Rope::len()`).
     #[inline]
-    pub fn from_index(&self, index: usize) -> M {
+    pub fn from_index(&self, index: usize) -> (usize, M) {
         // Bounds check
         if let Some(out) = self.get_from_index(index) {
             out
         } else {
             panic!(
-                "Attempt to index past end of Rope: byte index {}, Rope byte length {}",
+                "Attempt to index past end of Rope: index {}, Rope length {}",
                 index,
                 self.len()
             );
         }
     }
 
-    /// Returns the [M][Measurable] at `width`.
+    /// Returns the [M][Measurable] at `width` and the starting width sum of
+    /// that element.
     ///
     /// Runs in O(log N) time.
     ///
@@ -492,7 +494,7 @@ where
     ///
     /// Panics if the `width` is out of bounds (i.e. `width > Rope::width()`).
     #[inline]
-    pub fn from_width(&self, width: usize) -> M {
+    pub fn from_width(&self, width: usize) -> (usize, M) {
         if let Some(out) = self.get_from_width(width) {
             out
         } else {
@@ -526,7 +528,7 @@ where
             out
         } else {
             panic!(
-                "Attempt to index past end of Rope: byte index {}, Rope byte length {}",
+                "Attempt to index past end of Rope: index {}, Rope length {}",
                 index,
                 self.len()
             );
@@ -612,7 +614,7 @@ where
     {
         match self.get_index_slice_impl(index_range) {
             Ok(s) => return s,
-            Err(e) => panic!("byte_slice(): {}", e),
+            Err(e) => panic!("index_slice(): {}", e),
         }
     }
 
@@ -630,7 +632,7 @@ where
         Iter::new(&self.root)
     }
 
-    /// Creates an iterator over the bytes of the [Rope<M>], starting at `width`.
+    /// Creates an iterator over the  [Rope<M>], starting at `width`.
     ///
     /// This iterator will return values of type [Option<(usize, M)>], where the `usize`
     /// is the width where the given [M][Measurable] starts. Since one can iterate in
@@ -651,7 +653,7 @@ where
             out
         } else {
             panic!(
-                "Attempt to index past end of Rope: byte index {}, Rope byte length {}",
+                "Attempt to index past end of Rope: index {}, Rope length {}",
                 width,
                 self.len()
             );
@@ -688,7 +690,7 @@ where
             out
         } else {
             panic!(
-                "Attempt to index past end of Rope: byte index {}, Rope byte length {}",
+                "Attempt to index past end of Rope: index {}, Rope length {}",
                 index,
                 self.len()
             );
@@ -966,12 +968,13 @@ where
 
     /// Non-panicking version of [from_index()][Rope::from_index].
     #[inline]
-    pub fn get_from_index(&self, index: usize) -> Option<M> {
+    pub fn get_from_index(&self, index: usize) -> Option<(usize, M)> {
         // Bounds check
         if index < self.len() {
-            let (chunk, chunk_byte_index, _) = self.chunk_at_index(index);
-            let chunk_rel_byte_index = index - chunk_byte_index;
-            Some(chunk[chunk_rel_byte_index])
+            let (chunk, chunk_index, chunk_width) = self.chunk_at_index(index);
+            let chunk_rel_index = index - chunk_index;
+            let width = index_to_width(chunk, chunk_rel_index);
+            Some((width + chunk_width, chunk[chunk_rel_index]))
         } else {
             None
         }
@@ -979,11 +982,13 @@ where
 
     /// Non-panicking version of [from_width()][Rope::from_width].
     #[inline]
-    pub fn get_from_width(&self, width: usize) -> Option<M> {
+    pub fn get_from_width(&self, width: usize) -> Option<(usize, M)> {
         // Bounds check
         if width < self.width() {
             let (chunk, _, chunk_width) = self.chunk_at_width(width);
-            Some(chunk[start_width_to_index(chunk, width - chunk_width)])
+            let index = start_width_to_index(chunk, width - chunk_width);
+            let width = index_to_width(chunk, index);
+            Some((width + chunk_width, chunk[index]))
         } else {
             None
         }
@@ -991,10 +996,10 @@ where
 
     /// Non-panicking version of [chunk_at_index()][Rope::chunk_at_index].
     #[inline]
-    pub fn get_chunk_at_index(&self, byte_index: usize) -> Option<(&[M], usize, usize)> {
+    pub fn get_chunk_at_index(&self, index: usize) -> Option<(&[M], usize, usize)> {
         // Bounds check
-        if byte_index <= self.len() {
-            let (chunk, info) = self.root.get_chunk_at_index(byte_index);
+        if index <= self.len() {
+            let (chunk, info) = self.root.get_chunk_at_index(index);
             Some((chunk, info.len as usize, info.width as usize))
         } else {
             None
@@ -1859,12 +1864,11 @@ mod tests {
     fn from_index_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        assert_eq!(rope.from_index(0), Lorem);
+        assert_eq!(rope.from_index(0), (0, Lorem));
 
-        // UTF-8 for "wide exclamation mark"
-        assert_eq!(rope.from_index(67), Amet);
-        assert_eq!(rope.from_index(68), Consectur("bye"));
-        assert_eq!(rope.from_index(69), Adipiscing(false));
+        assert_eq!(rope.from_index(67), (132, Amet));
+        assert_eq!(rope.from_index(68), (132, Consectur("bye")));
+        assert_eq!(rope.from_index(69), (135, Adipiscing(false)));
     }
 
     #[test]
@@ -1885,10 +1889,10 @@ mod tests {
     fn from_width_01() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
 
-        assert_eq!(rope.from_width(0), Lorem);
-        assert_eq!(rope.from_width(10), Consectur("hello"));
-        assert_eq!(rope.from_width(18), Dolor(8));
-        assert_eq!(rope.from_width(108), Adipiscing(false));
+        assert_eq!(rope.from_width(0), (0, Lorem));
+        assert_eq!(rope.from_width(10), (7, Consectur("hello")));
+        assert_eq!(rope.from_width(18), (16, Dolor(8)));
+        assert_eq!(rope.from_width(108), (108, Adipiscing(false)));
     }
 
     #[test]
