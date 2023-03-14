@@ -55,7 +55,7 @@ tags.insert(5, Underline);
 
 // The AnyRope iterator not only returns the element in question, but also the width
 // where it starts.
-let mut tags_iter = my_tagger.iter().peekable();
+let mut tags_iter = tags.iter().peekable();
 
 for (cur_index, ch) in my_str.chars().enumerate() {
     // The while let loop here is a useful way to activate all tags within the same
