@@ -1,10 +1,10 @@
-//! Iterators over a [Rope<M>]'s data.
+//! Iterators over a [`Rope<M>`]'s data.
 //!
-//! The iterators in Any-Ropey can be created from both [Rope<M>]s and [RopeSlice<T>]s.
-//! When created from a [RopeSlice<T>], they iterate over only the data that the
-//! [RopeSlice<T>] refers to.  For the [Chunks] iterator, the data of the first
+//! The iterators in Any-Ropey can be created from both [`Rope<M>`]s and [`RopeSlice<M>`]s.
+//! When created from a [`RopeSlice<M>`], they iterate over only the data that the
+//! [`RopeSlice<M>`] refers to.  For the [`Chunks`] iterator, the data of the first
 //! and last yielded item will be correctly truncated to match the bounds of
-//! the [RopeSlice<T>].
+//! the [`RopeSlice<M>`].
 //!
 //! # Reverse iteration
 //!
@@ -35,38 +35,38 @@
 //! # Creating iterators at any position
 //!
 //! Iterators in Ropey can be created starting at any position in the rope.
-//! This is accomplished with the [Iter<T>] and [Chunks<T>] iterators, which can be created by
-//! various functions on a [Rope<M>].
+//! This is accomplished with the [`Iter<M>`] and [`Chunks<M>`] iterators, which can be created by
+//! various functions on a [`Rope<M>`].
 //!
 //! When an iterator is created this way, it is positioned such that a call to
 //! `next()` will return the specified element, and a call to `prev()` will
 //! return the element just before the specified one.
 //!
 //! Importantly, iterators created this way still have access to the entire
-//! contents of the [Rope<M>]/[RopeSlice<T>] they were created from and the
+//! contents of the [`Rope<M>`]/[`RopeSlice<M>`] they were created from and the
 //! contents before the specified position is not truncated.  For example, you
-//! can create an [Iter<T>] iterator starting at the end of a [Rope<M>], and then
-//! use the [prev()][Iter::prev] method to iterate backwards over all of that [Rope<M>]'s
+//! can create an [`Iter<M>`] iterator starting at the end of a [`Rope<M>`], and then
+//! use the [`prev()`][Iter::prev] method to iterate backwards over all of that [`Rope<M>`]'s
 //! elements.
 //!
 //! # A possible point of confusion
 //!
-//! The Rust standard library has an iterator trait [DoubleEndedIterator] with
-//! a method [rev()]. While this method's name is //! very similar to Ropey's
-//! [reverse()][Iter::reverse] method, its behavior is very different.
+//! The Rust standard library has an iterator trait [`DoubleEndedIterator`] with
+//! a method [`rev()`]. While this method's name is //! very similar to Ropey's
+//! [`reverse()`][Iter::reverse] method, its behavior is very different.
 //!
-//! [DoubleEndedIterator] actually provides two iterators: one starting at each
+//! [`DoubleEndedIterator`] actually provides two iterators: one starting at each
 //! end of the collection, moving in opposite directions towards each other.
-//! Calling [rev()] switches between those two iterators, changing not only the
+//! Calling [`rev()`] switches between those two iterators, changing not only the
 //! direction of iteration but also its current position in the collection.
 //!
-//! The [reverse()][Iter::reverse] method on AnyRopey's iterators, on the other
+//! The [`reverse()`][Iter::reverse] method on AnyRopey's iterators, on the other
 //! hand, reverses the direction of the iterator in-place, without changing its
 //! position in the rope.
 //!
-//! [Rope<M>]: crate::rope::Rope
-//! [RopeSlice<T>]: crate::slice::RopeSlice
-//! [rev()]: DoubleEndedIterator::rev
+//! [`Rope<M>`]: crate::rope::Rope
+//! [`RopeSlice<M>`]: crate::slice::RopeSlice
+//! [`rev()`]: Iterator::rev
 
 use std::sync::Arc;
 
@@ -76,7 +76,7 @@ use crate::tree::{Node, SliceInfo};
 
 //==========================================================
 
-/// An iterator over a [Rope<M>][crate::rope::Rope]'s elements.
+/// An iterator over a [`Rope<M>`][crate::rope::Rope]'s elements.
 #[derive(Debug, Clone)]
 pub struct Iter<'a, M>
 where
@@ -190,14 +190,14 @@ where
 
     /// Reverses the direction of the iterator in-place.
     ///
-    /// In other words, swaps the behavior of [prev()][Self::prev]
-    /// and [next()][Self::next].
+    /// In other words, swaps the behavior of [`prev()`][Self::prev]
+    /// and [`next()`][Self::next].
     #[inline]
     pub fn reverse(&mut self) {
         self.is_reversed = !self.is_reversed;
     }
 
-    /// Same as [reverse()][Self::reverse], but returns itself.
+    /// Same as [`reverse()`][Self::reverse], but returns itself.
     ///
     /// This is useful when chaining iterator methods:
     ///
@@ -315,22 +315,20 @@ impl<'a, M> ExactSizeIterator for Iter<'a, M> where M: Measurable {}
 
 //==========================================================
 
-/// An iterator over a [Rope<M>]'s contiguous [T] chunks.
+/// An iterator over a [`Rope<M>`]'s contiguous [`M`] chunks.
 ///
-/// Internally, each [Rope<M>] stores [T]s as a segemented collection of [&[[T]]].
+/// Internally, each [`Rope<M>`] stores [`M`]s as a segemented collection of [`&[M]`][Measurable].
 /// It is useful for situations such as:
 ///
-/// - Streaming a [Rope<M>]'s elements data somewhere.
-/// - Writing custom iterators over a [Rope<M>]'s data.
+/// - Streaming a [`Rope<M>`]'s elements data somewhere.
+/// - Writing custom iterators over a [`Rope<M>`]'s data.
 ///
 /// There are no guarantees about the size of yielded chunks, and there are
 /// no guarantees about where the chunks are split.  For example, they may
 /// be zero-sized.
 ///
-/// [T]: crate::rope::Measurable
-/// [Rope<M>]: crate::rope::Rope
-/// [RopeSlice<T>]: crate::slice::RopeSlice
-/// [rev()]: DoubleEndedIterator::rev
+/// [`M`]: Measurable
+/// [`Rope<M>`]: crate::rope::Rope
 #[derive(Debug, Clone)]
 pub struct Chunks<'a, M>
 where
@@ -378,11 +376,11 @@ where
         Chunks::new_with_range_at_index(node, index_range.0, index_range, width_range).0
     }
 
-    /// The main workhorse function for creating new [Chunks] iterators.
+    /// The main workhorse function for creating new [`Chunks`] iterators.
     ///
-    /// Creates a new [Chunks] iterator from the given node, starting the
+    /// Creates a new [`Chunks`] iterator from the given node, starting the
     /// iterator at the chunk containing the element in `at_index`
-    /// (i.e. the [next()][Self::next] method will yield the chunk containing
+    /// (i.e. the [`next()`][Self::next] method will yield the chunk containing
     /// that element). The range of the iterator is bounded by `index_range`.
     ///
     /// Both `at_index` and `index_range` are relative to the beginning of
@@ -522,14 +520,14 @@ where
 
     /// Reverses the direction of the iterator in-place.
     ///
-    /// In other words, swaps the behavior of [prev()][Self::prev]
-    /// and [next()][Self::next].
+    /// In other words, swaps the behavior of [`prev()`][Self::prev]
+    /// and [`next()`][Self::next].
     #[inline]
     pub fn reverse(&mut self) {
         self.is_reversed = !self.is_reversed;
     }
 
-    /// Same as [reverse()][Self::reverse], but returns itself.
+    /// Same as [`reverse()`][Self::reverse], but returns itself.
     ///
     /// This is useful when chaining iterator methods:
     ///

@@ -8,15 +8,15 @@ use crate::slice_utils::{end_width_to_index, index_to_width, start_width_to_inde
 use crate::tree::{Count, Node, SliceInfo};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
-/// An immutable view into part of a [Rope<M>].
+/// An immutable view into part of a [`Rope<M>`].
 ///
-/// Just like standard [`&[M]`][Measurable] slices, [RopeSlice<M>]s behave as if the
+/// Just like standard [`&[M]`][Measurable] slices, [`RopeSlice<M>`]s behave as if the
 /// slice in their range is the only slice that exists. All indexing is relative to
-/// the start of their range, and all iterators and methods that return [M][Measurable]s
+/// the start of their range, and all iterators and methods that return [`M`][Measurable]s
 /// truncate those to the range of the slice.
 ///
-/// In other words, the behavior of a [RopeSlice<M>] is always identical to that
-/// of a full [Rope<M>] created from the same slice range. Nothing should be
+/// In other words, the behavior of a [`RopeSlice<M>`] is always identical to that
+/// of a full [`Rope<M>`] created from the same slice range. Nothing should be
 /// surprising here.
 #[derive(Copy, Clone)]
 pub struct RopeSlice<'a, M>(pub(crate) RSEnum<'a, M>)
@@ -181,7 +181,7 @@ where
     //-----------------------------------------------------------------------
     // Informational methods
 
-    /// Total number of elements in [Rope<M>].
+    /// Total number of elements in [`RopeSlice<M>`].
     ///
     /// Runs in O(1) time.
     #[inline]
@@ -196,7 +196,7 @@ where
         }
     }
 
-    /// Sum of all widths of in [RopeSlice<M>].
+    /// Sum of all widths of in [`RopeSlice<M>`].
     ///
     /// Runs in O(1) time.
     #[inline]
@@ -255,7 +255,7 @@ where
     //-----------------------------------------------------------------------
     // Fetch methods
 
-    /// Returns the [M][Measurable] at `index` and the starting width sum of
+    /// Returns the [`M`][Measurable] at `index` and the starting width sum of
     /// that element.
     ///
     /// Runs in O(log N) time.
@@ -277,7 +277,7 @@ where
         }
     }
 
-    /// Returns the [M][Measurable] at `width` and the starting width sum of
+    /// Returns the [`M`][Measurable] at `width` and the starting width sum of
     /// that element.
     ///
     /// Runs in O(log N) time.
@@ -303,7 +303,7 @@ where
     /// Also returns the index and width of the beginning of the chunk.
     ///
     /// Note: for convenience, a one-past-the-end `index` returns the last
-    /// chunk of the [RopeSlice<M>].
+    /// chunk of the [`RopeSlice<M>`].
     ///
     /// The return value is organized as `(chunk, chunk_index, chunk_width)`.
     ///
@@ -321,7 +321,7 @@ where
     /// Also returns the index and width of the beginning of the chunk.
     ///
     /// Note: for convenience, a one-past-the-end `width` returns the last
-    /// chunk of the [RopeSlice<M>].
+    /// chunk of the [`RopeSlice<M>`].
     ///
     /// The return value is organized as `(chunk, chunk_index, chunk_width)`.
     ///
@@ -342,16 +342,16 @@ where
         }
     }
 
-    /// Returns the entire contents of the [RopeSlice<M>] as a [`&[M]`][Measurable]
+    /// Returns the entire contents of the [`RopeSlice<M>`] as a [`&[M]`][Measurable]
     /// if possible.
     ///
-    /// This is useful for optimizing cases where the [RopeSlice<M>] is not
+    /// This is useful for optimizing cases where the [`RopeSlice<M>`] is not
     /// very long.
     ///
-    /// For large slices this method will typically fail and return [None]
+    /// For large slices this method will typically fail and return [`None`]
     /// because large slices usually cross chunk boundaries in the rope.
     ///
-    /// (Also see the [From] impl for converting to a [`Cow<&[M]>`][std::borrow::Cow].)
+    /// (Also see the [`From`] impl for converting to a [`Cow<&[M]>`][std::borrow::Cow].)
     ///
     /// Runs in O(1) time.
     #[inline]
@@ -365,7 +365,7 @@ where
     //-----------------------------------------------------------------------
     // Slice creation
 
-    /// Gets an sub-slice of the [RopeSlice<M>], using a width range.
+    /// Gets an sub-slice of the [`RopeSlice<M>`], using a width range.
     ///
     /// Uses range syntax, e.g. `2..7`, `2..`, etc.
     ///
@@ -433,7 +433,7 @@ where
         }
     }
 
-    /// Gets and sub-slice of the [RopeSlice<M>], using an index range.
+    /// Gets and sub-slice of the [`RopeSlice<M>`], using an index range.
     ///
     /// Uses range syntax, e.g. `2..7`, `2..`, etc.
     ///
@@ -457,10 +457,10 @@ where
     //-----------------------------------------------------------------------
     // Iterator methods
 
-    /// Creates an iterator over the [RopeSlice<M>].
+    /// Creates an iterator over the [`RopeSlice<M>`].
     ///
-    /// This iterator will return values of type [Option<(usize, M)>], where the `usize`
-    /// is the width sum where the given [M][Measurable] starts.
+    /// This iterator will return values of type [`Option<(usize, M)>`], where the `usize`
+    /// is the width sum where the given [`M`][Measurable] starts.
     ///
     /// Runs in O(log N) time.
     #[inline]
@@ -479,15 +479,15 @@ where
         }
     }
 
-    /// Creates an iterator over the [RopeSlice<M>], starting at `width`.
+    /// Creates an iterator over the [`RopeSlice<M>`], starting at `width`.
     ///
-    /// This iterator will return values of type [Option<(usize, M)>], where the `usize`
-    /// is the width where the given [M][Measurable] starts. Since one can iterate in
-    /// between an [M][Measurable]s start and end width sums. the first `usize` may not
+    /// This iterator will return values of type [`Option<(usize, M)>`], where the `usize`
+    /// is the width where the given [`M`][Measurable] starts. Since one can iterate in
+    /// between an [`M`][Measurable]s start and end width sums. the first `usize` may not
     /// actually corelate to the `width` given to the function.
     ///
     /// If `width == RopeSlice::width()` then an iterator at the end of the
-    /// [RopeSlice<M>] is created (i.e. [next()][crate::iter::Iter::next] will return [None]).
+    /// [`RopeSlice<M>`] is created (i.e. [`next()`][crate::iter::Iter::next] will return [`None`]).
     ///
     /// Runs in O(log N) time.
     ///
@@ -507,7 +507,7 @@ where
         }
     }
 
-    /// Creates an iterator over the chunks of the [RopeSlice<M>].
+    /// Creates an iterator over the chunks of the [`RopeSlice<M>`].
     ///
     /// Runs in O(log N) time.
     #[inline]
@@ -526,14 +526,14 @@ where
         }
     }
 
-    /// Creates an iterator over the chunks of the [RopeSlice<M>], with the
+    /// Creates an iterator over the chunks of the [`RopeSlice<M>`], with the
     /// iterator starting at the chunk containing the `index`.
     ///
     /// Also returns the index and width of the beginning of the first
     /// chunk to be yielded.
     ///
-    /// If `index == RopeSlice::len()` an iterator at the end of the [RopeSlice<M>]
-    /// (yielding [None] on a call to [next()][crate::iter::Iter::next]) is created.
+    /// If `index == RopeSlice::len()` an iterator at the end of the [`RopeSlice<M>`]
+    /// (yielding [`None`] on a call to [`next()`][crate::iter::Iter::next]) is created.
     ///
     /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
     ///
@@ -555,14 +555,14 @@ where
         }
     }
 
-    /// Creates an iterator over the chunks of the [RopeSlice<M>], with the
+    /// Creates an iterator over the chunks of the [`RopeSlice<M>`], with the
     /// iterator starting at the chunk containing the `width`.
     ///
     /// Also returns the index and width of the beginning of the first
     /// chunk to be yielded.
     ///
-    /// If `width == RopeSlice::width()` an iterator at the end of the [RopeSlice<M>]
-    /// (yielding [None] on a call to [next()][crate::iter::Iter::next]) is created.
+    /// If `width == RopeSlice::width()` an iterator at the end of the [`RopeSlice<M>`]
+    /// (yielding [`None`] on a call to [`next()`][crate::iter::Iter::next]) is created.
     ///
     /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
     ///
@@ -588,13 +588,13 @@ where
 /// # Non-Panicking
 ///
 /// The methods in this impl block provide non-panicking versions of
-/// [RopeSlice<M>]'s panicking methods. They return either `Option::None` or
+/// [`RopeSlice<M>`]'s panicking methods. They return either `Option::None` or
 /// `Result::Err()` when their panicking counterparts would have panicked.
 impl<'a, M> RopeSlice<'a, M>
 where
     M: Measurable,
 {
-    /// Non-panicking version of [index_to_width()][RopeSlice::index_to_width].
+    /// Non-panicking version of [`index_to_width()`][RopeSlice::index_to_width].
     #[inline]
     pub fn try_index_to_width(&self, index: usize) -> Result<usize> {
         // Bounds check
@@ -606,7 +606,7 @@ where
         }
     }
 
-    /// Non-panicking version of [start_width_to_index()][RopeSlice::start_width_to_index].
+    /// Non-panicking version of [`start_width_to_index()`][RopeSlice::start_width_to_index].
     #[inline]
     pub fn try_start_width_to_index(&self, width: usize) -> Result<usize> {
         // Bounds check
@@ -618,7 +618,7 @@ where
         }
     }
 
-    /// Non-panicking version of [end_width_to_index()][RopeSlice::end_width_to_index].
+    /// Non-panicking version of [`end_width_to_index()`][RopeSlice::end_width_to_index].
     #[inline]
     pub fn try_end_width_to_index(&self, width: usize) -> Result<usize> {
         // Bounds check
@@ -630,7 +630,7 @@ where
         }
     }
 
-    /// Non-panicking version of [from_index()][RopeSlice::from_index].
+    /// Non-panicking version of [`from_index()`][RopeSlice::from_index].
     #[inline]
     pub fn get_from_index(&self, index: usize) -> Option<(usize, M)> {
         // Bounds check
@@ -644,7 +644,7 @@ where
         }
     }
 
-    /// Non-panicking version of [from_width()][RopeSlice::from_width].
+    /// Non-panicking version of [`from_width()`][RopeSlice::from_width].
     #[inline]
     pub fn get_from_width(&self, width: usize) -> Option<(usize, M)> {
         // Bounds check
@@ -658,7 +658,7 @@ where
         }
     }
 
-    /// Non-panicking version of [chunk_at_index()][RopeSlice::chunk_at_index].
+    /// Non-panicking version of [`chunk_at_index()`][RopeSlice::chunk_at_index].
     pub fn try_chunk_at_index(&self, index: usize) -> Result<(&'a [M], usize, usize)> {
         // Bounds check
         if index <= self.len() {
@@ -692,7 +692,7 @@ where
         }
     }
 
-    /// Non-panicking version of [chunk_at_width()][RopeSlice::chunk_at_width].
+    /// Non-panicking version of [`chunk_at_width()`][RopeSlice::chunk_at_width].
     pub fn get_chunk_at_width(&self, width: usize) -> Option<(&'a [M], usize, usize)> {
         // Bounds check
         if width <= self.width() {
@@ -725,7 +725,7 @@ where
         }
     }
 
-    /// Non-panicking version of [width_slice()][RopeSlice::width_slice].
+    /// Non-panicking version of [`width_slice()`][RopeSlice::width_slice].
     pub fn get_width_slice<R>(&self, width_range: R) -> Option<RopeSlice<'a, M>>
     where
         R: RangeBounds<usize>,
@@ -767,7 +767,7 @@ where
         }
     }
 
-    /// Non-panicking version of [index_slice()][RopeSlice::index_slice].
+    /// Non-panicking version of [`index_slice()`][RopeSlice::index_slice].
     pub fn get_index_slice<R>(&self, index_range: R) -> Option<RopeSlice<'a, M>>
     where
         R: RangeBounds<usize>,
@@ -839,7 +839,7 @@ where
         }
     }
 
-    /// Non-panicking version of [iter_at()][RopeSlice::iter_at].
+    /// Non-panicking version of [`iter_at()`][RopeSlice::iter_at].
     #[inline]
     pub fn get_iter_at(&self, width: usize) -> Option<Iter<'a, M>> {
         // Bounds check
@@ -862,7 +862,7 @@ where
         }
     }
 
-    /// Non-panicking version of [chunks_at_index()][RopeSlice::chunks_at_index].
+    /// Non-panicking version of [`chunks_at_index()`][RopeSlice::chunks_at_index].
     #[inline]
     pub fn get_chunks_at_index(&self, index: usize) -> Option<(Chunks<'a, M>, usize, usize)> {
         // Bounds check
@@ -901,7 +901,7 @@ where
         }
     }
 
-    /// Non-panicking version of [chunks_at_width()][RopeSlice::chunks_at_width].
+    /// Non-panicking version of [`chunks_at_width()`][RopeSlice::chunks_at_width].
     #[inline]
     pub fn get_chunks_at_width(&self, width: usize) -> Option<(Chunks<'a, M>, usize, usize)> {
         // Bounds check
@@ -945,18 +945,18 @@ where
 //==============================================================
 // Conversion impls
 
-/// Creates a [RopeSlice<M>] directly from a [`&[M]`][Measurable] slice.
+/// Creates a [`RopeSlice<M>`] directly from a [`&[M]`][Measurable] slice.
 ///
 /// The useful applications of this are actually somewhat narrow. It is
 /// intended primarily as an aid when implementing additional functionality
 /// on top of AnyRope, where you may already have access to a rope chunk and
-/// want to directly create a [RopeSlice<M>] from it, avoiding the overhead of
+/// want to directly create a [`RopeSlice<M>`] from it, avoiding the overhead of
 /// going through the slicing APIs.
 ///
-/// Although it is possible to use this to create [RopeSlice<M>]s from
+/// Although it is possible to use this to create [`RopeSlice<M>`]s from
 /// arbitrary lists, doing so is not especially useful. For example,
-/// [Rope<M>]s and [RopeSlice<M>]s can already be directly compared for
-/// equality with [Vec<M>] and [`&[M]`][Measurable] slices.
+/// [`Rope<M>`]s and [`RopeSlice<M>`]s can already be directly compared for
+/// equality with [`Vec<M>`] and [`&[M]`][Measurable] slices.
 ///
 /// Runs in O(N) time, where N is the length of the slice.
 impl<'a, M> From<&'a [M]> for RopeSlice<'a, M>
@@ -987,7 +987,7 @@ where
 }
 
 /// Attempts to borrow the contents of the slice, but will convert to an
-/// owned [Vec<M>] if the contents is not contiguous in memory.
+/// owned [`Vec<M>`] if the contents is not contiguous in memory.
 ///
 /// Runs in best case O(1), worst case O(N).
 impl<'a, M> From<RopeSlice<'a, M>> for std::borrow::Cow<'a, [M]>

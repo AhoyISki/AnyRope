@@ -5,12 +5,12 @@ use smallvec::SmallVec;
 use crate::rope::{Measurable, Rope};
 use crate::tree::{BranchChildren, LeafSlice, Node, MAX_LEN, MAX_CHILDREN, MIN_LEN};
 
-/// An efficient incremental [Rope<M>] builder.
+/// An efficient incremental [`Rope<M>`] builder.
 ///
-/// This is used to efficiently build ropes from sequences of [M][Measurable]
+/// This is used to efficiently build ropes from sequences of [`M`][Measurable]
 /// chunks.
 ///
-/// Unlike repeatedly calling [Rope::insert()] on the end of a rope,
+/// Unlike repeatedly calling [`Rope::insert()`] on the end of a rope,
 /// this API runs in time linear to the amount of data fed to it, and
 /// is overall much faster.
 ///
@@ -58,23 +58,23 @@ where
         }
     }
 
-    /// Appends `chunk` to the end of the in-progress [Rope<M>].
+    /// Appends `chunk` to the end of the in-progress [`Rope<M>`].
     ///
     /// Call this method repeatedly to incrementally build up a
-    /// [Rope<M>]. The passed slice chunk can be as large or small as
+    /// [`Rope<M>`]. The passed slice chunk can be as large or small as
     /// desired, but larger chunks are more efficient.
     pub fn append_slice(&mut self, chunk: &[M]) {
         self.append_internal(chunk, false);
     }
 
-    /// Appends a single [M][Measurable] to the end of the in-progress [Rope<M>]
+    /// Appends a single [`M`][Measurable] to the end of the in-progress [`Rope<M>`]
     ///
-    /// Call this method repeatedly to incrementally build up a [Rope<M>].
+    /// Call this method repeatedly to incrementally build up a [`Rope<M>`].
     pub fn append(&mut self, element: M) {
         self.append_internal(&[element], false);
     }
 
-    /// Finishes the build, and returns the [Rope<M>].
+    /// Finishes the build, and returns the [`Rope<M>`].
     ///
     /// Note: this method consumes the builder. If you want to continue
     /// building other ropes with the same prefix, you can clone the builder

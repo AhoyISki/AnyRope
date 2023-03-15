@@ -7,7 +7,7 @@ where
     slice.iter().map(|measurable| measurable.width()).sum()
 }
 
-/// Gets the width sum up to a given [index][usize] in the `slice`.
+/// Gets the width sum up to a given `index` in the `slice`.
 pub fn index_to_width<M>(slice: &[M], index: usize) -> usize
 where
     M: Measurable,

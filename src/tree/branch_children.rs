@@ -1,4 +1,4 @@
-use std::fmt::{self};
+use std::fmt;
 use std::iter::{Iterator, Zip};
 use std::slice;
 use std::sync::Arc;
@@ -62,7 +62,7 @@ where
         self.0.data_mut()
     }
 
-    /// Updates the [SliceInfo] of the child at `index`.
+    /// Updates the [`SliceInfo`] of the child at `index`.
     pub fn update_child_info(&mut self, index: usize) {
         let (info, nodes) = self.0.data_mut();
         info[index] = (nodes[index].slice_info(), nodes[index].zero_width_end())
@@ -303,7 +303,7 @@ where
         acc
     }
 
-    /// Returns the child index and left-side-accumulated [SliceInfo] of the
+    /// Returns the child index and left-side-accumulated [`SliceInfo`] of the
     /// first child that matches the given predicate.
     ///
     /// If no child matches the predicate, the last child is returned.
@@ -329,7 +329,7 @@ where
         (index, accum)
     }
 
-    /// Returns the child index and left-side-accumulated [SliceInfo] of the
+    /// Returns the child index and left-side-accumulated [`SliceInfo`] of the
     /// child that contains the given index.
     ///
     /// One-past-the end is valid, and will return the last child.
@@ -344,7 +344,7 @@ where
         (index, accum)
     }
 
-    /// Returns the child index and left-side-accumulated [SliceInfo]o of the
+    /// Returns the child index and left-side-accumulated [`SliceInfo`]o of the
     /// child that contains the given width.
     ///
     /// One-past-the end is valid, and will return the last child.
@@ -363,7 +363,7 @@ where
         (index, accum)
     }
 
-    /// Returns the child index and left-side-accumulated [SliceInfo] of the
+    /// Returns the child index and left-side-accumulated [`SliceInfo`] of the
     /// child that contains the given width.
     ///
     /// One-past-the end is valid, and will return the last child.
@@ -380,9 +380,9 @@ where
         (index, accum)
     }
 
-    /// Same as [search_start_width()][Self::search_start_width] above,
+    /// Same as [`search_start_width()`][Self::search_start_width] above,
     /// except that it only calulates the left-side-accumulated _width_,
-    /// rather than the full [SliceInfo].
+    /// rather than the full [`SliceInfo`].
     ///
     /// Return is (child_index, left_acc_width)
     ///
@@ -497,11 +497,11 @@ where
 
 //===========================================================================
 
-/// The unsafe guts of [BranchChildren<M>][super::BranchChildren], exposed
+/// The unsafe guts of [`BranchChildren<M>`][super::BranchChildren], exposed
 /// through a safe API.
 ///
 /// Try to keep this as small as possible, and implement functionality on
-/// [BranchChildren<M>][super::BranchChildren] via the safe APIs whenever possible.
+/// [`BranchChildren<M>`][super::BranchChildren] via the safe APIs whenever possible.
 ///
 /// It's split out this way because it was too easy to accidentally access the
 /// fixed size arrays directly, leading to memory-unsafety bugs when accidentally
@@ -525,7 +525,7 @@ mod inner {
         /// An array of the child nodes.
         /// INVARIANT: The nodes from 0..len must be initialized
         nodes: [MaybeUninit<Arc<Node<M>>>; MAX_CHILDREN],
-        /// An array of the child node [SliceInfo]s
+        /// An array of the child node [`SliceInfo`]s
         /// INVARIANT: The nodes from 0..len must be initialized
         info: [MaybeUninit<(SliceInfo, bool)>; MAX_CHILDREN],
         len: u8,

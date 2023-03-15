@@ -1,10 +1,10 @@
 //! AnyRope is an arbitrary data rope for Rust.
 //!
-//! AnyRope's [Rope<M>] contains elements `T` that implement [Measurable], a
+//! AnyRope's [`Rope<M>`] contains elements `M` that implement [`Measurable`], a
 //! trait that assigns an arbitrary "width" to each element, through the
-//! [width()][Measurable::width] function. AnyRope can then use these "widths"
+//! [`width()`][Measurable::width] function. AnyRope can then use these "widths"
 //! to retrieve and iterate over elements in any given "width" from the beginning
-//! of the [Rope<M>].
+//! of the [`Rope<M>`].
 //!
 //! Keep in mind that the "width" does not correspond to the actual size of a type
 //! in bits or bytes, but is instead decided by the implementor, and can be whatever
@@ -12,10 +12,10 @@
 //!
 //! The library is made up of four main components:
 //!
-//! - [Rope<M>]: the main rope type.
-//! - [RopeSlice<T>]: an immutable view into part of a [Rope<M>].
-//! - [iter]: iterators over [Rope<M>]/[RopeSlice<T>] data.
-//! - [RopeBuilder<T>]: an efficient incremental [Rope<M>] builder.
+//! - [`Rope<M>`]: the main rope type.
+//! - [`RopeSlice<M>`]: an immutable view into part of a [`Rope<M>`].
+//! - [`iter`]: iterators over [`Rope<M>`]/[`RopeSlice<M>`] data.
+//! - [`RopeBuilder<M>`]: an efficient incremental [`Rope<M>`] builder.
 //!
 //! # A Basic Example
 //!
@@ -89,26 +89,25 @@
 //! ```
 //!
 //! An example can be found in the `examples` directory, detailing a "search and replace"
-//! functionality for [Rope<M>].
+//! functionality for [`Rope<M>`].
 //!
 //! # Low-level APIs
 //!
 //! AnyRope also provides access to some of its low-level APIs, enabling client
-//! code to efficiently work with a [Rope<M>]'s data and implement new
+//! code to efficiently work with a [`Rope<M>`]'s data and implement new
 //! functionality.  The most important of those API's are:
 //!
-//! - The [chunk_at_*()][Rope::chunk_at_width]
-//!   chunk-fetching methods of [Rope<M>] and [RopeSlice<T>].
-//! - The [Chunks](iter::Chunks) iterator.
-//! - The functions in [slice_utils] for operating on
-//!   [&`[M]`][Measurable] slices.
+//! - The [`chunk_at_*()`][Rope::chunk_at_width]
+//!   chunk-fetching methods of [`Rope<M>`] and [`RopeSlice<M>`].
+//! - The [`Chunks`](iter::Chunks) iterator.
+//! - The functions in `slice_utils` for operating on [`&[M]`][Measurable] slices.
 //!
 //! As a reminder, if you notice similarities with the AnyRope crate, it is because this
 //! is a heavily modified fork of it.
 //!
 //! # Note about documentation
 //!
-//! In the documentation of AnyRope, there will be a struct called [Lipsum],
+//! In the documentation of AnyRope, there will be a struct called [`Lipsum`],
 //! used to exemplify the features of the crate.
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::inline_always)]
@@ -169,13 +168,13 @@ pub enum Error {
     /// Indicates that the passed index was out of bounds.
     ///
     /// Contains the index attempted and the actual length of the
-    /// [Rope<M>]/[RopeSlice<T>], in that order.
+    /// [`Rope<M>`]/[`RopeSlice<M>`], in that order.
     IndexOutOfBounds(usize, usize),
 
     /// Indicates that the passed width was out of bounds.
     ///
     /// Contains the index attempted and the actual width of the
-    /// [Rope<M>]/[RopeSlice<T>], in that order.
+    /// [`Rope<M>`]/[`RopeSlice<M>`], in that order.
     WidthOutOfBounds(usize, usize),
 
     /// Indicates that a reversed index range (end < start) was encountered.
@@ -198,8 +197,8 @@ pub enum Error {
     /// Indicates that the passed index range was partially or fully out of bounds.
     ///
     /// Contains the [start, end) indices of the range and the actual
-    /// length of the [Rope<M>]/[RopeSlice<T>], in that order.
-    /// When either the start or end are [None], that indicates a half-open range.
+    /// length of the [`Rope<M>`]/[`RopeSlice<M>`], in that order.
+    /// When either the start or end are [`None`], that indicates a half-open range.
     IndexRangeOutOfBounds(
         Option<usize>, // Start.
         Option<usize>, // End.
@@ -209,8 +208,8 @@ pub enum Error {
     /// Indicates that the passed width range was partially or fully out of bounds.
     ///
     /// Contains the [start, end) widths of the range and the actual
-    /// width of the [Rope<M>]/[RopeSlice<T>], in that order.
-    /// When either the start or end are [None], that indicates a half-open range.
+    /// width of the [`Rope<M>`]/[`RopeSlice<M>`], in that order.
+    /// When either the start or end are [`None`], that indicates a half-open range.
     WidthRangeOutOfBounds(
         Option<usize>, // Start.
         Option<usize>, // End.

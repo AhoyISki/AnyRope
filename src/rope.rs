@@ -10,25 +10,25 @@ use crate::slice_utils::{start_width_to_index, index_to_width, end_width_to_inde
 use crate::tree::{BranchChildren, Node, SliceInfo, MAX_LEN, MIN_LEN};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
-/// A object that has a definite size, that can be interpreted by a [Rope<M>].
+/// A object that has a definite size, that can be interpreted by a [`Rope<M>`].
 pub trait Measurable: Clone + Copy {
     /// The width of this element, it need not be the actual lenght in bytes,
-    /// but just a representative value, to be fed to the [Rope<M>].
+    /// but just a representative value, to be fed to the [`Rope<M>`].
     fn width(&self) -> usize;
 }
 
-/// A rope of elements that are [Measurable].
+/// A rope of elements that are [`Measurable`].
 ///
-/// The time complexity of nearly all edit and query operations on [Rope<M>] are
-/// worst-case `O(log N)` in the length of the rope. [Rope<M>] is designed to
-/// work efficiently even for huge (in the gigabytes) arrays of [T][Measurable].
+/// The time complexity of nearly all edit and query operations on [`Rope<M>`] are
+/// worst-case `O(log N)` in the length of the rope. [`Rope<M>`] is designed to
+/// work efficiently even for huge (in the gigabytes) arrays of [`M`][Measurable].
 ///
-/// In the examples below, a struct called [Lipsum][crate::Lipsum] will be used in
+/// In the examples below, a struct called [`Lipsum`][crate::Lipsum] will be used in
 /// order to demonstrate AnyRope's features.
 ///
 /// # Editing Operations
 ///
-/// The primary editing operations on [Rope<M>] are insertion and removal of slices
+/// The primary editing operations on [`Rope<M>`] are insertion and removal of slices
 /// or individual elements.
 /// For example:
 ///
@@ -47,7 +47,7 @@ pub trait Measurable: Clone + Copy {
 ///
 /// # Query Operations
 ///
-/// [Rope<M>] gives you the ability to query an element at any given index or
+/// [`Rope<M>`] gives you the ability to query an element at any given index or
 /// width, and the convertion between the two. You can either convert an index to
 /// a width, or convert the width at the start or end of an element to an index.
 /// For example:
@@ -68,8 +68,8 @@ pub trait Measurable: Clone + Copy {
 ///
 /// # Slicing
 ///
-/// You can take immutable slices of a [Rope<M>] using [width_slice()][Rope::width_slice]
-/// or [index_slice()][Rope::index_slice]:
+/// You can take immutable slices of a [`Rope<M>`] using [`width_slice()`][Rope::width_slice]
+/// or [`index_slice()`][Rope::index_slice]:
 ///
 /// ```
 /// # use any_rope::Rope;
@@ -86,15 +86,15 @@ pub trait Measurable: Clone + Copy {
 ///
 /// # Cloning
 ///
-/// Cloning [Rope<M>]s is extremely cheap, running in `O(1)` time and taking a
+/// Cloning [`Rope<M>`]s is extremely cheap, running in `O(1)` time and taking a
 /// small constant amount of memory for the new clone, regardless of slice size.
-/// This is accomplished by data sharing between [Rope<M>] clones. The memory
+/// This is accomplished by data sharing between [`Rope<M>`] clones. The memory
 /// used by clones only grows incrementally as the their contents diverge due
 /// to edits. All of this is thread safe, so clones can be sent freely
 /// between threads.
 ///
 /// The primary intended use-case for this feature is to allow asynchronous
-/// processing of [Rope<M>]s.
+/// processing of [`Rope<M>`]s.
 #[derive(Clone)]
 pub struct Rope<M>
 where
@@ -110,7 +110,7 @@ where
     //-----------------------------------------------------------------------
     // Constructors
 
-    /// Creates an empty [Rope<M>].
+    /// Creates an empty [`Rope<M>`].
     #[inline]
     pub fn new() -> Self {
         Rope {
@@ -118,7 +118,7 @@ where
         }
     }
 
-    /// Creates a [Rope<M>] from an [M][Measurable] slice.
+    /// Creates a [`Rope<M>`] from an [`M`][Measurable] slice.
     ///
     /// Runs in O(N) time.
     #[inline]
@@ -130,7 +130,7 @@ where
     //-----------------------------------------------------------------------
     // Informational methods
 
-    /// Total number of elements in [Rope<M>].
+    /// Total number of elements in [`Rope<M>`].
     ///
     /// Runs in O(1) time.
     #[inline]
@@ -138,7 +138,7 @@ where
         self.root.len()
     }
 
-    /// Sum of all widths of in [Rope<M>].
+    /// Sum of all widths of in [`Rope<M>`].
     ///
     /// Runs in O(1) time.
     #[inline]
@@ -149,7 +149,7 @@ where
     //-----------------------------------------------------------------------
     // Memory management methods
 
-    /// Total size of the [Rope<M>]'s buffer space.
+    /// Total size of the [`Rope<M>`]'s buffer space.
     ///
     /// This includes unoccupied buffer space. You can calculate
     /// the unoccupied space with `Rope::capacity() - Rope::len()`. In general,
@@ -164,19 +164,19 @@ where
         count
     }
 
-    /// Shrinks the [Rope<M>]'s capacity to the minimum possible.
+    /// Shrinks the [`Rope<M>`]'s capacity to the minimum possible.
     ///
-    /// This will rarely result in `Rope::capacity() == Rope::len()`. [Rope<M>]
-    /// stores [M][Measurable]s in a sequence of fixed-capacity chunks, so an exact fit
+    /// This will rarely result in `Rope::capacity() == Rope::len()`. [`Rope<M>`]
+    /// stores [`M`][Measurable]s in a sequence of fixed-capacity chunks, so an exact fit
     /// only happens for lists of a lenght that is a multiple of that capacity.
     ///
     /// After calling this, the difference between `capacity()` and
-    /// `len()` is typically under 1000 for each 1000000 [M][Measurable] in the
-    /// [Rope<M>].
+    /// `len()` is typically under 1000 for each 1000000 [`M`][Measurable] in the
+    /// [`Rope<M>`].
     ///
-    /// **NOTE:** calling this on a [Rope<M>] clone causes it to stop sharing
+    /// **NOTE:** calling this on a [`Rope<M>`] clone causes it to stop sharing
     /// all data with its other clones. In such cases you will very likely
-    /// be _increasing_ total memory usage despite shrinking the [Rope<M>]'s
+    /// be _increasing_ total memory usage despite shrinking the [`Rope<M>`]'s
     /// capacity.
     ///
     /// Runs in O(N) time, and uses O(log N) additional space during
@@ -213,7 +213,7 @@ where
 
     /// Inserts [`slice`][Measurable] at `width`.
     ///
-    /// Runs in O(L + log N) time, where N is the length of the [Rope<M>] and L
+    /// Runs in O(L + log N) time, where N is the length of the [`Rope<M>`] and L
     /// is the length of [`slice`][Measurable].
     ///
     /// # Panics
@@ -225,7 +225,7 @@ where
         self.try_insert_slice(width, slice).unwrap()
     }
 
-    /// Inserts a single [M][Measurable] at `width`.
+    /// Inserts a single [`M`][Measurable] at `width`.
     ///
     /// Runs in O(log N) time.
     ///
@@ -294,25 +294,25 @@ where
     ///
     /// Uses range syntax, e.g. `2..7`, `2..`, etc.
     ///
-    /// Runs in O(M + log N) time, where N is the length of the [Rope<M>] and M
+    /// Runs in O(M + log N) time, where N is the length of the [`Rope<M>`] and M
     /// is the length of the range being removed.
     ///
-    /// The first removed [M][Measurable] will be the first with a end width sum
-    /// greater than the starting bound if its [width()][Measurable::width] is greater
-    /// than 0, or equal to the starting bound if its [width()][Measurable::width] is
+    /// The first removed [`M`][Measurable] will be the first with a end width sum
+    /// greater than the starting bound if its [`width()`][Measurable::width] is greater
+    /// than 0, or equal to the starting bound if its [`width()`][Measurable::width] is
     /// equal to 0.
     ///
-    /// The last removed [M][Measurable] will be the first with a start width sum greater
-    /// than the ending bound if its [width()][Measurable::width] is greater than 0,
+    /// The last removed [`M`][Measurable] will be the first with a start width sum greater
+    /// than the ending bound if its [`width()`][Measurable::width] is greater than 0,
     /// or the last one with a start width sum equal to the ending bound if its
-    /// [width()][Measurable::width] is equal to 0.
+    /// [`width()`][Measurable::width] is equal to 0.
     ///
     /// In essence, this means the following:
-    /// - A range starting between a [M][Measurable]'s start and end width sums will remove
-    /// said [M][Measurable].
-    /// - A range ending in the start of a list of 0 width [M][Measurable]s will remove
+    /// - A range starting between a [`M`][Measurable]'s start and end width sums will remove
+    /// said [`M`][Measurable].
+    /// - A range ending in the start of a list of 0 width [`M`][Measurable]s will remove
     /// all of them.
-    /// - An empty range that starts and ends in a list of 0 width [M][Measurable]s will
+    /// - An empty range that starts and ends in a list of 0 width [`M`][Measurable]s will
     /// remove all of them, and nothing else. This contrasts with Rust's usual definition
     /// of an empty range.
     ///
@@ -363,7 +363,7 @@ where
         self.try_remove(width_range).unwrap()
     }
 
-    /// Splits the [Rope<M>] at `width`, returning the right part of the split.
+    /// Splits the [`Rope<M>`] at `width`, returning the right part of the split.
     ///
     /// Runs in O(log N) time.
     ///
@@ -374,7 +374,7 @@ where
         self.try_split_off(width).unwrap()
     }
 
-    /// Appends a [Rope<M>] to the end of this one, consuming the other [Rope<M>].
+    /// Appends a [`Rope<M>`] to the end of this one, consuming the other [`Rope<M>`].
     ///
     /// Runs in O(log N) time.
     pub fn append(&mut self, mut other: Self) {
@@ -463,7 +463,7 @@ where
     //-----------------------------------------------------------------------
     // Fetch methods
 
-    /// Returns the [M][Measurable] at `index` and the starting width sum of
+    /// Returns the [`M`][Measurable] at `index` and the starting width sum of
     /// that element.
     ///
     /// Runs in O(log N) time.
@@ -485,7 +485,7 @@ where
         }
     }
 
-    /// Returns the [M][Measurable] at `width` and the starting width sum of
+    /// Returns the [`M`][Measurable] at `width` and the starting width sum of
     /// that element.
     ///
     /// Runs in O(log N) time.
@@ -566,7 +566,7 @@ where
     //-----------------------------------------------------------------------
     // Slicing
 
-    /// Gets an immutable slice of the [Rope<M>], using a width range.
+    /// Gets an immutable slice of the [`Rope<M>`], using a width range.
     ///
     /// Uses range syntax, e.g. `2..7`, `2..`, etc.
     ///
@@ -597,7 +597,7 @@ where
         self.get_width_slice(width_range).unwrap()
     }
 
-    /// Gets and immutable slice of the [Rope<M>], using an index range.
+    /// Gets and immutable slice of the [`Rope<M>`], using an index range.
     ///
     /// Uses range syntax, e.g. `2..7`, `2..`, etc.
     ///
@@ -621,10 +621,10 @@ where
     //-----------------------------------------------------------------------
     // Iterator methods
 
-    /// Creates an iterator over the [Rope<M>].
+    /// Creates an iterator over the [`Rope<M>`].
     ///
     /// This iterator will return values of type [Option<(usize, M)>], where the `usize`
-    /// is the width sum where the given [M][Measurable] starts.
+    /// is the width sum where the given [`M`][Measurable] starts.
     ///
     /// Runs in O(log N) time.
     #[inline]
@@ -632,15 +632,15 @@ where
         Iter::new(&self.root)
     }
 
-    /// Creates an iterator over the  [Rope<M>], starting at `width`.
+    /// Creates an iterator over the  [`Rope<M>`], starting at `width`.
     ///
-    /// This iterator will return values of type [Option<(usize, M)>], where the `usize`
-    /// is the width where the given [M][Measurable] starts. Since one can iterate in
-    /// between an [M][Measurable]s start and end width sums. the first `usize` may not
+    /// This iterator will return values of type [`Option<(usize, M)>`], where the `usize`
+    /// is the width where the given [`M`][Measurable] starts. Since one can iterate in
+    /// between an [`M`][Measurable]s start and end width sums. the first `usize` may not
     /// actually corelate to the `width` given to the function.
     ///
     /// If `width == Rope::width()` then an iterator at the end of the
-    /// [Rope<M>] is created (i.e. [next()][crate::iter::Iter::next] will return [None]).
+    /// [`Rope<M>`] is created (i.e. [`next()`][crate::iter::Iter::next] will return [`None`]).
     ///
     /// Runs in O(log N) time.
     ///
@@ -660,7 +660,7 @@ where
         }
     }
 
-    /// Creates an iterator over the chunks of the [Rope<M>].
+    /// Creates an iterator over the chunks of the [`Rope<M>`].
     ///
     /// Runs in O(log N) time.
     #[inline]
@@ -668,14 +668,14 @@ where
         Chunks::new(&self.root)
     }
 
-    /// Creates an iterator over the chunks of the [Rope<M>], with the
+    /// Creates an iterator over the chunks of the [`Rope<M>`], with the
     /// iterator starting at the chunk containing the `index`.
     ///
     /// Also returns the index and width of the beginning of the first
     /// chunk to be yielded.
     ///
-    /// If `index == Rope::len()` an iterator at the end of the [Rope<M>]
-    /// (yielding [None] on a call to [next()][crate::iter::Iter::next]) is created.
+    /// If `index == Rope::len()` an iterator at the end of the [`Rope<M>`]
+    /// (yielding [`None`] on a call to [`next()`][crate::iter::Iter::next]) is created.
     ///
     /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
     ///
@@ -697,14 +697,14 @@ where
         }
     }
 
-    /// Creates an iterator over the chunks of the [Rope<M>], with the
+    /// Creates an iterator over the chunks of the [`Rope<M>`], with the
     /// iterator starting at the chunk containing the `width`.
     ///
     /// Also returns the index and width of the beginning of the first
     /// chunk to be yielded.
     ///
-    /// If `width == Rope::width()` an iterator at the end of the [Rope<M>]
-    /// (yielding [None] on a call to [next()][crate::iter::Iter::next]) is created.
+    /// If `width == Rope::width()` an iterator at the end of the [`Rope<M>`]
+    /// (yielding [`None`] on a call to [`next()`][crate::iter::Iter::next]) is created.
     ///
     /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
     ///
@@ -794,13 +794,13 @@ where
 /// # Non-Panicking
 ///
 /// The methods in this impl block provide non-panicking versions of
-/// [Rope<M>]'s panicking methods. They return either `Option::None` or
+/// [`Rope<M>`]'s panicking methods. They return either `Option::None` or
 /// `Result::Err()` when their panicking counterparts would have panicked.
 impl<M> Rope<M>
 where
     M: Measurable,
 {
-    /// Non-panicking version of [insert()][Rope::insert].
+    /// Non-panicking version of [`insert()`][Rope::insert].
     #[inline]
     pub fn try_insert_slice(&mut self, width: usize, mut slice: &[M]) -> Result<()> {
         // Bounds check
@@ -849,7 +849,7 @@ where
         }
     }
 
-    /// Non-panicking version of [insert()][Rope::insert].
+    /// Non-panicking version of [`insert()`][Rope::insert].
     #[inline]
     pub fn try_insert(&mut self, width: usize, measurable: M) -> Result<()> {
         // Bounds check
@@ -861,7 +861,7 @@ where
         }
     }
 
-    /// Non-panicking version of [remove()][Rope::remove].
+    /// Non-panicking version of [`remove()`][Rope::remove].
     pub fn try_remove<R>(&mut self, width_range: R) -> Result<()>
     where
         R: RangeBounds<usize>,
@@ -899,7 +899,7 @@ where
         }
     }
 
-    /// Non-panicking version of [split_off()][Rope::split_off].
+    /// Non-panicking version of [`split_off()`][Rope::split_off].
     pub fn try_split_off(&mut self, width: usize) -> Result<Self> {
         // Bounds check
         if width <= self.width() {
@@ -930,7 +930,7 @@ where
         }
     }
 
-    /// Non-panicking version of [index_to_width()][Rope::index_to_width].
+    /// Non-panicking version of [`index_to_width()`][Rope::index_to_width].
     #[inline]
     pub fn try_index_to_width(&self, index: usize) -> Result<usize> {
         // Bounds check
@@ -942,7 +942,7 @@ where
         }
     }
 
-    /// Non-panicking version of [start_width_to_index()][Rope::start_width_to_index].
+    /// Non-panicking version of [`start_width_to_index()`][Rope::start_width_to_index].
     #[inline]
     pub fn try_start_width_to_index(&self, width: usize) -> Result<usize> {
         // Bounds check
@@ -954,7 +954,7 @@ where
         }
     }
 
-    /// Non-panicking version of [end_width_to_index()][Rope::end_width_to_index].
+    /// Non-panicking version of [`end_width_to_index()`][Rope::end_width_to_index].
     #[inline]
     pub fn try_end_width_to_index(&self, width: usize) -> Result<usize> {
         // Bounds check
@@ -966,7 +966,7 @@ where
         }
     }
 
-    /// Non-panicking version of [from_index()][Rope::from_index].
+    /// Non-panicking version of [`from_index()`][Rope::from_index].
     #[inline]
     pub fn get_from_index(&self, index: usize) -> Option<(usize, M)> {
         // Bounds check
@@ -980,7 +980,7 @@ where
         }
     }
 
-    /// Non-panicking version of [from_width()][Rope::from_width].
+    /// Non-panicking version of [`from_width()`][Rope::from_width].
     #[inline]
     pub fn get_from_width(&self, width: usize) -> Option<(usize, M)> {
         // Bounds check
@@ -994,7 +994,7 @@ where
         }
     }
 
-    /// Non-panicking version of [chunk_at_index()][Rope::chunk_at_index].
+    /// Non-panicking version of [`chunk_at_index()`][Rope::chunk_at_index].
     #[inline]
     pub fn get_chunk_at_index(&self, index: usize) -> Option<(&[M], usize, usize)> {
         // Bounds check
@@ -1006,7 +1006,7 @@ where
         }
     }
 
-    /// Non-panicking version of [chunk_at_width()][Rope::chunk_at_width].
+    /// Non-panicking version of [`chunk_at_width()`][Rope::chunk_at_width].
     #[inline]
     pub fn get_chunk_at_width(&self, width: usize) -> Option<(&[M], usize, usize)> {
         // Bounds check
@@ -1018,7 +1018,7 @@ where
         }
     }
 
-    /// Non-panicking version of [width_slice()][Rope::width_slice].
+    /// Non-panicking version of [`width_slice()`][Rope::width_slice].
     #[inline]
     pub fn get_width_slice<R>(&self, width_range: R) -> Option<RopeSlice<M>>
     where
@@ -1035,7 +1035,7 @@ where
         }
     }
 
-    /// Non-panicking version of [index_slice()][Rope::index_slice].
+    /// Non-panicking version of [`index_slice()`][Rope::index_slice].
     #[inline]
     pub fn get_index_slice<R>(&self, index_range: R) -> Option<RopeSlice<M>>
     where
@@ -1089,7 +1089,7 @@ where
         RopeSlice::new_with_index_range(&self.root, start, end)
     }
 
-    /// Non-panicking version of [iter_at_width()][Rope::iter_at_width].
+    /// Non-panicking version of [`iter_at_width()`][Rope::iter_at_width].
     #[inline]
     pub fn get_iter_at_width(&self, width: usize) -> Option<Iter<M>> {
         // Bounds check
@@ -1105,7 +1105,7 @@ where
         }
     }
 
-    /// Non-panicking version of [chunks_at_index()][Rope::chunks_at_index].
+    /// Non-panicking version of [`chunks_at_index()`][Rope::chunks_at_index].
     #[inline]
     pub fn get_chunks_at_index(&self, index: usize) -> Option<(Chunks<M>, usize, usize)> {
         // Bounds check
@@ -1121,7 +1121,7 @@ where
         }
     }
 
-    /// Non-panicking version of [chunks_at_width()][Rope::chunks_at_width].
+    /// Non-panicking version of [`chunks_at_width()`][Rope::chunks_at_width].
     #[inline]
     pub fn get_chunks_at_width(&self, width: usize) -> Option<(Chunks<M>, usize, usize)> {
         // Bounds check
@@ -1255,7 +1255,7 @@ where
     }
 }
 
-/// Attempts to borrow the contents of the [Rope<M>], but will convert to an
+/// Attempts to borrow the contents of the [`Rope<M>`], but will convert to an
 /// owned [`[M]`][Measurable] if the contents is not contiguous in memory.
 ///
 /// Runs in best case O(1), worst case O(N).

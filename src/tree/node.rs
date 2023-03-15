@@ -20,19 +20,19 @@ impl<M> Node<M>
 where
     M: Measurable,
 {
-    /// Creates an empty [Node<M>].
+    /// Creates an empty [`Node<M>`].
     #[inline(always)]
     pub fn new() -> Self {
         Node::Leaf(LeafSlice::from_slice(&[]))
     }
 
-    /// Total number of items in the [Node<M>].
+    /// Total number of items in the [`Node<M>`].
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.slice_info().len as usize
     }
 
-    /// Total number of items in the [Node<M>].
+    /// Total number of items in the [`Node<M>`].
     #[inline(always)]
     pub fn width(&self) -> usize {
         self.slice_info().width as usize
@@ -42,26 +42,26 @@ where
     ///
     /// There are three parameters:
     /// - width: the chunk that contains this width is fetched,
-    /// - node_info: this is the [SliceInfo] of the node it's being called on.
+    /// - node_info: this is the [`SliceInfo`] of the node it's being called on.
     ///              This makes it a little awkward to call, but is needed since
-    ///              it's actually the parent node that contains the [SliceInfo],
+    ///              it's actually the parent node that contains the [`SliceInfo`],
     ///              so the info needs to be passed in.
     /// - edit: the closure that receives the chunk and does the edits.
     ///
     /// The closure is effectively the termination case for the recursion,
     /// and takes essentially same parameters and returns the same things as
     /// the method itself. In particular, the closure receives the width offset
-    /// of the width within the given chunk and the [SliceInfo] of the chunk.
-    /// The main difference is that it receives a [LeafSlice<M>] instead of a node.
+    /// of the width within the given chunk and the [`SliceInfo`] of the chunk.
+    /// The main difference is that it receives a [`LeafSlice<M>`] instead of a node.
     ///
-    /// The closure is expected to return the updated [SliceInfo] of the [Node<M>],
+    /// The closure is expected to return the updated [`SliceInfo`] of the [`Node<M>`],
     /// and if the node had to be split, then it also returns the right-hand
-    /// [Node<M>] along with its [SliceInfo] as well.
+    /// [`Node<M>`] along with its [`SliceInfo`] as well.
     ///
-    /// The main method call will then return the total updated [SliceInfo] for
-    /// the whole tree, and a new [Node<M>] only if the whole tree had to be split.
-    /// It is up to the caller to check for that new [Node<M>], and handle it by
-    /// creating a new root with both the original [Node<M>] and the new node as
+    /// The main method call will then return the total updated [`SliceInfo`] for
+    /// the whole tree, and a new [`Node<M>`] only if the whole tree had to be split.
+    /// It is up to the caller to check for that new [`Node<M>`], and handle it by
+    /// creating a new root with both the original [`Node<M>`] and the new node as
     /// children.
     pub fn edit_chunk_at_width<F>(
         &mut self,
@@ -126,8 +126,8 @@ where
     /// Removes elements in the range `start_index..end_index`.
     ///
     /// Returns (in this order):
-    /// - The updated [SliceInfo] for the node.
-    /// - Whether [fix_tree_seam()][Node::fix_tree_seam] needs to be run after this.
+    /// - The updated [`SliceInfo`] for the node.
+    /// - Whether [`fix_tree_seam()`][Node::fix_tree_seam] needs to be run after this.
     ///
     /// WARNING: does not correctly handle all slice being removed. That
     /// should be special-cased in calling code.
@@ -182,7 +182,7 @@ where
                 // Returns (in this order):
                 // - Whether there's a possible CRLF seam that needs fixing.
                 // - Whether the tree may need invariant fixing.
-                // - Updated [SliceInfo] of the node.
+                // - Updated SliceInfo of the node.
                 let handle_child = |children: &mut BranchChildren<M>,
                                     child_i: usize,
                                     c_width_acc: usize|
@@ -387,7 +387,7 @@ where
         }
     }
 
-    /// Splits the [Node<M>] at `width`, returning the right side of the split.
+    /// Splits the [`Node<M>`] at `width`, returning the right side of the split.
     pub fn end_split(&mut self, width: usize) -> Self {
         debug_assert!(width != 0);
         debug_assert!(width != (self.slice_info().width as usize));
@@ -422,7 +422,7 @@ where
         }
     }
 
-    /// Splits the [Node<M>] index `width`, returning the right side of the split.
+    /// Splits the [`Node<M>`] index `width`, returning the right side of the split.
     pub fn start_split(&mut self, width: usize) -> Self {
         debug_assert!(width != 0);
         debug_assert!(width != (self.slice_info().width as usize));
@@ -457,7 +457,7 @@ where
         }
     }
 
-    /// Returns the chunk that contains the given index, and the [SliceInfo]
+    /// Returns the chunk that contains the given index, and the [`SliceInfo`]
     /// corresponding to the start of the chunk.
     pub fn get_chunk_at_index(&self, mut index: usize) -> (&[M], SliceInfo) {
         let mut node = self;
@@ -478,7 +478,7 @@ where
         }
     }
 
-    /// Returns the chunk that contains the given width, and the [SliceInfo]
+    /// Returns the chunk that contains the given width, and the [`SliceInfo`]
     /// corresponding to the start of the chunk.
     pub fn get_first_chunk_at_width(&self, mut width: usize) -> (&[M], SliceInfo) {
         let mut node = self;
@@ -500,7 +500,7 @@ where
         }
     }
 
-    /// Returns the chunk that contains the given width, and the [SliceInfo]
+    /// Returns the chunk that contains the given width, and the [`SliceInfo`]
     /// corresponding to the start of the chunk.
     pub fn get_last_chunk_at_width(&self, mut width: usize) -> (&[M], SliceInfo) {
         let mut node = self;
@@ -522,7 +522,7 @@ where
         }
     }
 
-    /// Returns the [SliceInfo] at the given starting width sum.
+    /// Returns the [`SliceInfo`] at the given starting width sum.
     #[inline(always)]
     pub fn start_width_to_slice_info(&self, width: usize) -> SliceInfo {
         let (chunk, info) = self.get_first_chunk_at_width(width);
@@ -533,7 +533,7 @@ where
         }
     }
 
-    /// Returns the [SliceInfo] at the given ending width sum.
+    /// Returns the [`SliceInfo`] at the given ending width sum.
     #[inline(always)]
     pub fn end_width_to_slice_info(&self, width: usize) -> SliceInfo {
         let (chunk, info) = self.get_last_chunk_at_width(width);
@@ -544,7 +544,7 @@ where
         }
     }
 
-    /// Returns the [SliceInfo] at the given index.
+    /// Returns the [`SliceInfo`] at the given index.
     #[inline(always)]
     pub fn index_to_slice_info(&self, index: usize) -> SliceInfo {
         let (chunk, info) = self.get_chunk_at_index(index);
@@ -745,8 +745,8 @@ where
         }
     }
 
-    /// Fixes up the tree after [remove_range()][Node::remove_range] or
-	/// [Rope::append()].
+    /// Fixes up the tree after [`remove_range()`][Node::remove_range] or
+	/// [`Rope::append()`].
     /// Takes the width of the start of the removal range.
     ///
     /// Returns whether it did anything or not that would affect the

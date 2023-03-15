@@ -6,7 +6,7 @@ use crate::rope::Measurable;
 
 use self::inner::LeafSmallVec;
 
-/// A custom small string.  The unsafe guts of this are in `NodeSmallString`
+/// A custom small string.  The unsafe guts of this are in [`LeafSmallVec`]
 /// further down in this file.
 #[derive(Clone, Default)]
 #[repr(C)]
@@ -18,7 +18,7 @@ impl<M> LeafSlice<M>
 where
     M: Measurable,
 {
-    /// Creates a new [Leaf] from a slice.
+    /// Creates a new [`Leaf`] from a slice.
     pub fn from_slice(value: &[M]) -> Self {
         Self(LeafSmallVec::from_slice(value))
     }
@@ -41,7 +41,7 @@ where
         right
     }
 
-    /// Appends a `&str` to end the of the [LeafSlice].
+    /// Appends a `&str` to end the of the [`LeafSlice`].
     pub fn push_slice(&mut self, slice: &[M]) {
         let len = self.len();
         self.0.insert_slice(len, slice);
@@ -77,10 +77,10 @@ where
         self.0.inline_if_possible();
     }
 
-    /// Splits the [LeafSlice] at `index`.
+    /// Splits the [`LeafSlice`] at `index`.
     ///
     /// The left part remains in the original, and the right part is
-    /// returned in a new [LeafSlice].
+    /// returned in a new [`LeafSlice`].
     pub fn split_off(&mut self, index: usize) -> Self {
         let other = LeafSlice(self.0.split_off(index));
         self.0.inline_if_possible();
@@ -183,7 +183,7 @@ mod inner {
 
     use super::Measurable;
 
-    /// The backing internal buffer type for [LeafSlice][super::LeafSlice].
+    /// The backing internal buffer type for [`LeafSlice`][super::LeafSlice].
     #[derive(Copy, Clone)]
     struct BackingArray<M>([M; MAX_LEN])
     where
@@ -204,7 +204,7 @@ mod inner {
         }
     }
 
-    /// Internal small string for [LeafSlice][super::LeafSlice].
+    /// Internal small string for [`LeafSlice`][super::LeafSlice].
     #[derive(Clone, Default)]
     #[repr(C)]
     pub struct LeafSmallVec<M>
@@ -241,7 +241,7 @@ mod inner {
             &self.buffer
         }
 
-        /// Inserts a [`&[Measurable]`][Measurable] at `index`.
+        /// Inserts a [`&[M]`][Measurable] at `index`.
         #[inline(always)]
         pub fn insert_slice(&mut self, index: usize, slice: &[M]) {
             // Copy the `slice` into the appropriate space in the buffer.
