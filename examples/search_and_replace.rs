@@ -121,7 +121,7 @@ where
             let end_d = (head as isize + end as isize + index_diff) as usize;
 
             // Do the replacement.
-            rope.remove(start_d..end_d);
+            rope.remove_exclusive(start_d..end_d);
             rope.insert_slice(start_d, replacement_slice);
 
             // Update the index offset.

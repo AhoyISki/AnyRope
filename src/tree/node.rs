@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use crate::rope::Measurable;
-use crate::slice_utils::{start_width_to_index, index_to_width, end_width_to_index};
+use crate::slice_utils::{end_width_to_index, index_to_width, start_width_to_index};
 use crate::tree::{
-    BranchChildren, Count, LeafSlice, SliceInfo, MAX_LEN, MAX_CHILDREN, MIN_LEN, MIN_CHILDREN,
+    BranchChildren, Count, LeafSlice, SliceInfo, MAX_CHILDREN, MAX_LEN, MIN_CHILDREN, MIN_LEN,
 };
 
 #[derive(Debug, Clone)]
@@ -125,6 +125,9 @@ where
 
     /// Removes elements in the range `start_index..end_index`.
     ///
+    /// The parameters `left_edge` and `right_edge`, if true, remove 0 width
+    /// elements at the edges of the range.
+    ///
     /// Returns (in this order):
     /// - The updated [`SliceInfo`] for the node.
     /// - Whether [`fix_tree_seam()`][Node::fix_tree_seam] needs to be run after this.
@@ -136,11 +139,17 @@ where
         start_width: usize,
         end_width: usize,
         node_info: SliceInfo,
+        l_edge: bool,
+        r_edge: bool,
     ) -> (SliceInfo, bool) {
         match *self {
             // If it's a leaf
             Node::Leaf(ref mut slice) => {
-                let start_index = start_width_to_index(slice, start_width);
+                let start_index = if l_edge {
+                    start_width_to_index(slice, start_width)
+                } else {
+                    end_width_to_index(slice, start_width)
+                };
 
                 // In this circumstance, nothing needs to be done, since we're removing
                 // in the middle of an element.
@@ -148,7 +157,11 @@ where
                     return (SliceInfo::from_slice(slice), false);
                 }
 
-                let end_index = end_width_to_index(slice, end_width);
+                let end_index = if r_edge {
+                    end_width_to_index(slice, end_width)
+                } else {
+                    start_width_to_index(slice, end_width)
+                };
 
                 // Remove slice and calculate new info & seam info.
                 if start_index > 0 || end_index < slice.len() {
@@ -180,12 +193,13 @@ where
             Node::Branch(ref mut children) => {
                 // Shared code for handling children.
                 // Returns (in this order):
-                // - Whether there's a possible CRLF seam that needs fixing.
                 // - Whether the tree may need invariant fixing.
                 // - Updated SliceInfo of the node.
                 let handle_child = |children: &mut BranchChildren<M>,
                                     child_i: usize,
-                                    c_width_acc: usize|
+                                    c_width_acc: usize,
+                                    l_edge: bool,
+                                    r_edge: bool|
                  -> (bool, SliceInfo) {
                     // Recurse into child
                     let (tmp_info, _) = children.info()[child_i];
@@ -195,6 +209,8 @@ where
                             start_width - c_width_acc.min(start_width),
                             (end_width - c_width_acc).min(tmp_width),
                             tmp_info,
+                            l_edge,
+                            r_edge,
                         );
 
                     // Handle result
@@ -229,7 +245,8 @@ where
                 // Both indices point into the same child
                 if l_child_i == r_child_i {
                     let (info, _) = children.info()[l_child_i];
-                    let (mut needs_fix, new_info) = handle_child(children, l_child_i, l_width_acc);
+                    let (mut needs_fix, new_info) =
+                        handle_child(children, l_child_i, l_width_acc, l_edge, r_edge);
 
                     if children.len() > 0 {
                         merge_child(children, l_child_i);
@@ -266,12 +283,13 @@ where
 
                     // Handle right child
                     if r_child_exists {
-                        let (fix, _) = handle_child(children, l_child_i + 1, r_width_acc);
+                        let (fix, _) =
+                            handle_child(children, l_child_i + 1, r_width_acc, true, r_edge);
                         needs_fix |= fix;
                     }
 
                     // Handle left child
-                    let (fix, _) = handle_child(children, l_child_i, l_width_acc);
+                    let (fix, _) = handle_child(children, l_child_i, l_width_acc, l_edge, true);
                     needs_fix |= fix;
 
                     if children.len() > 0 {
@@ -746,7 +764,7 @@ where
     }
 
     /// Fixes up the tree after [`remove_range()`][Node::remove_range] or
-	/// [`Rope::append()`].
+    /// [`Rope::append()`].
     /// Takes the width of the start of the removal range.
     ///
     /// Returns whether it did anything or not that would affect the

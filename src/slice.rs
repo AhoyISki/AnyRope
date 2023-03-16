@@ -1573,7 +1573,7 @@ mod tests {
     #[test]
     fn eq_slice_03() {
         let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
-        rope.remove(20..21);
+        rope.remove_inclusive(20..20);
         rope.insert_slice(20, &[Consectur("hello")]);
         let slice = rope.width_slice(..);
 
@@ -1585,10 +1585,10 @@ mod tests {
     fn eq_slice_04() {
         let rope = Rope::from_slice(lorem_ipsum().as_slice());
         let slice = rope.width_slice(..);
-        let slice: Vec<Lipsum> = lorem_ipsum().into();
+        let vec: Vec<Lipsum> = rope.clone().into();
 
-        assert_eq!(slice, slice);
-        assert_eq!(slice, slice);
+        assert_eq!(slice, vec);
+        assert_eq!(vec, slice);
     }
 
     #[test]

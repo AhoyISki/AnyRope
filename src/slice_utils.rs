@@ -29,12 +29,12 @@ where
 
     for measurable in slice {
         let measurable_width = measurable.width();
-        let new_accum = accum + measurable_width;
+        let next_accum = accum + measurable_width;
 
-        if (measurable_width == 0 && new_accum >= width) || new_accum > width {
+        if (measurable_width == 0 && next_accum >= width) || next_accum > width {
             break;
         }
-        accum = new_accum;
+        accum = next_accum;
         index += 1;
     }
 
@@ -52,7 +52,7 @@ where
     for measurable in slice {
         let measurable_width = measurable.width();
         // This makes it so that every 0 width node exactly at `width` is also captured.
-        if accum > width || measurable_width != 0 && accum == width {
+        if (measurable_width != 0 && accum >= width) || accum > width {
             break;
         }
 

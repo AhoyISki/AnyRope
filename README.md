@@ -47,9 +47,11 @@ let mut tags = any_rope::Rope::from_slice(&[Skip(5), PrintRed, Skip(4), Normal])
 // Do note that Tag::Skip only represents characters because we are also iterating
 // over a `Chars` iterator, and have chosen to do so.
 
-// An empty range will remove all 0 width elements in that specific width.
+// An empty range, when used in an inclusive removal will remove all
+// 0 width elements in that specific width.
+// `Rope::remove_exclusive()` would keep them.
 // In this case, that would be `Tag::PrintRed`
-tags.remove(5..5);
+tags.remove_inclusive(5..5);
 // In place of that `Tag::PrintRed`, we will insert `Tag::Underline`.
 tags.insert(5, Underline);
 

@@ -433,9 +433,9 @@ where
         let mut index = 0;
 
         // Find left child and info
-        for (info, _) in self.info()[..(self.len() - 1)].iter() {
+        for (info, zero_width_end) in self.info()[..(self.len() - 1)].iter() {
             let next_accum = accum_width + info.width as usize;
-            if start_index < next_accum {
+            if (*zero_width_end && next_accum >= start_index) || next_accum > start_index {
                 break;
             }
             accum_width = next_accum;
@@ -445,14 +445,19 @@ where
         let l_acc_info = accum_width;
 
         // Find right child and info
-        for (info, _) in self.info()[index..(self.len() - 1)].iter() {
+        for (info, zero_width_end) in self.info()[index..(self.len() - 1)].iter() {
             let next_accum = accum_width + info.width as usize;
-            if end_index <= next_accum {
+            if (!*zero_width_end && next_accum >= end_index)
+                || next_accum > end_index
+                || index == self.len() - 1
+            {
                 break;
             }
             accum_width = next_accum;
             index += 1;
         }
+
+        println!("{}, {}", l_child_i, index);
 
         #[cfg(any(test, debug_assertions))]
         assert!(
@@ -862,7 +867,7 @@ mod tests {
         assert_eq!((at_0_0.0).1, 0);
         assert_eq!((at_0_0.1).1, 0);
 
-        assert_eq!((at_7_7.0).0, 2);
+        assert_eq!((at_7_7.0).0, 1);
         assert_eq!((at_7_7.1).0, 2);
         assert_eq!((at_7_7.0).1, 7);
         assert_eq!((at_7_7.1).1, 7);
@@ -877,18 +882,18 @@ mod tests {
         assert_eq!((at_16_16.0).1, 7);
         assert_eq!((at_16_16.1).1, 7);
 
-        let at_0_3 = children.search_width_range(0, 7);
-        let at_5_7 = children.search_width_range(7, 16);
+        let at_0_7 = children.search_width_range(0, 7);
+        let at_7_16 = children.search_width_range(7, 16);
 
-        assert_eq!((at_0_3.0).0, 0);
-        assert_eq!((at_0_3.1).0, 0);
-        assert_eq!((at_0_3.0).1, 0);
-        assert_eq!((at_0_3.1).1, 0);
+        assert_eq!((at_0_7.0).0, 0);
+        assert_eq!((at_0_7.1).0, 0);
+        assert_eq!((at_0_7.0).1, 0);
+        assert_eq!((at_0_7.1).1, 0);
 
-        assert_eq!((at_5_7.0).0, 2);
-        assert_eq!((at_5_7.1).0, 2);
-        assert_eq!((at_5_7.0).1, 7);
-        assert_eq!((at_5_7.1).1, 7);
+        assert_eq!((at_7_16.0).0, 1);
+        assert_eq!((at_7_16.1).0, 2);
+        assert_eq!((at_7_16.0).1, 7);
+        assert_eq!((at_7_16.1).1, 7);
 
         let at_2_4 = children.search_width_range(6, 8);
 

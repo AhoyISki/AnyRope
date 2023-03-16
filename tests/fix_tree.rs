@@ -54,7 +54,7 @@ fn remove_at_chunk_boundery() {
     let mut r = Rope::from_slice(medium_vec.as_slice());
     // remove exactly at a chunk boundry
     // to trigger an edgecase in fix_tree_seam
-    r.remove(31354..58881);
+    r.remove_exclusive(31354..58881);
 
     // Verify rope integrity
     r.assert_integrity();

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::iter::{Chunks, Iter};
 use crate::rope_builder::RopeBuilder;
 use crate::slice::RopeSlice;
-use crate::slice_utils::{start_width_to_index, index_to_width, end_width_to_index};
+use crate::slice_utils::{end_width_to_index, index_to_width, start_width_to_index};
 use crate::tree::{BranchChildren, Node, SliceInfo, MAX_LEN, MIN_LEN};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
@@ -39,7 +39,7 @@ pub trait Measurable: Clone + Copy {
 /// let mut rope = Rope::from_slice(
 /// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
 /// );
-/// rope.remove(6..8);
+/// rope.remove_inclusive(6..8);
 /// rope.insert(6, Consectur("bye"));
 ///
 /// assert_eq!(rope, [Lorem, Ipsum, Dolor(3), Consectur("bye"), Adipiscing(true)].as_slice());
@@ -321,34 +321,32 @@ where
     /// ```rust
     /// # use any_rope::Rope;
     /// # use any_rope::Lipsum::*;
-    /// let mut rope = Rope::from_slice(
-    /// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
-    /// );
-    /// // Removing in the middle of `Dolor(5)`.
-    /// rope.remove(5..);
+    /// let array = [Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)];
+    /// let mut rope = Rope::from_slice(&array);
+    /// // Removing in the middle of `Dolor(3)`.
+    /// rope.remove_inclusive(5..);
     ///
     /// assert_eq!(rope, [Lorem, Ipsum].as_slice());
     /// ```
     /// ```rust
     /// # use any_rope::Rope;
     /// # use any_rope::Lipsum::*;
-    /// let mut rope = Rope::from_slice(
-    /// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
-    /// );
+    /// let array = [Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)];
+    /// let mut rope = Rope::from_slice(&array);
     /// // End bound coincides with a 0 width list.
-    /// rope.remove(1..6);
+    /// rope.remove_inclusive(1..6);
     ///
     /// assert_eq!(rope, [Lorem, Consectur("hi"), Adipiscing(true)].as_slice());
     /// ```
     /// ```rust
     /// # use any_rope::Rope;
     /// # use any_rope::Lipsum::*;
-    /// let mut rope = Rope::from_slice(
-    /// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
-    /// );
+    /// let array = [Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)];
+    /// let mut rope = Rope::from_slice(&array);
     /// // Empty range at the start of a 0 width list.
-    /// rope.remove(6..6);
+    /// rope.remove_inclusive(6..6);
     ///
+    /// // Inclusively removing an empty range does nothing.
     /// assert_eq!(rope, [Lorem, Ipsum, Dolor(3), Consectur("hi"), Adipiscing(true)].as_slice());
     /// ```
     ///
@@ -356,11 +354,63 @@ where
     ///
     /// Panics if the start of the range is greater than the end, or if the
     /// end is out of bounds (i.e. `end > self.width()`).
-    pub fn remove<R>(&mut self, width_range: R)
+    pub fn remove_inclusive<R>(&mut self, width_range: R)
     where
         R: RangeBounds<usize>,
     {
-        self.try_remove(width_range).unwrap()
+        self.try_remove_inclusive(width_range).unwrap()
+    }
+
+    /// Same as [`remove_inclusive()`][Rope::remove_inclusive], but keeps elements
+    /// width width equal to 0 at the edges.
+    ///
+    /// If the `width_range` doesn't cover the entire width of a single [`M`][Measurable],
+    /// then the removal does nothing.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use any_rope::Rope;
+    /// # use any_rope::Lipsum::*;
+    /// let array = [Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)];
+    /// let mut rope = Rope::from_slice(&array);
+    /// // End bound coincides with a 0 width list.
+    /// rope.remove_exclusive(1..6);
+    ///
+    /// assert_eq!(rope, [Lorem, Sit, Amet, Consectur("hi"), Adipiscing(true)].as_slice());
+    /// ```
+    /// ```rust
+    /// # use any_rope::Rope;
+    /// # use any_rope::Lipsum::*;
+    /// let array = [Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)];
+    /// let mut rope = Rope::from_slice(&array);
+    /// // Empty range at the start of a 0 width list.
+    /// rope.remove_exclusive(6..6);
+    /// 
+    /// // Exclusively removing an empty range does nothing.
+    /// assert_eq!(rope, array.as_slice());
+    /// ```
+    /// ```rust
+    /// # use any_rope::Rope;
+    /// # use any_rope::Lipsum::*;
+    /// let array = [Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)];
+    /// let mut rope = Rope::from_slice(&array);
+    /// // Removing in the middle of `Dolor(3)`.
+    /// rope.remove_exclusive(5..6);
+    ///
+    /// // Exclusively removing in the middle of an element does nothing.
+    /// assert_eq!(rope, array.as_slice());
+    /// ```
+	///
+    /// # Panics
+    ///
+    /// Panics if the start of the range is greater than the end, or if the
+    /// end is out of bounds (i.e. `end > self.width()`).
+    pub fn remove_exclusive<R>(&mut self, width_range: R)
+    where
+        R: RangeBounds<usize>,
+    {
+        self.try_remove_exclusive(width_range).unwrap()
     }
 
     /// Splits the [`Rope<M>`] at `width`, returning the right part of the split.
@@ -861,8 +911,23 @@ where
         }
     }
 
-    /// Non-panicking version of [`remove()`][Rope::remove].
-    pub fn try_remove<R>(&mut self, width_range: R) -> Result<()>
+	/// Non-panicking version of [`remove_inclusive()`][Rope::remove_inclusive].
+    pub fn try_remove_inclusive<R>(&mut self, width_range: R) -> Result<()>
+    where
+        R: RangeBounds<usize>,
+    {
+        self.try_remove_internal(width_range, true)
+    }
+
+	/// Non-panicking version of [`remove_exclusive()`][Rope::remove_exclusive].
+    pub fn try_remove_exclusive<R>(&mut self, width_range: R) -> Result<()>
+    where
+        R: RangeBounds<usize>,
+    {
+        self.try_remove_internal(width_range, false)
+    }
+
+    fn try_remove_internal<R>(&mut self, width_range: R, remove_edges: bool) -> Result<()>
     where
         R: RangeBounds<usize>,
     {
@@ -888,7 +953,8 @@ where
             let root = Arc::make_mut(&mut self.root);
 
             let root_info = root.slice_info();
-            let (_, needs_fix) = root.remove_range(start, end, root_info);
+            let (_, needs_fix) =
+                root.remove_range(start, end, root_info, remove_edges, remove_edges);
 
             if needs_fix {
                 root.fix_tree_seam(start);
@@ -1506,7 +1572,7 @@ mod tests {
 
     #[test]
     fn from_slice() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         assert_eq!(rope, lorem_ipsum());
 
         rope.assert_integrity();
@@ -1515,7 +1581,7 @@ mod tests {
 
     #[test]
     fn len_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         assert_eq!(rope.len(), 70);
     }
 
@@ -1527,7 +1593,7 @@ mod tests {
 
     #[test]
     fn len_from_widths_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         assert_eq!(rope.width(), 135);
     }
 
@@ -1632,9 +1698,9 @@ mod tests {
         let slice = &[Dolor(15), Sit, Amet, Dolor(24), Lorem, Ipsum, Dolor(7)];
         let mut rope = Rope::from_slice(slice);
 
-        rope.remove(0..11); // Removes Dolor(15).
-        rope.remove(24..31); // Removes [Lorem, Ipsum, Dolor(7)].
-        rope.remove(0..0); // Removes Dolor(24).
+        rope.remove_inclusive(0..11); // Removes Dolor(15).
+        rope.remove_inclusive(24..31); // Removes [Lorem, Ipsum, Dolor(7)].
+        rope.remove_inclusive(0..0); // Removes Dolor(24).
         assert_eq!(rope, [Dolor(24)].as_slice());
 
         rope.assert_integrity();
@@ -1646,9 +1712,8 @@ mod tests {
         let slice = &[Lorem; 15];
         let mut rope = Rope::from_slice(slice);
 
-        // Make sure CRLF pairs get merged properly, via
         // assert_invariants() below.
-        rope.remove(3..6);
+        rope.remove_inclusive(3..6);
         assert_eq!(rope, [Lorem; 12].as_slice());
 
         rope.assert_integrity();
@@ -1657,10 +1722,10 @@ mod tests {
 
     #[test]
     fn remove_03() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope = Rope::from(lorem_ipsum());
 
         // Make sure removing an empty range, on a non 0 width element, does nothing.
-        rope.remove(45..45);
+        rope.remove_inclusive(45..45);
         assert_eq!(rope, lorem_ipsum());
 
         rope.assert_integrity();
@@ -1669,10 +1734,10 @@ mod tests {
 
     #[test]
     fn remove_04() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope = Rope::from(lorem_ipsum());
 
         // Make sure removing everything works.
-        rope.remove(0..135);
+        rope.remove_inclusive(0..135);
         assert_eq!(rope, [].as_slice());
 
         rope.assert_integrity();
@@ -1681,34 +1746,46 @@ mod tests {
 
     #[test]
     fn remove_05() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope = Rope::from(lorem_ipsum());
 
         // Make sure removing a large range works.
-        rope.remove(3..135);
+        rope.remove_inclusive(3..135);
         assert_eq!(rope, &lorem_ipsum()[..2]);
 
         rope.assert_integrity();
         rope.assert_invariants();
     }
 
-    #[test]
-    #[should_panic]
-    fn remove_06() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
-        #[allow(clippy::reversed_empty_ranges)]
-        rope.remove(56..55); // Wrong ordering of start/end on purpose.
+	#[test]
+    fn remove_6() {
+        let mut vec = Vec::from([Lorem; 2]);
+        vec.extend_from_slice(&[Sit; 300]);
+        vec.extend_from_slice(&[Ipsum; 3]);
+
+        let mut rope = Rope::from(vec);
+        rope.remove_inclusive(2..2);
+
+		assert_eq!(rope, [Lorem, Lorem, Ipsum, Ipsum, Ipsum].as_slice());
     }
 
     #[test]
     #[should_panic]
     fn remove_07() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
-        rope.remove(134..136); // Removing past the end
+        let mut rope = Rope::from(lorem_ipsum());
+        #[allow(clippy::reversed_empty_ranges)]
+        rope.remove_inclusive(56..55); // Wrong ordering of start/end on purpose.
+    }
+
+    #[test]
+    #[should_panic]
+    fn remove_08() {
+        let mut rope = Rope::from(lorem_ipsum());
+        rope.remove_inclusive(134..136); // Removing past the end
     }
 
     #[test]
     fn split_off_01() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope = Rope::from(lorem_ipsum());
 
         let split = rope.split_off(50);
         assert_eq!(rope, &lorem_ipsum()[..24]);
@@ -1722,7 +1799,7 @@ mod tests {
 
     #[test]
     fn split_off_02() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope = Rope::from(lorem_ipsum());
 
         let split = rope.split_off(1);
         assert_eq!(rope, [Lorem].as_slice());
@@ -1736,7 +1813,7 @@ mod tests {
 
     #[test]
     fn split_off_03() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope = Rope::from(lorem_ipsum());
 
         let split = rope.split_off(134);
         assert_eq!(rope, &lorem_ipsum()[..69]);
@@ -1750,7 +1827,7 @@ mod tests {
 
     #[test]
     fn split_off_04() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope = Rope::from(lorem_ipsum());
 
         let split = rope.split_off(0);
         assert_eq!(rope, [].as_slice());
@@ -1764,7 +1841,7 @@ mod tests {
 
     #[test]
     fn split_off_05() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope = Rope::from(lorem_ipsum());
 
         let split = rope.split_off(135);
         assert_eq!(rope, lorem_ipsum().as_slice());
@@ -1779,7 +1856,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn split_off_06() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope = Rope::from(lorem_ipsum());
         rope.split_off(136); // One past the end of the rope
     }
 
@@ -1821,7 +1898,7 @@ mod tests {
 
     #[test]
     fn append_04() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope = Rope::from(lorem_ipsum());
         let append = Rope::from_slice([].as_slice());
 
         rope.append(append);
@@ -1834,7 +1911,7 @@ mod tests {
     #[test]
     fn append_05() {
         let mut rope = Rope::from_slice([].as_slice());
-        let append = Rope::from_slice(lorem_ipsum().as_slice());
+        let append = Rope::from(lorem_ipsum());
 
         rope.append(append);
         assert_eq!(rope, lorem_ipsum());
@@ -1845,7 +1922,7 @@ mod tests {
 
     #[test]
     fn width_to_index_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         assert_eq!(rope.start_width_to_index(0), 0);
         assert_eq!(rope.start_width_to_index(1), 1);
@@ -1862,7 +1939,7 @@ mod tests {
 
     #[test]
     fn from_index_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         assert_eq!(rope.from_index(0), (0, Lorem));
 
@@ -1874,7 +1951,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn from_index_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         rope.from_index(70);
     }
 
@@ -1887,7 +1964,7 @@ mod tests {
 
     #[test]
     fn from_width_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         assert_eq!(rope.from_width(0), (0, Lorem));
         assert_eq!(rope.from_width(10), (7, Consectur("hello")));
@@ -1898,7 +1975,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn from_width_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         rope.from_width(136);
     }
 
@@ -1911,7 +1988,7 @@ mod tests {
 
     #[test]
     fn chunk_at_index() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         let lorem_ipsum = lorem_ipsum();
         let mut total = lorem_ipsum.as_slice();
 
@@ -1937,7 +2014,7 @@ mod tests {
 
     #[test]
     fn chunk_at_width() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         let lorem_ipsum = lorem_ipsum();
         let mut total = lorem_ipsum.as_slice();
 
@@ -1966,7 +2043,7 @@ mod tests {
 
     #[test]
     fn width_slice_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         let slice = rope.width_slice(0..rope.width());
 
@@ -1975,7 +2052,7 @@ mod tests {
 
     #[test]
     fn width_slice_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         let slice = rope.width_slice(5..21);
 
@@ -1984,7 +2061,7 @@ mod tests {
 
     #[test]
     fn width_slice_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         let slice = rope.width_slice(31..135);
 
@@ -1993,7 +2070,7 @@ mod tests {
 
     #[test]
     fn width_slice_04() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         let slice = rope.width_slice(53..53);
 
@@ -2003,7 +2080,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn width_slice_05() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         #[allow(clippy::reversed_empty_ranges)]
         rope.width_slice(53..52); // Wrong ordering on purpose.
     }
@@ -2011,13 +2088,13 @@ mod tests {
     #[test]
     #[should_panic]
     fn width_slice_06() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         rope.width_slice(134..136);
     }
 
     #[test]
     fn index_slice_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         let slice = rope.index_slice(0..rope.len());
 
@@ -2026,7 +2103,7 @@ mod tests {
 
     #[test]
     fn index_slice_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         let slice = rope.index_slice(5..21);
 
@@ -2035,7 +2112,7 @@ mod tests {
 
     #[test]
     fn index_slice_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         let slice = rope.index_slice(31..55);
 
@@ -2044,7 +2121,7 @@ mod tests {
 
     #[test]
     fn index_slice_04() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         let slice = rope.index_slice(53..53);
 
@@ -2054,7 +2131,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn index_slice_05() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         #[allow(clippy::reversed_empty_ranges)]
         rope.index_slice(53..52); // Wrong ordering on purpose.
     }
@@ -2062,7 +2139,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn index_slice_06() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         rope.index_slice(20..72);
     }
 
@@ -2075,16 +2152,16 @@ mod tests {
 
     #[test]
     fn eq_rope_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         assert_eq!(rope, rope);
     }
 
     #[test]
     fn eq_rope_03() {
-        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope_1 = Rope::from(lorem_ipsum());
         let mut rope_2 = rope_1.clone();
-        rope_2.remove(26..27);
+        rope_2.remove_inclusive(26..27);
         rope_2.insert(26, Dolor(1000));
 
         assert_ne!(rope_1, rope_2);
@@ -2100,7 +2177,7 @@ mod tests {
 
     #[test]
     fn eq_rope_05() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
 
         assert_eq!(rope, lorem_ipsum());
         assert_eq!(lorem_ipsum(), rope);
@@ -2108,8 +2185,8 @@ mod tests {
 
     #[test]
     fn eq_rope_06() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
-        rope.remove(26..27);
+        let mut rope = Rope::from(lorem_ipsum());
+        rope.remove_inclusive(26..27);
         rope.insert(26, Dolor(5000));
 
         assert_ne!(rope, lorem_ipsum());
@@ -2118,7 +2195,7 @@ mod tests {
 
     #[test]
     fn eq_rope_07() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         let slice: Vec<Lipsum> = lorem_ipsum().into();
 
         assert_eq!(rope, slice);
@@ -2127,7 +2204,7 @@ mod tests {
 
     #[test]
     fn to_vec_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         let slice: Vec<Lipsum> = (&rope).into();
 
         assert_eq!(rope, slice);
@@ -2136,7 +2213,7 @@ mod tests {
     #[test]
     fn to_cow_01() {
         use std::borrow::Cow;
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         let cow: Cow<[Lipsum]> = (&rope).into();
 
         assert_eq!(rope, cow);
@@ -2145,7 +2222,7 @@ mod tests {
     #[test]
     fn to_cow_02() {
         use std::borrow::Cow;
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from(lorem_ipsum());
         let cow: Cow<[Lipsum]> = (rope.clone()).into();
 
         assert_eq!(rope, cow);
@@ -2167,7 +2244,7 @@ mod tests {
 
     #[test]
     fn from_rope_slice_01() {
-        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope_1 = Rope::from(lorem_ipsum());
         let slice = rope_1.width_slice(..);
         let rope_2: Rope<Lipsum> = slice.into();
 
@@ -2177,7 +2254,7 @@ mod tests {
 
     #[test]
     fn from_rope_slice_02() {
-        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope_1 = Rope::from(lorem_ipsum());
         let slice = rope_1.width_slice(0..24);
         let rope_2: Rope<Lipsum> = slice.into();
 
@@ -2186,7 +2263,7 @@ mod tests {
 
     #[test]
     fn from_rope_slice_03() {
-        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope_1 = Rope::from(lorem_ipsum());
         let slice = rope_1.width_slice(13..89);
         let rope_2: Rope<Lipsum> = slice.into();
 
@@ -2195,7 +2272,7 @@ mod tests {
 
     #[test]
     fn from_rope_slice_04() {
-        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope_1 = Rope::from(lorem_ipsum());
         let slice = rope_1.width_slice(13..41);
         let rope_2: Rope<Lipsum> = slice.into();
 
@@ -2204,7 +2281,7 @@ mod tests {
 
     #[test]
     fn from_iter_01() {
-        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope_1 = Rope::from(lorem_ipsum());
         let rope_2 = Rope::from_iter(rope_1.chunks());
 
         assert_eq!(rope_1, rope_2);
