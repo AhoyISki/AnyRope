@@ -386,7 +386,7 @@ where
     /// let mut rope = Rope::from_slice(&array);
     /// // Empty range at the start of a 0 width list.
     /// rope.remove_exclusive(6..6);
-    /// 
+    ///
     /// // Exclusively removing an empty range does nothing.
     /// assert_eq!(rope, array.as_slice());
     /// ```
@@ -401,7 +401,7 @@ where
     /// // Exclusively removing in the middle of an element does nothing.
     /// assert_eq!(rope, array.as_slice());
     /// ```
-	///
+    ///
     /// # Panics
     ///
     /// Panics if the start of the range is greater than the end, or if the
@@ -911,7 +911,7 @@ where
         }
     }
 
-	/// Non-panicking version of [`remove_inclusive()`][Rope::remove_inclusive].
+    /// Non-panicking version of [`remove_inclusive()`][Rope::remove_inclusive].
     pub fn try_remove_inclusive<R>(&mut self, width_range: R) -> Result<()>
     where
         R: RangeBounds<usize>,
@@ -919,7 +919,7 @@ where
         self.try_remove_internal(width_range, true)
     }
 
-	/// Non-panicking version of [`remove_exclusive()`][Rope::remove_exclusive].
+    /// Non-panicking version of [`remove_exclusive()`][Rope::remove_exclusive].
     pub fn try_remove_exclusive<R>(&mut self, width_range: R) -> Result<()>
     where
         R: RangeBounds<usize>,
@@ -945,11 +945,10 @@ where
             // A special case that the rest of the logic doesn't handle correctly
             Err(Error::WidthRangeInvalid(start, end))
         } else {
-            if start == 0 && end == self.width() {
+            if start == 0 && end == self.width() && remove_edges {
                 self.root = Arc::new(Node::new());
                 return Ok(());
             }
-
             let root = Arc::make_mut(&mut self.root);
 
             let root_info = root.slice_info();
@@ -1756,7 +1755,7 @@ mod tests {
         rope.assert_invariants();
     }
 
-	#[test]
+    #[test]
     fn remove_6() {
         let mut vec = Vec::from([Lorem; 2]);
         vec.extend_from_slice(&[Sit; 300]);
@@ -1765,7 +1764,7 @@ mod tests {
         let mut rope = Rope::from(vec);
         rope.remove_inclusive(2..2);
 
-		assert_eq!(rope, [Lorem, Lorem, Ipsum, Ipsum, Ipsum].as_slice());
+        assert_eq!(rope, [Lorem, Lorem, Ipsum, Ipsum, Ipsum].as_slice());
     }
 
     #[test]
