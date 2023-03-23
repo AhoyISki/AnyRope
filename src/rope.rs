@@ -1037,9 +1037,9 @@ where
         // Bounds check
         if index < self.len() {
             let (chunk, chunk_index, chunk_width) = self.chunk_at_index(index);
-            let chunk_rel_index = index - chunk_index;
-            let width = index_to_width(chunk, chunk_rel_index);
-            Some((width + chunk_width, chunk[chunk_rel_index]))
+            let index = index - chunk_index;
+            let width = index_to_width(chunk, index);
+            Some((width + chunk_width, chunk[index]))
         } else {
             None
         }
@@ -1049,11 +1049,11 @@ where
     #[inline]
     pub fn get_from_width(&self, width: usize) -> Option<(usize, M)> {
         // Bounds check
-        if width < self.width() {
+        if width <= self.width() && self.len() > 0 {
             let (chunk, _, chunk_width) = self.chunk_at_width(width);
             let index = start_width_to_index(chunk, width - chunk_width);
             let width = index_to_width(chunk, index);
-            Some((width + chunk_width, chunk[index]))
+            Some((width + chunk_width, chunk[index.min(chunk.len() - 1)]))
         } else {
             None
         }
@@ -1075,7 +1075,7 @@ where
     #[inline]
     pub fn get_chunk_at_width(&self, width: usize) -> Option<(&[M], usize, usize)> {
         // Bounds check
-        if width <= self.width() {
+        if width <= self.width() && self.len() > 0 {
             let (chunk, info) = self.root.get_first_chunk_at_width(width);
             Some((chunk, info.len as usize, info.width as usize))
         } else {

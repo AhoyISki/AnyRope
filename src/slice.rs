@@ -673,8 +673,7 @@ where
                         node.get_chunk_at_index(index + start_info.len as usize);
 
                     // Calculate clipped start/end indices within the chunk.
-                    let chunk_start_index =
-                        start_info.len.saturating_sub(chunk_start_info.len);
+                    let chunk_start_index = start_info.len.saturating_sub(chunk_start_info.len);
                     let chunk_end_index =
                         (chunk.len() as Count).min(end_info.len - chunk_start_info.len);
 

@@ -145,7 +145,7 @@ where
         match *self {
             // If it's a leaf
             Node::Leaf(ref mut slice) => {
-                let start_index = if l_edge {
+                let s_index = if l_edge {
                     start_width_to_index(slice, start_width)
                 } else {
                     end_width_to_index(slice, start_width)
@@ -153,37 +153,38 @@ where
 
                 // In this circumstance, nothing needs to be done, since we're removing
                 // in the middle of an element.
-                if start_width == end_width && slice[start_index].width() > 0 {
+                let zero_width = slice.get(s_index).map(|m| m.width() > 0).unwrap_or(true);
+                if start_width == end_width && zero_width {
                     return (SliceInfo::from_slice(slice), false);
                 }
 
-                let end_index = if r_edge {
+                let e_index = if r_edge {
                     end_width_to_index(slice, end_width)
                 } else {
                     start_width_to_index(slice, end_width)
                 };
 
                 // Remove slice and calculate new info & seam info.
-                if start_index > 0 || end_index < slice.len() {
-                    let seg_len = end_index - start_index; // Length of removal segement
+                if s_index > 0 || e_index < slice.len() {
+                    let seg_len = e_index - s_index; // Length of removal segement
                     if seg_len < (slice.len() - seg_len) {
                         #[allow(unused_mut)]
                         let info =
-                            node_info - SliceInfo::from_slice(&slice[start_index..end_index]);
+                            node_info - SliceInfo::from_slice(&slice[s_index..e_index]);
 
                         // Remove the slice.
-                        slice.remove_range(start_index, end_index);
+                        slice.remove_range(s_index, e_index);
 
                         (info, false)
                     } else {
                         // Remove the slice.
-                        slice.remove_range(start_index, end_index);
+                        slice.remove_range(s_index, e_index);
 
                         (SliceInfo::from_slice(slice), false)
                     }
                 } else {
                     // Remove the whole slice.
-                    slice.remove_range(start_index, end_index);
+                    slice.remove_range(s_index, e_index);
 
                     (SliceInfo::new(), false)
                 }
