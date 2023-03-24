@@ -457,8 +457,6 @@ where
             index += 1;
         }
 
-        println!("{}, {}", l_child_i, index);
-
         #[cfg(any(test, debug_assertions))]
         assert!(
             end_index <= accum_width + self.info()[index].0.width as usize,
