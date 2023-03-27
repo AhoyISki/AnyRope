@@ -7,7 +7,7 @@ use crate::iter::{Chunks, Iter};
 use crate::rope_builder::RopeBuilder;
 use crate::slice::RopeSlice;
 use crate::slice_utils::{end_width_to_index, index_to_width, start_width_to_index};
-use crate::tree::{BranchChildren, Node, SliceInfo, MAX_LEN, MIN_LEN};
+use crate::tree::{max_children, max_len, min_len, BranchChildren, Node, SliceInfo};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
 /// A object that has a definite size, that can be interpreted by a [`Rope<M>`].
@@ -99,6 +99,8 @@ pub trait Measurable: Clone + Copy {
 pub struct Rope<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     pub(crate) root: Arc<Node<M>>,
 }
@@ -106,6 +108,8 @@ where
 impl<M> Rope<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     //-----------------------------------------------------------------------
     // Constructors
@@ -159,7 +163,7 @@ where
     pub fn capacity(&self) -> usize {
         let mut count = 0;
         for chunk in self.chunks() {
-            count += chunk.len().max(MAX_LEN);
+            count += chunk.len().max(max_len::<M>());
         }
         count
     }
@@ -253,7 +257,7 @@ where
                 let index = end_width_to_index(leaf_slice, index);
 
                 // No node splitting
-                if (leaf_slice.len() + ins_slice.len()) <= MAX_LEN {
+                if (leaf_slice.len() + ins_slice.len()) <= max_len::<M>() {
                     // Calculate new info without doing a full re-scan of cur_slice.
                     let new_info = cur_info + SliceInfo::from_slice(ins_slice);
                     leaf_slice.insert_slice(index, ins_slice);
@@ -462,7 +466,9 @@ where
 
             // Fix up any mess left behind.
             let root = Arc::make_mut(&mut self.root);
-            if (left_info.len as usize) < MIN_LEN || (right_info.len as usize) < MIN_LEN {
+            if (left_info.len as usize) < min_len::<M>()
+                || (right_info.len as usize) < min_len::<M>()
+            {
                 root.fix_tree_seam(left_info.width as usize);
             }
             self.pull_up_singular_nodes();
@@ -849,6 +855,8 @@ where
 impl<M> Rope<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     /// Non-panicking version of [`insert()`][Rope::insert].
     #[inline]
@@ -872,7 +880,7 @@ where
             // The boundary for what constitutes "very large" slice was arrived at
             // experimentally, by testing at what point Rope build + splice becomes
             // faster than split + repeated insert.
-            if slice.len() > MAX_LEN * 6 {
+            if slice.len() > max_len::<M>() * 6 {
                 // Case #1: very large slice, build rope and splice it in.
                 let rope = Rope::from_slice(slice);
                 let right = self.split_off(width);
@@ -885,7 +893,7 @@ where
                     // We do this from the end instead of the front so that
                     // the repeated insertions can keep re-using the same
                     // insertion point.
-                    let split_index = slice.len() - (MAX_LEN - 4).min(slice.len());
+                    let split_index = slice.len() - (max_len::<M>() - 4).min(slice.len());
                     let ins_slice = &slice[split_index..];
                     slice = &slice[..split_index];
 
@@ -1209,6 +1217,8 @@ where
 impl<'a, M> From<&'a [M]> for Rope<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn from(slice: &'a [M]) -> Self {
@@ -1219,6 +1229,8 @@ where
 impl<'a, M> From<std::borrow::Cow<'a, [M]>> for Rope<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn from(slice: std::borrow::Cow<'a, [M]>) -> Self {
@@ -1229,6 +1241,8 @@ where
 impl<M> From<Vec<M>> for Rope<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn from(slice: Vec<M>) -> Self {
@@ -1242,6 +1256,8 @@ where
 impl<'a, M> From<RopeSlice<'a, M>> for Rope<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     fn from(s: RopeSlice<'a, M>) -> Self {
         use crate::slice::RSEnum;
@@ -1286,6 +1302,8 @@ where
 impl<M> From<Rope<M>> for Vec<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn from(r: Rope<M>) -> Self {
@@ -1296,6 +1314,8 @@ where
 impl<'a, M> From<&'a Rope<M>> for Vec<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn from(r: &'a Rope<M>) -> Self {
@@ -1313,6 +1333,8 @@ where
 impl<'a, M> From<Rope<M>> for std::borrow::Cow<'a, [M]>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn from(r: Rope<M>) -> Self {
@@ -1327,6 +1349,8 @@ where
 impl<'a, M> From<&'a Rope<M>> for std::borrow::Cow<'a, [M]>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn from(r: &'a Rope<M>) -> Self {
@@ -1341,6 +1365,8 @@ where
 impl<'a, M> FromIterator<&'a [M]> for Rope<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     fn from_iter<T>(iter: T) -> Self
     where
@@ -1357,6 +1383,8 @@ where
 impl<'a, M> FromIterator<std::borrow::Cow<'a, [M]>> for Rope<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     fn from_iter<T>(iter: T) -> Self
     where
@@ -1373,6 +1401,8 @@ where
 impl<'a, M> FromIterator<Vec<M>> for Rope<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     fn from_iter<T>(iter: T) -> Self
     where
@@ -1392,6 +1422,8 @@ where
 impl<M> std::fmt::Debug for Rope<M>
 where
     M: Measurable + Debug,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_list().entries(self.chunks()).finish()
@@ -1401,6 +1433,8 @@ where
 impl<M> std::fmt::Display for Rope<M>
 where
     M: Measurable + Debug,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -1411,6 +1445,8 @@ where
 impl<M> std::default::Default for Rope<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn default() -> Self {
@@ -1418,11 +1454,19 @@ where
     }
 }
 
-impl<M> std::cmp::Eq for Rope<M> where M: Measurable + Eq {}
+impl<M> std::cmp::Eq for Rope<M>
+where
+    M: Measurable + Eq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+{
+}
 
 impl<M> std::cmp::PartialEq<Rope<M>> for Rope<M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
@@ -1433,6 +1477,8 @@ where
 impl<'a, M> std::cmp::PartialEq<&'a [M]> for Rope<M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &&'a [M]) -> bool {
@@ -1443,6 +1489,8 @@ where
 impl<'a, M> std::cmp::PartialEq<Rope<M>> for &'a [M]
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
@@ -1453,6 +1501,8 @@ where
 impl<M> std::cmp::PartialEq<[M]> for Rope<M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &[M]) -> bool {
@@ -1463,6 +1513,8 @@ where
 impl<M> std::cmp::PartialEq<Rope<M>> for [M]
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
@@ -1473,6 +1525,8 @@ where
 impl<'a, M> std::cmp::PartialEq<Vec<M>> for Rope<M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &Vec<M>) -> bool {
@@ -1483,6 +1537,8 @@ where
 impl<'a, M> std::cmp::PartialEq<Rope<M>> for Vec<M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
@@ -1493,6 +1549,8 @@ where
 impl<'a, M> std::cmp::PartialEq<std::borrow::Cow<'a, [M]>> for Rope<M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &std::borrow::Cow<'a, [M]>) -> bool {
@@ -1503,6 +1561,8 @@ where
 impl<'a, M> std::cmp::PartialEq<Rope<M>> for std::borrow::Cow<'a, [M]>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
@@ -1513,6 +1573,8 @@ where
 impl<M> std::cmp::Ord for Rope<M>
 where
     M: Measurable + Ord,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn cmp(&self, other: &Rope<M>) -> std::cmp::Ordering {
@@ -1523,6 +1585,8 @@ where
 impl<M> std::cmp::PartialOrd<Rope<M>> for Rope<M>
 where
     M: Measurable + PartialOrd + Ord,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn partial_cmp(&self, other: &Rope<M>) -> Option<std::cmp::Ordering> {

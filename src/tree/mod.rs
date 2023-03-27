@@ -1,11 +1,11 @@
-mod node;
 mod branch_children;
 mod leaf_slice;
+mod node;
 mod slice_info;
 
-pub(crate) use self::node::Node;
 pub(crate) use self::branch_children::BranchChildren;
 pub(crate) use self::leaf_slice::LeafSlice;
+pub(crate) use self::node::Node;
 pub(crate) use self::slice_info::SliceInfo;
 
 // Type used for storing tree metadata, such as indices and widths.
@@ -41,15 +41,17 @@ mod constants {
 
     // Misc useful info that we need below.
     const NODE_CHILDREN_ALIGN: usize = cmax(align_of::<Arc<u8>>(), align_of::<SliceInfo>());
-    const NODE_TEXT_ALIGN: usize = align_of::<SmallVec<[u8; 16]>>();
-    const START_OFFSET: usize = {
-        const NODE_INNER_ALIGN: usize = cmax(NODE_CHILDREN_ALIGN, NODE_TEXT_ALIGN);
+    const fn node_align<T>() -> usize {
+        align_of::<SmallVec<[T; 16]>>()
+    }
+    const fn start_offset<T>() -> usize {
+        let node_inner_align = cmax(NODE_CHILDREN_ALIGN, node_align::<T>());
         // The +NODE_INNER_ALIGN is because of Node's enum discriminant.
-        ARC_COUNTERS_SIZE + NODE_INNER_ALIGN
-    };
+        ARC_COUNTERS_SIZE + node_inner_align
+    }
 
     // Node maximums.
-    pub(crate) const MAX_CHILDREN: usize = {
+    pub const fn max_children<T>() -> usize {
         let node_list_align = align_of::<Arc<u8>>();
         let info_list_align = align_of::<SliceInfo>();
         let field_gap = if node_list_align >= info_list_align {
@@ -62,21 +64,25 @@ mod constants {
         };
 
         // The -NODE_CHILDREN_ALIGN is for the `len` field in `NodeChildrenInternal`.
-        let target_size = TARGET_TOTAL_SIZE - START_OFFSET - NODE_CHILDREN_ALIGN - field_gap;
+        let target_size = TARGET_TOTAL_SIZE - start_offset::<T>() - NODE_CHILDREN_ALIGN - field_gap;
 
         target_size / (size_of::<Arc<u8>>() + size_of::<SliceInfo>())
-    };
-    pub(crate) const MAX_LEN: usize = {
-        let smallvec_overhead = size_of::<SmallVec<[u8; 16]>>() - 16;
-        TARGET_TOTAL_SIZE - START_OFFSET - smallvec_overhead
-    };
+    }
+    pub const fn max_len<T>() -> usize {
+        let smallvec_overhead = size_of::<SmallVec<[T; 16]>>() - 16;
+        TARGET_TOTAL_SIZE - start_offset::<T>() - smallvec_overhead
+    }
 
     // Node minimums.
-    // Note: MIN_LEN is intentionally a little smaller than half
-    // MAX_LEN, to give a little wiggle room when on the edge of
+    // Note: min_len is intentionally a little smaller than half
+    // max_len, to give a little wiggle room when on the edge of
     // merging/splitting.
-    pub(crate) const MIN_CHILDREN: usize = MAX_CHILDREN / 2;
-    pub(crate) const MIN_LEN: usize = (MAX_LEN / 2) - (MAX_LEN / 32);
+    pub const fn min_children<T>() -> usize {
+        max_children::<T>() / 2
+    }
+    pub const fn min_len<T>() -> usize {
+        (max_len::<T>() / 2) - (max_len::<T>() / 32)
+    }
 }
 
 // Smaller constants used in debug builds. These are different from release
@@ -84,15 +90,23 @@ mod constants {
 // the tests.
 #[cfg(any(test, feature = "small_chunks"))]
 mod test_constants {
-    pub(crate) const MAX_CHILDREN: usize = 5;
-    pub(crate) const MIN_CHILDREN: usize = MAX_CHILDREN / 2;
+    pub const fn max_children<T>() -> usize {
+        5
+    }
+    pub const fn min_children<T>() -> usize {
+        max_children::<T>() / 2
+    }
 
-    pub(crate) const MAX_LEN: usize = 9;
-    pub(crate) const MIN_LEN: usize = (MAX_LEN / 2) - (MAX_LEN / 32);
+    pub const fn max_len<T>() -> usize {
+        9
+    }
+    pub const fn min_len<T>() -> usize {
+        (max_len::<T>() / 2) - (max_len::<T>() / 32)
+    }
 }
 
 #[cfg(not(test))]
-pub(crate) use self::constants::{MAX_CHILDREN, MAX_LEN, MIN_CHILDREN, MIN_LEN};
+pub use self::constants::{max_children, max_len, min_children, min_len};
 
 #[cfg(test)]
-pub(crate) use self::test_constants::{MAX_CHILDREN, MAX_LEN, MIN_CHILDREN, MIN_LEN};
+pub use self::test_constants::{max_children, max_len, min_children, min_len};

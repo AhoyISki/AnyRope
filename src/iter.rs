@@ -72,7 +72,7 @@ use std::sync::Arc;
 
 use crate::rope::Measurable;
 use crate::slice_utils::{index_to_width, start_width_to_index, width_of};
-use crate::tree::{Node, SliceInfo};
+use crate::tree::{max_children, max_len, Node, SliceInfo};
 
 //==========================================================
 
@@ -81,6 +81,8 @@ use crate::tree::{Node, SliceInfo};
 pub struct Iter<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     chunks: Chunks<'a, M>,
     cur_chunk: &'a [M],
@@ -95,6 +97,8 @@ where
 impl<'a, M> Iter<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     pub(crate) fn new(node: &'a Arc<Node<M>>) -> Self {
         let mut chunk_iter = Chunks::new(node);
@@ -286,6 +290,8 @@ where
 impl<'a, M> Iterator for Iter<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     type Item = (usize, M);
 
@@ -311,7 +317,13 @@ where
     }
 }
 
-impl<'a, M> ExactSizeIterator for Iter<'a, M> where M: Measurable {}
+impl<'a, M> ExactSizeIterator for Iter<'a, M>
+where
+    M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+{
+}
 
 //==========================================================
 
@@ -333,6 +345,8 @@ impl<'a, M> ExactSizeIterator for Iter<'a, M> where M: Measurable {}
 pub struct Chunks<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     iter: ChunksEnum<'a, M>,
     is_reversed: bool,
@@ -342,6 +356,8 @@ where
 enum ChunksEnum<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     Full {
         /// (node ref, index of current child)
@@ -360,6 +376,8 @@ where
 impl<'a, M> Chunks<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline(always)]
     pub(crate) fn new(node: &'a Arc<Node<M>>) -> Self {
@@ -707,6 +725,8 @@ where
 impl<'a, M> Iterator for Chunks<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     type Item = &'a [M];
 

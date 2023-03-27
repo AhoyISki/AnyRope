@@ -1,3 +1,4 @@
+#![feature(generic_const_exprs)]
 //! AnyRope is an arbitrary data rope for Rust.
 //!
 //! AnyRope's [`Rope<M>`] contains elements `M` that implement [`Measurable`], a
@@ -128,6 +129,7 @@ use std::ops::Bound;
 pub use crate::rope::{Measurable, Rope};
 pub use crate::rope_builder::RopeBuilder;
 pub use crate::slice::RopeSlice;
+pub use crate::tree::{max_children, max_len};
 
 /// Simple test struct, useful in making sure that the systems work.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -4,9 +4,7 @@ use std::slice;
 use std::sync::Arc;
 
 use crate::rope::Measurable;
-use crate::tree::{Node, SliceInfo, MAX_LEN};
-
-use super::MAX_CHILDREN;
+use crate::tree::{max_children, max_len, Node, SliceInfo};
 
 /// A fixed-capacity vec of child Arc-pointers and child metadata.
 ///
@@ -16,11 +14,15 @@ use super::MAX_CHILDREN;
 #[repr(C)]
 pub(crate) struct BranchChildren<M>(inner::NodeChildrenInternal<M>)
 where
-    M: Measurable;
+    M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized;
 
 impl<M> BranchChildren<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     /// Creates a new empty array.
     pub fn new() -> Self {
@@ -34,7 +36,7 @@ where
 
     /// Returns whether the array is full or not.
     pub fn is_full(&self) -> bool {
-        self.len() == MAX_CHILDREN
+        self.len() == max_children::<M>()
     }
 
     /// Access to the nodes array.
@@ -105,7 +107,7 @@ where
             match *node1 {
                 Node::Leaf(ref mut slice1) => {
                     if let Node::Leaf(ref mut slice2) = *node2 {
-                        if (slice1.len() + slice2.len()) <= MAX_CHILDREN {
+                        if (slice1.len() + slice2.len()) <= max_children::<M>() {
                             slice1.push_slice(slice2);
                             true
                         } else {
@@ -120,7 +122,7 @@ where
 
                 Node::Branch(ref mut children1) => {
                     if let Node::Branch(ref mut children2) = *node2 {
-                        if (children1.len() + children2.len()) <= MAX_CHILDREN {
+                        if (children1.len() + children2.len()) <= max_children::<M>() {
                             for _ in 0..children2.len() {
                                 children1.push(children2.remove(0));
                             }
@@ -169,7 +171,7 @@ where
         let mut i = 1;
         while i < self.len() {
             if (self.nodes()[i - 1].leaf_slice().len() + self.nodes()[i].leaf_slice().len())
-                <= MAX_LEN
+                <= max_len::<M>()
             {
                 // Scope to contain borrows
                 {
@@ -179,13 +181,13 @@ where
                     slice_l.push_slice(slice_r);
                 }
                 self.remove(i);
-            } else if self.nodes()[i - 1].leaf_slice().len() < MAX_LEN {
+            } else if self.nodes()[i - 1].leaf_slice().len() < max_len::<M>() {
                 // Scope to contain borrows
                 {
                     let ((_, node_l), (_, node_r)) = self.get_two_mut(i - 1, i);
                     let slice_l = Arc::make_mut(node_l).leaf_slice_mut();
                     let slice_r = Arc::make_mut(node_r).leaf_slice_mut();
-                    let split_index_r = MAX_LEN - slice_l.len();
+                    let split_index_r = max_len::<M>() - slice_l.len();
                     slice_l.push_slice(&slice_r[..split_index_r]);
                     slice_r.truncate_front(split_index_r);
                 }
@@ -488,6 +490,8 @@ where
 impl<M> fmt::Debug for BranchChildren<M>
 where
     M: Measurable + fmt::Debug,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("NodeChildren")
@@ -512,8 +516,9 @@ where
 /// and it was a pain to track down--as memory safety bugs often are.
 mod inner {
     use crate::rope::Measurable;
+    use crate::tree::max_len;
 
-    use super::{Node, SliceInfo, MAX_CHILDREN};
+    use super::{max_children, Node, SliceInfo};
     use std::mem;
     use std::mem::MaybeUninit;
     use std::ptr;
@@ -524,19 +529,23 @@ mod inner {
     pub(crate) struct NodeChildrenInternal<M>
     where
         M: Measurable,
+        [(); max_len::<M>()]: Sized,
+        [(); max_children::<M>()]: Sized,
     {
         /// An array of the child nodes.
         /// INVARIANT: The nodes from 0..len must be initialized
-        nodes: [MaybeUninit<Arc<Node<M>>>; MAX_CHILDREN],
+        nodes: [MaybeUninit<Arc<Node<M>>>; max_children::<M>()],
         /// An array of the child node [`SliceInfo`]s
         /// INVARIANT: The nodes from 0..len must be initialized
-        info: [MaybeUninit<(SliceInfo, bool)>; MAX_CHILDREN],
+        info: [MaybeUninit<(SliceInfo, bool)>; max_children::<M>()],
         len: u8,
     }
 
     impl<M> NodeChildrenInternal<M>
     where
         M: Measurable,
+        [(); max_len::<M>()]: Sized,
+        [(); max_children::<M>()]: Sized,
     {
         /// Creates a new empty array.
         #[inline(always)]
@@ -604,7 +613,7 @@ mod inner {
         /// Increases length by one. Panics if already full.
         #[inline(always)]
         pub fn push(&mut self, item: (SliceInfo, Arc<Node<M>>)) {
-            assert!(self.len() < MAX_CHILDREN);
+            assert!(self.len() < max_children::<M>());
             self.info[self.len()] = MaybeUninit::new((item.0, item.1.zero_width_end()));
             self.nodes[self.len as usize] = MaybeUninit::new(item.1);
             // We have just initialized both info and node and 0..=len, so we can increase it
@@ -632,7 +641,7 @@ mod inner {
         #[inline(always)]
         pub fn insert(&mut self, index: usize, item: (SliceInfo, Arc<Node<M>>)) {
             assert!(index <= self.len());
-            assert!(self.len() < MAX_CHILDREN);
+            assert!(self.len() < max_children::<M>());
 
             let len = self.len();
             // This unsafe code simply shifts the elements of the arrays over
@@ -689,6 +698,8 @@ mod inner {
     impl<M> Drop for NodeChildrenInternal<M>
     where
         M: Measurable,
+        [(); max_len::<M>()]: Sized,
+        [(); max_children::<M>()]: Sized,
     {
         fn drop(&mut self) {
             // The `.nodes` array contains `MaybeUninit` wrappers, which need
@@ -703,6 +714,8 @@ mod inner {
     impl<M> Clone for NodeChildrenInternal<M>
     where
         M: Measurable,
+        [(); max_len::<M>()]: Sized,
+        [(); max_children::<M>()]: Sized,
     {
         fn clone(&self) -> Self {
             // Create an empty NodeChildrenInternal first, then fill it

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use crate::rope::{Measurable, Rope};
-use crate::tree::{BranchChildren, LeafSlice, Node, MAX_LEN, MAX_CHILDREN, MIN_LEN};
+use crate::tree::{max_children, max_len, min_len, BranchChildren, LeafSlice, Node};
 
 /// An efficient incremental [`Rope<M>`] builder.
 ///
@@ -35,6 +35,10 @@ use crate::tree::{BranchChildren, LeafSlice, Node, MAX_LEN, MAX_CHILDREN, MIN_LE
 pub struct RopeBuilder<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     stack: SmallVec<[Arc<Node<M>>; 4]>,
     buffer: Vec<M>,
@@ -44,6 +48,8 @@ where
 impl<M> RopeBuilder<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     /// Creates a new RopeBuilder, ready for input.
     pub fn new() -> Self {
@@ -176,7 +182,7 @@ where
         // Fix up the tree to be well-formed.
         if fix_tree {
             Arc::make_mut(&mut rope.root).zip_fix_right();
-            if self.last_chunk_len < MIN_LEN && self.last_chunk_len != rope.len() {
+            if self.last_chunk_len < min_len::<M>() && self.last_chunk_len != rope.len() {
                 // Merge the last chunk if it was too small.
                 let index = rope.width() - rope.index_to_width(rope.len() - self.last_chunk_len);
                 Arc::make_mut(&mut rope.root).fix_tree_seam(index);
@@ -195,15 +201,15 @@ where
         is_last_chunk: bool,
     ) -> (NextSlice<'a, M>, &'a [M]) {
         assert!(
-            self.buffer.len() < MAX_LEN,
+            self.buffer.len() < max_len::<M>(),
             "RopeBuilder: buffer is already full when receiving a chunk! \
              This should never happen!",
         );
 
         // Simplest case: empty buffer and enough in `slice` for a full
         // chunk, so just chop a chunk off from `slice` and use that.
-        if self.buffer.is_empty() && slice.len() >= MAX_LEN {
-            let split_index = MAX_LEN.min(slice.len() - 1);
+        if self.buffer.is_empty() && slice.len() >= max_len::<M>() {
+            let split_index = max_len::<M>().min(slice.len() - 1);
             return (
                 NextSlice::Slice(&slice[..split_index]),
                 &slice[split_index..],
@@ -211,8 +217,8 @@ where
         }
         // If the buffer + `slice` is enough for a full chunk, push enough
         // of `slice` onto the buffer to fill it and use that.
-        else if (slice.len() + self.buffer.len()) >= MAX_LEN {
-            let split_index = MAX_LEN - self.buffer.len();
+        else if (slice.len() + self.buffer.len()) >= max_len::<M>() {
+            let split_index = max_len::<M>() - self.buffer.len();
             self.buffer.extend_from_slice(&slice[..split_index]);
             return (NextSlice::UseBuffer, &slice[split_index..]);
         }
@@ -264,7 +270,9 @@ where
                         children.push((left.slice_info(), left));
                         self.stack.insert(0, Arc::new(Node::Branch(children)));
                         break;
-                    } else if self.stack[stack_index as usize].child_count() < (MAX_CHILDREN - 1) {
+                    } else if self.stack[stack_index as usize].child_count()
+                        < (max_children::<M>() - 1)
+                    {
                         // There's room to add a child, so do that.
                         Arc::make_mut(&mut self.stack[stack_index as usize])
                             .children_mut()
@@ -289,6 +297,8 @@ where
 impl<M> Default for RopeBuilder<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     fn default() -> Self {
         Self::new()
@@ -298,6 +308,8 @@ where
 enum NextSlice<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     None,
     UseBuffer,

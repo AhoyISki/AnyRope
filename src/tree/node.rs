@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::rope::Measurable;
 use crate::slice_utils::{end_width_to_index, index_to_width, start_width_to_index};
 use crate::tree::{
-    BranchChildren, Count, LeafSlice, SliceInfo, MAX_CHILDREN, MAX_LEN, MIN_CHILDREN, MIN_LEN,
+    max_children, max_len, min_children, min_len, BranchChildren, Count, LeafSlice, SliceInfo,
 };
 
 #[derive(Debug, Clone)]
@@ -11,6 +11,8 @@ use crate::tree::{
 pub(crate) enum Node<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized
 {
     Leaf(LeafSlice<M>),
     Branch(BranchChildren<M>),
@@ -19,6 +21,8 @@ where
 impl<M> Node<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized
 {
     /// Creates an empty [`Node<M>`].
     #[inline(always)]
@@ -84,10 +88,12 @@ where
                 // ballooning when repeatedly appending to the end of a rope.
                 // The constant here was arrived at experimentally, and is otherwise
                 // fairly arbitrary.
-                const FRAG_MIN_BYTES: usize = (MAX_LEN * MIN_CHILDREN) + (MAX_LEN / 32);
+                const fn frag_min_bytes<T>() -> usize {
+                    (max_len::<T>() * min_children::<T>()) + (max_len::<T>() / 32)
+                }
                 if children.is_full()
                     && children.nodes()[0].is_leaf()
-                    && (children.combined_info().len as usize) < FRAG_MIN_BYTES
+                    && (children.combined_info().len as usize) < frag_min_bytes::<M>()
                 {
                     children.compact_leaves();
                 }
@@ -105,7 +111,7 @@ where
 
                 // Handle the residual node if there is one and return.
                 if let Some((r_info, r_node)) = residual {
-                    if children.len() < MAX_CHILDREN {
+                    if children.len() < max_children::<M>() {
                         children.insert(child_i + 1, (r_info, r_node));
                         (node_info - info + l_info + r_info, None)
                     } else {
@@ -169,8 +175,7 @@ where
                     let seg_len = e_index - s_index; // Length of removal segement
                     if seg_len < (slice.len() - seg_len) {
                         #[allow(unused_mut)]
-                        let info =
-                            node_info - SliceInfo::from_slice(&slice[s_index..e_index]);
+                        let info = node_info - SliceInfo::from_slice(&slice[s_index..e_index]);
 
                         // Remove the slice.
                         slice.remove_range(s_index, e_index);
@@ -318,7 +323,7 @@ where
         if depth == 0 {
             if let Node::Branch(ref mut children_l) = *self {
                 if let Node::Branch(ref mut children_r) = *Arc::make_mut(&mut other) {
-                    if (children_l.len() + children_r.len()) <= MAX_CHILDREN {
+                    if (children_l.len() + children_r.len()) <= max_children::<M>() {
                         for _ in 0..children_r.len() {
                             children_l.push(children_r.remove(0));
                         }
@@ -341,7 +346,7 @@ where
                 Arc::make_mut(&mut children.nodes_mut()[last_i]).append_at_depth(other, depth - 1);
             children.update_child_info(last_i);
             if let Some(extra_node) = residual {
-                if children.len() < MAX_CHILDREN {
+                if children.len() < max_children::<M>() {
                     children.push((extra_node.slice_info(), extra_node));
                     return None;
                 } else {
@@ -369,7 +374,7 @@ where
                 Node::Branch(ref mut children_r) => {
                     let mut other = other;
                     if let Node::Branch(ref mut children_l) = *Arc::make_mut(&mut other) {
-                        if (children_l.len() + children_r.len()) <= MAX_CHILDREN {
+                        if (children_l.len() + children_r.len()) <= max_children::<M>() {
                             for _ in 0..children_l.len() {
                                 children_r.insert(0, children_l.pop());
                             }
@@ -389,7 +394,7 @@ where
                 Arc::make_mut(&mut children.nodes_mut()[0]).prepend_at_depth(other, depth - 1);
             children.update_child_info(0);
             if let Some(extra_node) = residual {
-                if children.len() < MAX_CHILDREN {
+                if children.len() < max_children::<M>() {
                     children.insert(0, (extra_node.slice_info(), extra_node));
                     return None;
                 } else {
@@ -628,8 +633,8 @@ where
 
     pub fn is_undersized(&self) -> bool {
         match *self {
-            Node::Leaf(ref slice) => slice.len() < MIN_LEN,
-            Node::Branch(ref children) => children.len() < MIN_CHILDREN,
+            Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
+            Node::Branch(ref children) => children.len() < min_children::<M>(),
         }
     }
 
@@ -697,7 +702,7 @@ where
                 if is_root {
                     assert!(children.len() > 1);
                 } else {
-                    assert!(children.len() >= MIN_CHILDREN);
+                    assert!(children.len() >= min_children::<M>());
                 }
 
                 for node in children.nodes() {
@@ -717,8 +722,8 @@ where
             loop {
                 let do_merge = (children.len() > 1)
                     && match *children.nodes()[0] {
-                        Node::Leaf(ref slice) => slice.len() < MIN_LEN,
-                        Node::Branch(ref children2) => children2.len() < MIN_CHILDREN,
+                        Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
+                        Node::Branch(ref children2) => children2.len() < min_children::<M>(),
                     };
 
                 if do_merge {
@@ -746,8 +751,8 @@ where
                 let last_i = children.len() - 1;
                 let do_merge = (children.len() > 1)
                     && match *children.nodes()[last_i] {
-                        Node::Leaf(ref slice) => slice.len() < MIN_LEN,
-                        Node::Branch(ref children2) => children2.len() < MIN_CHILDREN,
+                        Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
+                        Node::Branch(ref children2) => children2.len() < min_children::<M>(),
                     };
 
                 if do_merge {
@@ -778,8 +783,8 @@ where
                 if children.len() > 1 {
                     let (child_i, start_info) = children.search_start_width(widt);
                     let mut do_merge = match *children.nodes()[child_i] {
-                        Node::Leaf(ref slice) => slice.len() < MIN_LEN,
-                        Node::Branch(ref children2) => children2.len() < MIN_CHILDREN,
+                        Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
+                        Node::Branch(ref children2) => children2.len() < min_children::<M>(),
                     };
 
                     if child_i == 0 {
@@ -790,8 +795,10 @@ where
                         do_merge |= {
                             start_info.width as usize == widt
                                 && match *children.nodes()[child_i - 1] {
-                                    Node::Leaf(ref slice) => slice.len() < MIN_LEN,
-                                    Node::Branch(ref children2) => children2.len() < MIN_CHILDREN,
+                                    Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
+                                    Node::Branch(ref children2) => {
+                                        children2.len() < min_children::<M>()
+                                    }
                                 }
                         };
                         if do_merge {

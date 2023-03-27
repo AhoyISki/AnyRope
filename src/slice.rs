@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::iter::{Chunks, Iter};
 use crate::rope::{Measurable, Rope};
 use crate::slice_utils::{end_width_to_index, index_to_width, start_width_to_index, width_of};
-use crate::tree::{Count, Node, SliceInfo};
+use crate::tree::{max_children, max_len, Count, Node, SliceInfo};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
 /// An immutable view into part of a [`Rope<M>`].
@@ -21,12 +21,20 @@ use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 #[derive(Copy, Clone)]
 pub struct RopeSlice<'a, M>(pub(crate) RSEnum<'a, M>)
 where
-    M: Measurable;
+    M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized;
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum RSEnum<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     Full {
         node: &'a Arc<Node<M>>,
@@ -41,6 +49,10 @@ where
 impl<'a, M> RopeSlice<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     /// Used for tests and debugging purposes.
     #[allow(dead_code)]
@@ -593,6 +605,10 @@ where
 impl<'a, M> RopeSlice<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     /// Non-panicking version of [`index_to_width()`][RopeSlice::index_to_width].
     #[inline]
@@ -961,6 +977,10 @@ where
 impl<'a, M> From<&'a [M]> for RopeSlice<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn from(slice: &'a [M]) -> Self {
@@ -971,6 +991,10 @@ where
 impl<'a, M> From<RopeSlice<'a, M>> for Vec<M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn from(s: RopeSlice<'a, M>) -> Self {
@@ -992,6 +1016,10 @@ where
 impl<'a, M> From<RopeSlice<'a, M>> for std::borrow::Cow<'a, [M]>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn from(s: RopeSlice<'a, M>) -> Self {
@@ -1009,6 +1037,8 @@ where
 impl<'a, M> std::fmt::Debug for RopeSlice<'a, M>
 where
     M: Measurable + Debug,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_list().entries(self.chunks()).finish()
@@ -1018,6 +1048,8 @@ where
 impl<'a, M> std::fmt::Display for RopeSlice<'a, M>
 where
     M: Measurable + Debug,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -1025,11 +1057,19 @@ where
     }
 }
 
-impl<'a, M> std::cmp::Eq for RopeSlice<'a, M> where M: Measurable + Eq {}
+impl<'a, M> std::cmp::Eq for RopeSlice<'a, M>
+where
+    M: Measurable + Eq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+{
+}
 
 impl<'a, 'b, M> std::cmp::PartialEq<RopeSlice<'b, M>> for RopeSlice<'a, M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     fn eq(&self, other: &RopeSlice<'b, M>) -> bool {
         if self.len() != other.len() {
@@ -1080,6 +1120,8 @@ where
 impl<'a, 'b, M> std::cmp::PartialEq<&'b [M]> for RopeSlice<'a, M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &&'b [M]) -> bool {
@@ -1109,6 +1151,8 @@ where
 impl<'a, 'b, M> std::cmp::PartialEq<RopeSlice<'a, M>> for &'b [M]
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &RopeSlice<'a, M>) -> bool {
@@ -1119,6 +1163,8 @@ where
 impl<'a, M> std::cmp::PartialEq<[M]> for RopeSlice<'a, M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &[M]) -> bool {
@@ -1129,6 +1175,8 @@ where
 impl<'a, M> std::cmp::PartialEq<RopeSlice<'a, M>> for [M]
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &RopeSlice<'a, M>) -> bool {
@@ -1139,6 +1187,8 @@ where
 impl<'a, M> std::cmp::PartialEq<Vec<M>> for RopeSlice<'a, M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &Vec<M>) -> bool {
@@ -1149,6 +1199,8 @@ where
 impl<'a, M> std::cmp::PartialEq<RopeSlice<'a, M>> for Vec<M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &RopeSlice<'a, M>) -> bool {
@@ -1159,6 +1211,8 @@ where
 impl<'a, 'b, M> std::cmp::PartialEq<std::borrow::Cow<'b, [M]>> for RopeSlice<'a, M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &std::borrow::Cow<'b, [M]>) -> bool {
@@ -1169,6 +1223,8 @@ where
 impl<'a, 'b, M> std::cmp::PartialEq<RopeSlice<'a, M>> for std::borrow::Cow<'b, [M]>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &RopeSlice<'a, M>) -> bool {
@@ -1179,6 +1235,8 @@ where
 impl<'a, M> std::cmp::PartialEq<Rope<M>> for RopeSlice<'a, M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
@@ -1189,6 +1247,8 @@ where
 impl<'a, M> std::cmp::PartialEq<RopeSlice<'a, M>> for Rope<M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn eq(&self, other: &RopeSlice<'a, M>) -> bool {
@@ -1199,6 +1259,8 @@ where
 impl<'a, M> std::cmp::Ord for RopeSlice<'a, M>
 where
     M: Measurable + Ord,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[allow(clippy::op_ref)] // Erroneously thinks with can directly use a slice.
     fn cmp(&self, other: &RopeSlice<'a, M>) -> std::cmp::Ordering {
@@ -1250,6 +1312,8 @@ where
 impl<'a, 'b, M> std::cmp::PartialOrd<RopeSlice<'b, M>> for RopeSlice<'a, M>
 where
     M: Measurable + PartialOrd + Ord,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn partial_cmp(&self, other: &RopeSlice<'b, M>) -> Option<std::cmp::Ordering> {

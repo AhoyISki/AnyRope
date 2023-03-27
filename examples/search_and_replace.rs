@@ -1,3 +1,4 @@
+#![feature(generic_const_exprs)]
 //! Example of basic search-and-replace functionality implemented on top
 //! of Ropey.
 //!
@@ -8,7 +9,7 @@
 //! stdout.
 
 #![allow(clippy::redundant_field_names)]
-use any_rope::{iter::Iter, Measurable, Rope, RopeSlice};
+use any_rope::{iter::Iter, Measurable, Rope, RopeSlice, max_children, max_len};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Lipsum {
@@ -91,6 +92,8 @@ fn main() {
 fn search_and_replace<M>(rope: &mut Rope<M>, search_pattern: &[M], replacement_slice: &[M])
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     const BATCH_SIZE: usize = 256;
     let replacement_text_len = replacement_slice.iter().count();
@@ -147,6 +150,8 @@ where
 struct SearchIter<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     iter: Iter<'a, M>,
     search_pattern: &'a [M],
@@ -158,6 +163,8 @@ where
 impl<'a, M> SearchIter<'a, M>
 where
     M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     fn from_rope_slice<'b: 'a>(slice: &'b RopeSlice<M>, search_pattern: &'b [M]) -> Self {
         assert!(
@@ -177,6 +184,8 @@ where
 impl<'a, M> Iterator for SearchIter<'a, M>
 where
     M: Measurable + PartialEq,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     type Item = (usize, usize);
 
