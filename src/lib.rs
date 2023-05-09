@@ -1,3 +1,4 @@
+#![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 //! AnyRope is an arbitrary data rope for Rust.
 //!
@@ -305,4 +306,15 @@ pub(crate) fn end_bound_to_num(b: Bound<&usize>) -> Option<usize> {
         Bound::Excluded(n) => Some(*n),
         Bound::Unbounded => None,
     }
+}
+
+/// Internal macro used to log information.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! log_info {
+    ($($text:tt)*) => {{
+        use std::{fs, io::Write};
+        let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
+        log.write_fmt(format_args!($($text)*)).unwrap();
+    }};
 }

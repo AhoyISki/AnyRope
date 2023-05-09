@@ -88,7 +88,7 @@ mod constants {
 // Smaller constants used in debug builds. These are different from release
 // in order to trigger deeper trees without having to use huge slice data in
 // the tests.
-#[cfg(any(test, feature = "small_chunks"))]
+#[cfg(any(test))]
 mod test_constants {
     pub const fn max_children<T>() -> usize {
         5

@@ -11,7 +11,7 @@ use crate::tree::{max_children, max_len, min_len, BranchChildren, Node, SliceInf
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
 /// A object that has a definite size, that can be interpreted by a [`Rope<M>`].
-pub trait Measurable: Clone + Copy {
+pub trait Measurable: Debug + Clone + Copy {
     /// The width of this element, it need not be the actual lenght in bytes,
     /// but just a representative value, to be fed to the [`Rope<M>`].
     fn width(&self) -> usize;
@@ -136,7 +136,7 @@ where
 
     /// Total number of elements in [`Rope<M>`].
     ///
-    /// Runs in O(1) time.
+    /// Runs in O(N) time.
     #[inline]
     pub fn len(&self) -> usize {
         self.root.len()
@@ -144,7 +144,7 @@ where
 
     /// Sum of all widths of in [`Rope<M>`].
     ///
-    /// Runs in O(1) time.
+    /// Runs in O(N) time.
     #[inline]
     pub fn width(&self) -> usize {
         self.root.width()
@@ -160,6 +160,7 @@ where
     /// there will always be some unoccupied buffer space.
     ///
     /// Runs in O(N) time.
+    #[inline]
     pub fn capacity(&self) -> usize {
         let mut count = 0;
         for chunk in self.chunks() {
@@ -185,6 +186,7 @@ where
     ///
     /// Runs in O(N) time, and uses O(log N) additional space during
     /// shrinking.
+    #[inline]
     pub fn shrink_to_fit(&mut self) {
         let mut node_stack = Vec::new();
         let mut builder = RopeBuilder::new();
@@ -246,6 +248,7 @@ where
     ///
     /// This only works correctly for insertion slices smaller than or equal to
     /// `MAX_BYTES - 4`.
+    #[inline]
     fn insert_internal(&mut self, width: usize, ins_slice: &[M]) {
         let root_info = self.root.slice_info();
 
@@ -358,6 +361,7 @@ where
     ///
     /// Panics if the start of the range is greater than the end, or if the
     /// end is out of bounds (i.e. `end > self.width()`).
+    #[inline]
     pub fn remove_inclusive<R>(&mut self, width_range: R)
     where
         R: RangeBounds<usize>,
@@ -410,6 +414,7 @@ where
     ///
     /// Panics if the start of the range is greater than the end, or if the
     /// end is out of bounds (i.e. `end > self.width()`).
+    #[inline]
     pub fn remove_exclusive<R>(&mut self, width_range: R)
     where
         R: RangeBounds<usize>,
@@ -424,6 +429,7 @@ where
     /// # Panics
     ///
     /// Panics if the `width` is out of bounds (i.e. `width > self.width()`).
+    #[inline]
     pub fn split_off(&mut self, width: usize) -> Self {
         self.try_split_off(width).unwrap()
     }
@@ -431,6 +437,7 @@ where
     /// Appends a [`Rope<M>`] to the end of this one, consuming the other [`Rope<M>`].
     ///
     /// Runs in O(log N) time.
+    #[inline]
     pub fn append(&mut self, mut other: Self) {
         if self.width() == 0 {
             // Special case
@@ -664,6 +671,7 @@ where
     /// Panics if:
     /// - The start of the range is greater than the end.
     /// - The end is out of bounds (i.e. `end > Rope::len()`).
+    #[inline]
     pub fn index_slice<R>(&self, index_range: R) -> RopeSlice<M>
     where
         R: RangeBounds<usize>,
@@ -834,6 +842,7 @@ where
 
     /// Iteratively replaces the root node with its child if it only has
     /// one child.
+    #[inline]
     pub(crate) fn pull_up_singular_nodes(&mut self) {
         while (!self.root.is_leaf()) && self.root.child_count() == 1 {
             let child = if let Node::Branch(ref children) = *self.root {
@@ -920,6 +929,7 @@ where
     }
 
     /// Non-panicking version of [`remove_inclusive()`][Rope::remove_inclusive].
+    #[inline]
     pub fn try_remove_inclusive<R>(&mut self, width_range: R) -> Result<()>
     where
         R: RangeBounds<usize>,
@@ -928,6 +938,7 @@ where
     }
 
     /// Non-panicking version of [`remove_exclusive()`][Rope::remove_exclusive].
+    #[inline]
     pub fn try_remove_exclusive<R>(&mut self, width_range: R) -> Result<()>
     where
         R: RangeBounds<usize>,
@@ -973,6 +984,7 @@ where
     }
 
     /// Non-panicking version of [`split_off()`][Rope::split_off].
+    #[inline]
     pub fn try_split_off(&mut self, width: usize) -> Result<Self> {
         // Bounds check
         if width <= self.width() {

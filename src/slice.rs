@@ -54,12 +54,6 @@ where
     [(); max_len::<M>()]: Sized,
     [(); max_children::<M>()]: Sized,
 {
-    /// Used for tests and debugging purposes.
-    #[allow(dead_code)]
-    pub(crate) fn is_light(&self) -> bool {
-        matches!(&self.0, RSEnum::Light { .. })
-    }
-
     pub(crate) fn new_with_range(node: &'a Arc<Node<M>>, start: usize, end: usize) -> Self {
         assert!(start <= end);
         assert!(end <= node.slice_info().width as usize);
@@ -324,6 +318,7 @@ where
     /// # Panics
     ///
     /// Panics if the `index` is out of bounds (i.e. `index > RopeSlice::len()`).
+    #[inline]
     pub fn chunk_at_index(&self, index: usize) -> (&'a [M], usize, usize) {
         self.try_chunk_at_index(index).unwrap()
     }
@@ -342,6 +337,7 @@ where
     /// # Panics
     ///
     /// Panics if `width` is out of bounds (i.e. `width > RopeSlice::width()`).
+    #[inline]
     pub fn chunk_at_width(&self, width: usize) -> (&'a [M], usize, usize) {
         if let Some(out) = self.get_chunk_at_width(width) {
             out
@@ -400,6 +396,7 @@ where
     ///
     /// Panics if the start of the range is greater than the end, or if the
     /// end is out of bounds (i.e. `end > RopeSlice::width()`).
+    #[inline]
     pub fn width_slice<R>(&self, width_range: R) -> Self
     where
         R: RangeBounds<usize>,
@@ -456,6 +453,7 @@ where
     /// Panics if:
     /// - The start of the range is greater than the end.
     /// - The end is out of bounds (i.e. `end > Rope::len()`).
+    #[inline]
     pub fn index_slice<R>(&self, index_range: R) -> Self
     where
         R: RangeBounds<usize>,
@@ -675,6 +673,7 @@ where
     }
 
     /// Non-panicking version of [`chunk_at_index()`][RopeSlice::chunk_at_index].
+    #[inline]
     pub fn try_chunk_at_index(&self, index: usize) -> Result<(&'a [M], usize, usize)> {
         // Bounds check
         if index <= self.len() {
@@ -708,6 +707,7 @@ where
     }
 
     /// Non-panicking version of [`chunk_at_width()`][RopeSlice::chunk_at_width].
+    #[inline]
     pub fn get_chunk_at_width(&self, width: usize) -> Option<(&'a [M], usize, usize)> {
         // Bounds check
         if width <= self.width() {
@@ -741,6 +741,7 @@ where
     }
 
     /// Non-panicking version of [`width_slice()`][RopeSlice::width_slice].
+    #[inline]
     pub fn get_width_slice<R>(&self, width_range: R) -> Option<RopeSlice<'a, M>>
     where
         R: RangeBounds<usize>,
@@ -783,6 +784,7 @@ where
     }
 
     /// Non-panicking version of [`index_slice()`][RopeSlice::index_slice].
+    #[inline]
     pub fn get_index_slice<R>(&self, index_range: R) -> Option<RopeSlice<'a, M>>
     where
         R: RangeBounds<usize>,
