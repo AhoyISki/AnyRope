@@ -34,30 +34,7 @@ where
         let measurable_width = measurable.width();
         let next_accum = accum + measurable_width;
 
-        if (measurable_width == 0 && next_accum == width) || next_accum > width {
-            break;
-        }
-        accum = next_accum;
-        index += 1;
-    }
-
-    index
-}
-
-/// Finds the index of the element whose starting width sum matches `width`.
-#[inline]
-pub fn test_start_width_to_index<M>(slice: &[M], width: usize) -> usize
-where
-    M: Measurable,
-{
-    let mut index = 0;
-    let mut accum = 0;
-
-    for measurable in slice {
-        let measurable_width = measurable.width();
-        let next_accum = accum + measurable_width;
-
-        if (measurable_width == 0 && next_accum == width) || next_accum > width {
+        if next_accum > width || (measurable_width == 0 && next_accum == width) {
             break;
         }
         accum = next_accum;
@@ -79,7 +56,7 @@ where
     for measurable in slice {
         let measurable_width = measurable.width();
         // This makes it so that every 0 width node exactly at `width` is also captured.
-        if (measurable_width != 0 && accum == width) || accum > width {
+        if accum > width || (measurable_width != 0 && accum == width) {
             break;
         }
 

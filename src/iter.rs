@@ -71,7 +71,7 @@
 use std::sync::Arc;
 
 use crate::rope::Measurable;
-use crate::slice_utils::{index_to_width, start_width_to_index, width_of, test_start_width_to_index};
+use crate::slice_utils::{index_to_width, start_width_to_index, width_of};
 use crate::tree::{max_children, max_len, Node, SliceInfo};
 
 //==========================================================
@@ -149,7 +149,7 @@ where
             chunk
         };
 
-        let index = test_start_width_to_index(cur_chunk, at_width - chunk_start_width);
+        let index = start_width_to_index(cur_chunk, at_width - chunk_start_width);
         let width = index_to_width(cur_chunk, index) + chunk_start_width;
 
         Iter {
