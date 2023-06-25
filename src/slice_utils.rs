@@ -1,6 +1,6 @@
 use crate::rope::Measurable;
 
-#[inline]
+#[inline(always)]
 pub fn width_of<M>(slice: &[M]) -> usize
 where
     M: Measurable,
@@ -9,7 +9,7 @@ where
 }
 
 /// Gets the width sum up to a given `index` in the `slice`.
-#[inline]
+#[inline(always)]
 pub fn index_to_width<M>(slice: &[M], index: usize) -> usize
 where
     M: Measurable,
@@ -22,7 +22,7 @@ where
 }
 
 /// Finds the index of the element whose starting width sum matches `width`.
-#[inline]
+#[inline(always)]
 pub fn start_width_to_index<M>(slice: &[M], width: usize) -> usize
 where
     M: Measurable,
@@ -45,7 +45,7 @@ where
 }
 
 /// Finds the index of the element whose ending width sum matches `width`.
-#[inline]
+#[inline(always)]
 pub fn end_width_to_index<M>(slice: &[M], width: usize) -> usize
 where
     M: Measurable,

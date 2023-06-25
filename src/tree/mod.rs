@@ -12,7 +12,7 @@ pub(crate) use self::slice_info::SliceInfo;
 pub(crate) type Count = u64;
 
 // Real constants used in release builds.
-#[cfg(not(any(test, feature = "small_chunks")))]
+#[cfg(not(test))]
 mod constants {
     use super::SliceInfo;
     use smallvec::SmallVec;
@@ -40,20 +40,20 @@ mod constants {
     const ARC_COUNTERS_SIZE: usize = size_of::<std::sync::atomic::AtomicUsize>() * 2;
 
     // Misc useful info that we need below.
-    const NODE_CHILDREN_ALIGN: usize = cmax(align_of::<Arc<u8>>(), align_of::<SliceInfo>());
+    const NODE_CHILDREN_ALIGN: usize = cmax(align_of::<Arc<u8>>(), align_of::<(SliceInfo, bool)>());
     const fn node_align<T>() -> usize {
         align_of::<SmallVec<[T; 16]>>()
     }
     const fn start_offset<T>() -> usize {
         let node_inner_align = cmax(NODE_CHILDREN_ALIGN, node_align::<T>());
-        // The +NODE_INNER_ALIGN is because of Node's enum discriminant.
+        // The `+ node_inner_align` is because of Node's enum discriminant.
         ARC_COUNTERS_SIZE + node_inner_align
     }
 
     // Node maximums.
     pub const fn max_children<T>() -> usize {
         let node_list_align = align_of::<Arc<u8>>();
-        let info_list_align = align_of::<SliceInfo>();
+        let info_list_align = align_of::<(SliceInfo, bool)>();
         let field_gap = if node_list_align >= info_list_align {
             0
         } else {
@@ -66,11 +66,11 @@ mod constants {
         // The -NODE_CHILDREN_ALIGN is for the `len` field in `NodeChildrenInternal`.
         let target_size = TARGET_TOTAL_SIZE - start_offset::<T>() - NODE_CHILDREN_ALIGN - field_gap;
 
-        target_size / (size_of::<Arc<u8>>() + size_of::<SliceInfo>())
+        target_size / (size_of::<Arc<u8>>() + size_of::<(SliceInfo, bool)>())
     }
     pub const fn max_len<T>() -> usize {
-        let smallvec_overhead = size_of::<SmallVec<[T; 16]>>() - 16;
-        TARGET_TOTAL_SIZE - start_offset::<T>() - smallvec_overhead
+        let smallvec_overhead = size_of::<SmallVec<[T; 16]>>();
+        (TARGET_TOTAL_SIZE - start_offset::<T>() - smallvec_overhead) / size_of::<T>()
     }
 
     // Node minimums.
@@ -88,7 +88,7 @@ mod constants {
 // Smaller constants used in debug builds. These are different from release
 // in order to trigger deeper trees without having to use huge slice data in
 // the tests.
-#[cfg(any(test))]
+#[cfg(test)]
 mod test_constants {
     pub const fn max_children<T>() -> usize {
         5

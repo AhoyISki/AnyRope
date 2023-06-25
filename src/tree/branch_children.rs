@@ -8,11 +8,11 @@ use crate::tree::{max_children, max_len, Node, SliceInfo};
 
 /// A fixed-capacity vec of child Arc-pointers and child metadata.
 ///
-/// The unsafe guts of this are implemented in NodeChildrenInternal
+/// The unsafe guts of this are implemented in BranchChildrenInternal
 /// lower down in this file.
 #[derive(Clone)]
 #[repr(C)]
-pub(crate) struct BranchChildren<M>(inner::NodeChildrenInternal<M>)
+pub(crate) struct BranchChildren<M>(inner::BranchChildrenInternal<M>)
 where
     M: Measurable,
     [(); max_len::<M>()]: Sized,
@@ -26,7 +26,7 @@ where
 {
     /// Creates a new empty array.
     pub fn new() -> Self {
-        BranchChildren(inner::NodeChildrenInternal::new())
+        BranchChildren(inner::BranchChildrenInternal::new())
     }
 
     /// Current length of the array.
@@ -526,7 +526,7 @@ mod inner {
 
     /// This is essentially a fixed-capacity, stack-allocated [Vec<(M, SliceInfo)>].
     #[repr(C)]
-    pub(crate) struct NodeChildrenInternal<M>
+    pub(crate) struct BranchChildrenInternal<M>
     where
         M: Measurable,
         [(); max_len::<M>()]: Sized,
@@ -541,7 +541,7 @@ mod inner {
         len: u8,
     }
 
-    impl<M> NodeChildrenInternal<M>
+    impl<M> BranchChildrenInternal<M>
     where
         M: Measurable,
         [(); max_len::<M>()]: Sized,
@@ -552,7 +552,7 @@ mod inner {
         pub fn new() -> Self {
             // SAFETY: Uninit data is valid for arrays of MaybeUninit.
             // len is zero, so it's ok for all of them to be uninit
-            NodeChildrenInternal {
+            BranchChildrenInternal {
                 nodes: unsafe { MaybeUninit::uninit().assume_init() },
                 info: unsafe { MaybeUninit::uninit().assume_init() },
                 len: 0,
@@ -695,7 +695,7 @@ mod inner {
         }
     }
 
-    impl<M> Drop for NodeChildrenInternal<M>
+    impl<M> Drop for BranchChildrenInternal<M>
     where
         M: Measurable,
         [(); max_len::<M>()]: Sized,
@@ -711,7 +711,7 @@ mod inner {
         }
     }
 
-    impl<M> Clone for NodeChildrenInternal<M>
+    impl<M> Clone for BranchChildrenInternal<M>
     where
         M: Measurable,
         [(); max_len::<M>()]: Sized,
@@ -719,7 +719,7 @@ mod inner {
     {
         fn clone(&self) -> Self {
             // Create an empty NodeChildrenInternal first, then fill it
-            let mut clone_array = NodeChildrenInternal::new();
+            let mut clone_array = BranchChildrenInternal::new();
 
             // Copy nodes... carefully.
             for (clone_arc, arc) in Iterator::zip(

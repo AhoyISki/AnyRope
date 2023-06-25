@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::fmt::{Debug, Display};
 use std::ops::Deref;
 
+use crate::max_children;
 use crate::rope::Measurable;
 
 use self::inner::LeafSmallVec;
@@ -20,7 +21,8 @@ where
 impl<M> LeafSlice<M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
 {
     /// Creates a new [`Leaf`] from a slice.
     pub fn from_slice(value: &[M]) -> Self {
@@ -45,13 +47,13 @@ where
         right
     }
 
-    /// Appends a `&str` to end the of the [`LeafSlice`].
+    /// Appends a [`&[M]`][Measurable] to end the of the [`LeafSlice`].
     pub fn push_slice(&mut self, slice: &[M]) {
         let len = self.len();
         self.0.insert_slice(len, slice);
     }
 
-    /// Appends a `&str` and splits the resulting string in half, returning
+    /// Appends a [`&[M]`][Measurable] and splits the resulting string in half, returning
     /// the right half.
     ///
     /// Only splits on code point boundaries and will never split CRLF pairs,
@@ -103,7 +105,7 @@ where
 impl<M> std::cmp::PartialEq for LeafSlice<M>
 where
     M: Measurable + PartialEq,
-    [(); max_len::<M>()]: Sized
+    [(); max_len::<M>()]: Sized,
 {
     fn eq(&self, other: &Self) -> bool {
         let (s1, s2): (&[M], &[M]) = (self, other);
@@ -114,7 +116,7 @@ where
 impl<'a, M> PartialEq<LeafSlice<M>> for &'a [M]
 where
     M: Measurable + PartialEq,
-    [(); max_len::<M>()]: Sized
+    [(); max_len::<M>()]: Sized,
 {
     fn eq(&self, other: &LeafSlice<M>) -> bool {
         *self == (other as &[M])
@@ -124,7 +126,7 @@ where
 impl<'a, M> PartialEq<&'a [M]> for LeafSlice<M>
 where
     M: Measurable + PartialEq,
-    [(); max_len::<M>()]: Sized
+    [(); max_len::<M>()]: Sized,
 {
     fn eq(&self, other: &&'a [M]) -> bool {
         (self as &[M]) == *other
@@ -134,7 +136,7 @@ where
 impl<M> std::fmt::Display for LeafSlice<M>
 where
     M: Measurable + Display + Debug,
-    [(); max_len::<M>()]: Sized
+    [(); max_len::<M>()]: Sized,
 {
     fn fmt(&self, fm: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         LeafSlice::deref(self).fmt(fm)
@@ -144,7 +146,7 @@ where
 impl<M> std::fmt::Debug for LeafSlice<M>
 where
     M: Measurable + Debug,
-    [(); max_len::<M>()]: Sized
+    [(); max_len::<M>()]: Sized,
 {
     fn fmt(&self, fm: &mut std::fmt::Formatter) -> std::fmt::Result {
         LeafSlice::deref(self).fmt(fm)
@@ -154,7 +156,7 @@ where
 impl<M> Deref for LeafSlice<M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized
+    [(); max_len::<M>()]: Sized,
 {
     type Target = [M];
 
@@ -166,7 +168,7 @@ where
 impl<M> AsRef<[M]> for LeafSlice<M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized
+    [(); max_len::<M>()]: Sized,
 {
     fn as_ref(&self) -> &[M] {
         self.0.as_slice()
@@ -176,7 +178,7 @@ where
 impl<M> Borrow<[M]> for LeafSlice<M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized
+    [(); max_len::<M>()]: Sized,
 {
     fn borrow(&self) -> &[M] {
         self.0.as_slice()
