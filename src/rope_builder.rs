@@ -17,19 +17,22 @@ use crate::tree::{max_children, max_len, min_len, BranchChildren, LeafSlice, Nod
 /// # Example
 /// ```
 /// # use any_rope::RopeBuilder;
-/// # use any_rope::Lipsum::*;
+/// # use any_rope::Width;
 /// #
 /// let mut builder = RopeBuilder::new();
 ///
-/// builder.append(Lorem);
-/// builder.append(Ipsum);
-/// builder.append(Dolor(70));
-/// builder.append(Sit);
-/// builder.append(Amet);
+/// builder.append(Width(1));
+/// builder.append(Width(2));
+/// builder.append(Width(70));
+/// builder.append(Width(0));
+/// builder.append(Width(0));
 ///
 /// let rope = builder.finish();
 ///
-/// assert_eq!(rope, [Lorem, Ipsum, Dolor(70), Sit, Amet].as_slice());
+/// assert_eq!(
+///     rope,
+///     [Width(1), Width(2), Width(70), Width(0), Width(0)].as_slice()
+/// );
 /// ```
 #[derive(Debug, Clone)]
 pub struct RopeBuilder<M>
@@ -73,7 +76,8 @@ where
         self.append_internal(chunk, false);
     }
 
-    /// Appends a single [`M`][Measurable] to the end of the in-progress [`Rope<M>`]
+    /// Appends a single [`M`][Measurable] to the end of the in-progress
+    /// [`Rope<M>`]
     ///
     /// Call this method repeatedly to incrementally build up a [`Rope<M>`].
     pub fn append(&mut self, element: M) {
@@ -108,8 +112,9 @@ where
     /// chunk configurations for testing purposes. It will happily append
     /// both empty and more-than-max-size chunks.
     ///
-    /// This makes no attempt to be consistent with the standard [RopeBuilder::append()]
-    /// method, and should not be used in conjunction with it.
+    /// This makes no attempt to be consistent with the standard
+    /// [RopeBuilder::append()] method, and should not be used in
+    /// conjunction with it.
     #[doc(hidden)]
     pub fn _append_chunk(&mut self, contents: &[M]) {
         self.append_leaf_node(Arc::new(Node::Leaf(LeafSlice::from_slice(contents))));
@@ -118,8 +123,8 @@ where
     /// NOT PART OF THE PUBLIC API (hidden from docs for a reason!).
     ///
     /// Finishes the build without doing any tree fixing to adhere
-    /// to the btree invariants. To be used with [RopeBuilder::append_chunk()] to
-    /// construct ropes with specific chunk boundaries for testing.
+    /// to the btree invariants. To be used with [RopeBuilder::append_chunk()]
+    /// to construct ropes with specific chunk boundaries for testing.
     #[doc(hidden)]
     pub fn _finish_no_fix(self) -> Rope<M> {
         self.finish_internal(false)
@@ -321,23 +326,23 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Lipsum::{self, *};
+    use crate::Width;
 
     /// 70 elements, total width of 135.
-    fn lorem_ipsum() -> Vec<Lipsum> {
+    fn lorem_ipsum() -> Vec<Width> {
         (0..70)
             .into_iter()
             .map(|num| match num % 14 {
-                0 | 7 => Lorem,
-                1 | 8 => Ipsum,
-                2 => Dolor(4),
-                3 | 10 => Sit,
-                4 | 11 => Amet,
-                5 => Consectur("hello"),
-                6 => Adipiscing(true),
-                9 => Dolor(8),
-                12 => Consectur("bye"),
-                13 => Adipiscing(false),
+                0 | 7 => Width(1),
+                1 | 8 => Width(2),
+                2 => Width(4),
+                3 | 10 => Width(0),
+                4 | 11 => Width(0),
+                5 => Width(5),
+                6 => Width(1),
+                9 => Width(8),
+                12 => Width(3),
+                13 => Width(0),
                 _ => unreachable!(),
             })
             .collect()
@@ -348,10 +353,10 @@ mod tests {
         let mut builder = RopeBuilder::new();
 
         for _ in 0..5 {
-            builder.append_slice(&[Lorem, Ipsum, Dolor(4), Sit, Amet]);
-            builder.append_slice(&[Consectur("hello"), Adipiscing(true)]);
-            builder.append_slice(&[Lorem, Ipsum, Dolor(8), Sit, Amet]);
-            builder.append_slice(&[Consectur("bye"), Adipiscing(false)]);
+            builder.append_slice(&[Width(1), Width(2), Width(4), Width(0), Width(0)]);
+            builder.append_slice(&[Width(5), Width(1)]);
+            builder.append_slice(&[Width(1), Width(2), Width(8), Width(0), Width(0)]);
+            builder.append_slice(&[Width(3), Width(0)]);
         }
 
         let rope = builder.finish();
@@ -367,18 +372,18 @@ mod tests {
         let mut builder = RopeBuilder::new();
 
         for _ in 0..5 {
-            builder.append(Lorem);
-            builder.append(Ipsum);
-            builder.append(Dolor(4));
-            builder.append(Sit);
-            builder.append(Amet);
-            builder.append_slice(&[Consectur("hello"), Adipiscing(true)]);
-            builder.append(Lorem);
-            builder.append(Ipsum);
-            builder.append(Dolor(8));
-            builder.append(Sit);
-            builder.append(Amet);
-            builder.append_slice(&[Consectur("bye"), Adipiscing(false)]);
+            builder.append(Width(1));
+            builder.append(Width(2));
+            builder.append(Width(4));
+            builder.append(Width(0));
+            builder.append(Width(0));
+            builder.append_slice(&[Width(5), Width(1)]);
+            builder.append(Width(1));
+            builder.append(Width(2));
+            builder.append(Width(8));
+            builder.append(Width(0));
+            builder.append(Width(0));
+            builder.append_slice(&[Width(3), Width(0)]);
         }
 
         let rope = builder.finish();
@@ -394,10 +399,10 @@ mod tests {
         let mut builder = RopeBuilder::default();
 
         for _ in 0..5 {
-            builder.append_slice(&[Lorem, Ipsum, Dolor(4), Sit, Amet]);
-            builder.append_slice(&[Consectur("hello"), Adipiscing(true)]);
-            builder.append_slice(&[Lorem, Ipsum, Dolor(8), Sit, Amet]);
-            builder.append_slice(&[Consectur("bye"), Adipiscing(false)]);
+            builder.append_slice(&[Width(1), Width(2), Width(4), Width(0), Width(0)]);
+            builder.append_slice(&[Width(5), Width(1)]);
+            builder.append_slice(&[Width(1), Width(2), Width(8), Width(0), Width(0)]);
+            builder.append_slice(&[Width(3), Width(0)]);
         }
 
         let rope = builder.finish();

@@ -10,20 +10,18 @@ use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
 /// An immutable view into part of a [`Rope<M>`].
 ///
-/// Just like standard [`&[M]`][Measurable] slices, [`RopeSlice<M>`]s behave as if the
-/// slice in their range is the only slice that exists. All indexing is relative to
-/// the start of their range, and all iterators and methods that return [`M`][Measurable]s
-/// truncate those to the range of the slice.
+/// Just like standard [`&[M]`][Measurable] slices, [`RopeSlice<M>`]s behave as
+/// if the slice in their range is the only slice that exists. All indexing is
+/// relative to the start of their range, and all iterators and methods that
+/// return [`M`][Measurable]s truncate those to the range of the slice.
 ///
-/// In other words, the behavior of a [`RopeSlice<M>`] is always identical to that
-/// of a full [`Rope<M>`] created from the same slice range. Nothing should be
-/// surprising here.
+/// In other words, the behavior of a [`RopeSlice<M>`] is always identical to
+/// that of a full [`Rope<M>`] created from the same slice range. Nothing should
+/// be surprising here.
 #[derive(Copy, Clone)]
 pub struct RopeSlice<'a, M>(pub(crate) RSEnum<'a, M>)
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
     [(); max_len::<M>()]: Sized,
     [(); max_children::<M>()]: Sized;
 
@@ -31,8 +29,6 @@ where
 pub(crate) enum RSEnum<'a, M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
     [(); max_len::<M>()]: Sized,
     [(); max_children::<M>()]: Sized,
 {
@@ -84,18 +80,17 @@ where
                 // Early out if we reach a leaf, because we can do the
                 // simpler lightweight slice then.
                 Node::Leaf(ref slice) => {
-                    let start_index = start_width_to_index(slice, n_start);
-                    let end_index =
-                        start_index + end_width_to_index(&slice[start_index..], n_end - n_start);
+                    let start = start_width_to_index(slice, n_start);
+                    let end = start + end_width_to_index(&slice[start..], n_end - n_start);
                     return RopeSlice(RSEnum::Light {
-                        slice: &slice[start_index..end_index],
+                        slice: &slice[start..end],
                     });
                 }
 
                 Node::Branch(ref children) => {
                     let mut start_width = 0;
                     for (i, (info, zero_width_end)) in children.info().iter().enumerate() {
-                        if n_start >= start_width && n_end <= (start_width + info.width as usize) {
+                        if n_start >= start_width && n_end < (start_width + info.width as usize) {
                             if *zero_width_end {
                                 break;
                             }
@@ -240,7 +235,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if the `width` is out of bounds (i.e. `width > RopeSlice::width()`).
+    /// Panics if the `width` is out of bounds (i.e. `width >
+    /// RopeSlice::width()`).
     #[inline]
     pub fn start_width_to_index(&self, width: usize) -> usize {
         self.try_start_width_to_index(width).unwrap()
@@ -252,7 +248,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if the `width` is out of bounds (i.e. `width > RopeSlice::width()`).
+    /// Panics if the `width` is out of bounds (i.e. `width >
+    /// RopeSlice::width()`).
     #[inline]
     pub fn end_width_to_index(&self, width: usize) -> usize {
         self.try_end_width_to_index(width).unwrap()
@@ -268,7 +265,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if the `index` is out of bounds (i.e. `index > RopeSlice::len()`).
+    /// Panics if the `index` is out of bounds (i.e. `index >
+    /// RopeSlice::len()`).
     #[inline]
     pub fn from_index(&self, index: usize) -> (usize, M) {
         // Bounds check
@@ -290,7 +288,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if the `width` is out of bounds (i.e. `width > RopeSlice::width()`).
+    /// Panics if the `width` is out of bounds (i.e. `width >
+    /// RopeSlice::width()`).
     #[inline]
     pub fn from_width(&self, width: usize) -> (usize, M) {
         if let Some(out) = self.get_from_width(width) {
@@ -317,7 +316,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if the `index` is out of bounds (i.e. `index > RopeSlice::len()`).
+    /// Panics if the `index` is out of bounds (i.e. `index >
+    /// RopeSlice::len()`).
     #[inline]
     pub fn chunk_at_index(&self, index: usize) -> (&'a [M], usize, usize) {
         self.try_chunk_at_index(index).unwrap()
@@ -350,8 +350,8 @@ where
         }
     }
 
-    /// Returns the entire contents of the [`RopeSlice<M>`] as a [`&[M]`][Measurable]
-    /// if possible.
+    /// Returns the entire contents of the [`RopeSlice<M>`] as a
+    /// [`&[M]`][Measurable] if possible.
     ///
     /// This is useful for optimizing cases where the [`RopeSlice<M>`] is not
     /// very long.
@@ -359,7 +359,8 @@ where
     /// For large slices this method will typically fail and return [`None`]
     /// because large slices usually cross chunk boundaries in the rope.
     ///
-    /// (Also see the [`From`] impl for converting to a [`Cow<&[M]>`][std::borrow::Cow].)
+    /// (Also see the [`From`] impl for converting to a
+    /// [`Cow<&[M]>`][std::borrow::Cow].)
     ///
     /// Runs in O(1) time.
     #[inline]
@@ -381,13 +382,12 @@ where
     ///
     /// ```
     /// # use any_rope::Rope;
-    /// # use any_rope::Lipsum::*;
-    /// let mut rope = Rope::from_slice(
-    /// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
-    /// );
+    /// # use any_rope::Width;
+    /// let mut rope =
+    ///     Rope::from_slice(&[Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)]);
     /// let slice = rope.width_slice(..5);
     ///
-    /// assert_eq!(slice, [Lorem, Ipsum, Dolor(3)].as_slice());
+    /// assert_eq!(slice, [Width(1), Width(2), Width(3)].as_slice());
     /// ```
     ///
     /// Runs in O(log N) time.
@@ -469,8 +469,9 @@ where
 
     /// Creates an iterator over the [`RopeSlice<M>`].
     ///
-    /// This iterator will return values of type [`Option<(usize, M)>`], where the `usize`
-    /// is the width sum where the given [`M`][Measurable] starts.
+    /// This iterator will return values of type [`Option<(usize, M)>`], where
+    /// the `usize` is the width sum where the given [`M`][Measurable]
+    /// starts.
     ///
     /// Runs in O(log N) time.
     #[inline]
@@ -491,19 +492,22 @@ where
 
     /// Creates an iterator over the [`RopeSlice<M>`], starting at `width`.
     ///
-    /// This iterator will return values of type [`Option<(usize, M)>`], where the `usize`
-    /// is the width where the given [`M`][Measurable] starts. Since one can iterate in
-    /// between an [`M`][Measurable]s start and end width sums. the first `usize` may not
-    /// actually corelate to the `width` given to the function.
+    /// This iterator will return values of type [`Option<(usize, M)>`], where
+    /// the `usize` is the width where the given [`M`][Measurable] starts.
+    /// Since one can iterate in between an [`M`][Measurable]s start and end
+    /// width sums. the first `usize` may not actually corelate to the
+    /// `width` given to the function.
     ///
     /// If `width == RopeSlice::width()` then an iterator at the end of the
-    /// [`RopeSlice<M>`] is created (i.e. [`next()`][crate::iter::Iter::next] will return [`None`]).
+    /// [`RopeSlice<M>`] is created (i.e. [`next()`][crate::iter::Iter::next]
+    /// will return [`None`]).
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if the `width` is out of bounds (i.e. `width > RopeSlice::width()`).
+    /// Panics if the `width` is out of bounds (i.e. `width >
+    /// RopeSlice::width()`).
     #[inline]
     pub fn iter_at(&self, index: usize) -> Iter<'a, M> {
         if let Some(out) = self.get_iter_at(index) {
@@ -542,8 +546,9 @@ where
     /// Also returns the index and width of the beginning of the first
     /// chunk to be yielded.
     ///
-    /// If `index == RopeSlice::len()` an iterator at the end of the [`RopeSlice<M>`]
-    /// (yielding [`None`] on a call to [`next()`][crate::iter::Iter::next]) is created.
+    /// If `index == RopeSlice::len()` an iterator at the end of the
+    /// [`RopeSlice<M>`] (yielding [`None`] on a call to
+    /// [`next()`][crate::iter::Iter::next]) is created.
     ///
     /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
     ///
@@ -551,7 +556,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if the `index` is out of bounds (i.e. `index > RopeSlice::len()`).
+    /// Panics if the `index` is out of bounds (i.e. `index >
+    /// RopeSlice::len()`).
     #[inline]
     pub fn chunks_at_index(&self, index: usize) -> (Chunks<'a, M>, usize, usize) {
         if let Some(out) = self.get_chunks_at_index(index) {
@@ -571,8 +577,9 @@ where
     /// Also returns the index and width of the beginning of the first
     /// chunk to be yielded.
     ///
-    /// If `width == RopeSlice::width()` an iterator at the end of the [`RopeSlice<M>`]
-    /// (yielding [`None`] on a call to [`next()`][crate::iter::Iter::next]) is created.
+    /// If `width == RopeSlice::width()` an iterator at the end of the
+    /// [`RopeSlice<M>`] (yielding [`None`] on a call to
+    /// [`next()`][crate::iter::Iter::next]) is created.
     ///
     /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
     ///
@@ -580,7 +587,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if the `width` is out of bounds (i.e. `width > RopeSlice::width()`).
+    /// Panics if the `width` is out of bounds (i.e. `width >
+    /// RopeSlice::width()`).
     #[inline]
     pub fn chunks_at_width(&self, width_index: usize) -> (Chunks<'a, M>, usize, usize) {
         if let Some(out) = self.get_chunks_at_width(width_index) {
@@ -608,7 +616,8 @@ where
     [(); max_len::<M>()]: Sized,
     [(); max_children::<M>()]: Sized,
 {
-    /// Non-panicking version of [`index_to_width()`][RopeSlice::index_to_width].
+    /// Non-panicking version of
+    /// [`index_to_width()`][RopeSlice::index_to_width].
     #[inline]
     pub fn try_index_to_width(&self, index: usize) -> Result<usize> {
         // Bounds check
@@ -620,7 +629,8 @@ where
         }
     }
 
-    /// Non-panicking version of [`start_width_to_index()`][RopeSlice::start_width_to_index].
+    /// Non-panicking version of
+    /// [`start_width_to_index()`][RopeSlice::start_width_to_index].
     #[inline]
     pub fn try_start_width_to_index(&self, width: usize) -> Result<usize> {
         // Bounds check
@@ -632,7 +642,8 @@ where
         }
     }
 
-    /// Non-panicking version of [`end_width_to_index()`][RopeSlice::end_width_to_index].
+    /// Non-panicking version of
+    /// [`end_width_to_index()`][RopeSlice::end_width_to_index].
     #[inline]
     pub fn try_end_width_to_index(&self, width: usize) -> Result<usize> {
         // Bounds check
@@ -672,7 +683,8 @@ where
         }
     }
 
-    /// Non-panicking version of [`chunk_at_index()`][RopeSlice::chunk_at_index].
+    /// Non-panicking version of
+    /// [`chunk_at_index()`][RopeSlice::chunk_at_index].
     #[inline]
     pub fn try_chunk_at_index(&self, index: usize) -> Result<(&'a [M], usize, usize)> {
         // Bounds check
@@ -706,7 +718,8 @@ where
         }
     }
 
-    /// Non-panicking version of [`chunk_at_width()`][RopeSlice::chunk_at_width].
+    /// Non-panicking version of
+    /// [`chunk_at_width()`][RopeSlice::chunk_at_width].
     #[inline]
     pub fn get_chunk_at_width(&self, width: usize) -> Option<(&'a [M], usize, usize)> {
         // Bounds check
@@ -879,7 +892,8 @@ where
         }
     }
 
-    /// Non-panicking version of [`chunks_at_index()`][RopeSlice::chunks_at_index].
+    /// Non-panicking version of
+    /// [`chunks_at_index()`][RopeSlice::chunks_at_index].
     #[inline]
     pub fn get_chunks_at_index(&self, index: usize) -> Option<(Chunks<'a, M>, usize, usize)> {
         // Bounds check
@@ -918,7 +932,8 @@ where
         }
     }
 
-    /// Non-panicking version of [`chunks_at_width()`][RopeSlice::chunks_at_width].
+    /// Non-panicking version of
+    /// [`chunks_at_width()`][RopeSlice::chunks_at_width].
     #[inline]
     pub fn get_chunks_at_width(&self, width: usize) -> Option<(Chunks<'a, M>, usize, usize)> {
         // Bounds check
@@ -1329,25 +1344,24 @@ where
 mod tests {
     use crate::{
         slice_utils::{index_to_width, start_width_to_index},
-        Lipsum::{self, *},
-        Rope,
+        Rope, Width,
     };
 
     /// 70 elements, total width of 135.
-    fn lorem_ipsum() -> Vec<Lipsum> {
+    fn pseudo_random() -> Vec<Width> {
         (0..70)
             .into_iter()
             .map(|num| match num % 14 {
-                0 | 7 => Lorem,
-                1 | 8 => Ipsum,
-                2 => Dolor(4),
-                3 | 10 => Sit,
-                4 | 11 => Amet,
-                5 => Consectur("hello"),
-                6 => Adipiscing(true),
-                9 => Dolor(8),
-                12 => Consectur("bye"),
-                13 => Adipiscing(false),
+                0 | 7 => Width(1),
+                1 | 8 => Width(2),
+                2 => Width(4),
+                3 | 10 => Width(0),
+                4 | 11 => Width(0),
+                5 => Width(5),
+                6 => Width(1),
+                9 => Width(8),
+                12 => Width(3),
+                13 => Width(0),
                 _ => unreachable!(),
             })
             .collect()
@@ -1355,68 +1369,68 @@ mod tests {
 
     #[test]
     fn len_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(7..30);
         assert_eq!(slice.len(), 13);
     }
 
     #[test]
     fn len_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(43..43);
         assert_eq!(slice.len(), 0);
     }
 
     #[test]
     fn width_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(7..30);
         assert_eq!(slice.width(), 23);
     }
 
     #[test]
     fn width_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(43..43);
         assert_eq!(slice.width(), 0);
     }
 
     #[test]
     fn width_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(6..30);
         assert_eq!(slice.width(), 24);
     }
 
     #[test]
     fn index_to_width_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(88..);
 
-        assert_eq!(slice.index_to_width(0), 0); // Sit: 0
-        assert_eq!(slice.index_to_width(1), 0); // Amet: 0
-        assert_eq!(slice.index_to_width(2), 0); // Consectur("hello"): 5
-        assert_eq!(slice.index_to_width(3), 5); // Adipiscing(true): 1
-        assert_eq!(slice.index_to_width(4), 6); // Lorem: 1
-        assert_eq!(slice.index_to_width(5), 7); // Ipsum: 2
-        assert_eq!(slice.index_to_width(6), 9); // Dolor(8): 8
-        assert_eq!(slice.index_to_width(7), 17); // Sit: 0
-        assert_eq!(slice.index_to_width(8), 17); // Amet: 0
-        assert_eq!(slice.index_to_width(9), 17); // Consectur("bye"): 3
-        assert_eq!(slice.index_to_width(10), 20); // Adipiscing(false): 0
-        assert_eq!(slice.index_to_width(11), 20); // Sit: 1
-        assert_eq!(slice.index_to_width(12), 21); // Amet: 2
-        assert_eq!(slice.index_to_width(13), 23); // Dolor(4): 4
+        assert_eq!(slice.index_to_width(0), 0); // Width(0): 0
+        assert_eq!(slice.index_to_width(1), 0); // Width(0): 0
+        assert_eq!(slice.index_to_width(2), 0); // Width("hello"): 5
+        assert_eq!(slice.index_to_width(3), 5); // Width(true): 1
+        assert_eq!(slice.index_to_width(4), 6); // Width(1): 1
+        assert_eq!(slice.index_to_width(5), 7); // Width(2): 2
+        assert_eq!(slice.index_to_width(6), 9); // Width(8): 8
+        assert_eq!(slice.index_to_width(7), 17); // Width(0): 0
+        assert_eq!(slice.index_to_width(8), 17); // Width(0): 0
+        assert_eq!(slice.index_to_width(9), 17); // Width("bye"): 3
+        assert_eq!(slice.index_to_width(10), 20); // Width(false): 0
+        assert_eq!(slice.index_to_width(11), 20); // Width(0): 1
+        assert_eq!(slice.index_to_width(12), 21); // Width(0): 2
+        assert_eq!(slice.index_to_width(13), 23); // Width(4): 4
     }
 
     #[test]
     fn width_to_index_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(88..135);
 
         // NOTE: For some elements, it may seem like the amount of "widths"
         // that correspond to their index may not match their actual width.
-        // For example, `Consectur("bye")` only lasts for 2 widths, even
+        // For example, `Width("bye")` only lasts for 2 widths, even
         // though its width is 3.
         // This is because there are 0 width elements preceding it, and the
         // width in `width_to_index()` merely corresponds to the end of an
@@ -1442,21 +1456,21 @@ mod tests {
 
     #[test]
     fn from_index_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(34..100);
 
-        assert_eq!(slice.from_index(0), (0, Sit));
-        assert_eq!(slice.from_index(10), (20, Adipiscing(false)));
+        assert_eq!(slice.from_index(0), (0, Width(0)));
+        assert_eq!(slice.from_index(10), (20, Width(0)));
 
-        assert_eq!(slice.from_index(slice.len() - 3), (60, Lorem));
-        assert_eq!(slice.from_index(slice.len() - 2), (61, Ipsum));
-        assert_eq!(slice.from_index(slice.len() - 1), (63, Dolor(8)));
+        assert_eq!(slice.from_index(slice.len() - 3), (60, Width(1)));
+        assert_eq!(slice.from_index(slice.len() - 2), (61, Width(2)));
+        assert_eq!(slice.from_index(slice.len() - 1), (63, Width(8)));
     }
 
     #[test]
     #[should_panic]
     fn from_index_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(34..100);
         slice.from_index(slice.len());
     }
@@ -1464,28 +1478,28 @@ mod tests {
     #[test]
     #[should_panic]
     fn from_index_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(42..42);
         slice.from_index(0);
     }
 
     #[test]
     fn from_width_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(34..100);
 
-        assert_eq!(slice.from_width(0), (0, Sit)); // Sit: 0
-        assert_eq!(slice.from_width(3), (0, Consectur("hello"))); // Amet: 0; Consectur("hello"): 5
-        assert_eq!(slice.from_width(5), (5, Adipiscing(true))); // Adipiscing(true): 1
-        assert_eq!(slice.from_width(6), (6, Lorem)); // Lorem: 1
-        assert_eq!(slice.from_width(10), (9, Dolor(8))); // Ipsum: 2; Dolor(8): 8
-        assert_eq!(slice.from_width(65), (63, Dolor(8))); // ...; Dolor(8): 8
+        assert_eq!(slice.from_width(0), (0, Width(0))); // Width(0): 0
+        assert_eq!(slice.from_width(3), (0, Width(5))); // Width(0): 0; Width("hello"): 5
+        assert_eq!(slice.from_width(5), (5, Width(1))); // Width(true): 1
+        assert_eq!(slice.from_width(6), (6, Width(1))); // Width(1): 1
+        assert_eq!(slice.from_width(10), (9, Width(8))); // Width(2): 2; Width(8): 8
+        assert_eq!(slice.from_width(65), (63, Width(8))); // ...; Width(8): 8
     }
 
     #[test]
     #[should_panic]
     fn from_width_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(34..100);
         slice.from_width(66);
     }
@@ -1493,16 +1507,16 @@ mod tests {
     #[test]
     #[should_panic]
     fn from_width_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(43..43);
         slice.from_width(0);
     }
 
     #[test]
     fn chunk_at_index_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice_1 = rope.width_slice(34..135);
-        let slice_2 = &lorem_ipsum()[17..70];
+        let slice_2 = &pseudo_random()[17..70];
         // "'slice a fine day, isn't it?\nAren't you glad \
         //  we're alive?\nこんにちは、みん"
 
@@ -1530,9 +1544,9 @@ mod tests {
 
     #[test]
     fn chunk_at_width_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice_1 = rope.width_slice(34..96);
-        let slice_2 = &lorem_ipsum()[17..51];
+        let slice_2 = &pseudo_random()[17..51];
 
         let mut total = slice_2;
         let mut prev_chunk = [].as_slice();
@@ -1559,49 +1573,50 @@ mod tests {
 
     #[test]
     fn slice_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice_1 = rope.width_slice(..);
 
         let slice_2 = slice_1.width_slice(..);
 
-        assert_eq!(lorem_ipsum(), slice_2);
+        assert_eq!(pseudo_random(), slice_2);
     }
 
     #[test]
     fn slice_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice_1 = rope.width_slice(5..43);
 
         let slice_2 = slice_1.width_slice(3..25);
 
-        assert_eq!(&lorem_ipsum()[5..16], slice_2);
+        assert_eq!(&pseudo_random()[5..16], slice_2);
     }
 
     #[test]
     fn slice_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice_1 = rope.width_slice(31..97);
 
         let slice_2 = slice_1.width_slice(7..64);
 
-        assert_eq!(&lorem_ipsum()[19..50], slice_2);
+        assert_eq!(&pseudo_random()[19..50], slice_2);
     }
 
     #[test]
     fn slice_04() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice_1 = rope.width_slice(5..43);
 
-        // A slice in the middle of a non zero width element should return only that element.
+        // A slice in the middle of a non zero width element should return only that
+        // element.
         let slice_2 = slice_1.width_slice(24..24);
 
-        assert_eq!(slice_2, [Ipsum].as_slice());
+        assert_eq!(slice_2, [Width(2)].as_slice());
     }
 
     #[test]
     #[should_panic]
     fn slice_05() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(5..43);
 
         #[allow(clippy::reversed_empty_ranges)]
@@ -1611,7 +1626,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn slice_07() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(5..43);
 
         slice.width_slice(37..39);
@@ -1619,38 +1634,38 @@ mod tests {
 
     #[test]
     fn eq_slice_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(..);
 
-        assert_eq!(slice, lorem_ipsum());
-        assert_eq!(lorem_ipsum(), slice);
+        assert_eq!(slice, pseudo_random());
+        assert_eq!(pseudo_random(), slice);
     }
 
     #[test]
     fn eq_slice_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(0..20);
 
-        assert_ne!(slice, lorem_ipsum());
-        assert_ne!(lorem_ipsum(), slice);
+        assert_ne!(slice, pseudo_random());
+        assert_ne!(pseudo_random(), slice);
     }
 
     #[test]
     fn eq_slice_03() {
-        let mut rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let mut rope = Rope::from_slice(pseudo_random().as_slice());
         rope.remove_inclusive(20..20);
-        rope.insert_slice(20, &[Consectur("hello")]);
+        rope.insert_slice(20, &[Width(5)]);
         let slice = rope.width_slice(..);
 
-        assert_ne!(slice, lorem_ipsum());
-        assert_ne!(lorem_ipsum(), slice);
+        assert_ne!(slice, pseudo_random());
+        assert_ne!(pseudo_random(), slice);
     }
 
     #[test]
     fn eq_slice_04() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(..);
-        let vec: Vec<Lipsum> = rope.clone().into();
+        let vec: Vec<Width> = rope.clone().into();
 
         assert_eq!(slice, vec);
         assert_eq!(vec, slice);
@@ -1658,7 +1673,7 @@ mod tests {
 
     #[test]
     fn eq_rope_slice_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(43..43);
 
         assert_eq!(slice, slice);
@@ -1666,7 +1681,7 @@ mod tests {
 
     #[test]
     fn eq_rope_slice_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice_1 = rope.width_slice(43..97);
         let slice_2 = rope.width_slice(43..97);
 
@@ -1675,7 +1690,7 @@ mod tests {
 
     #[test]
     fn eq_rope_slice_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice_1 = rope.width_slice(43..43);
         let slice_2 = rope.width_slice(43..45);
 
@@ -1684,7 +1699,7 @@ mod tests {
 
     #[test]
     fn eq_rope_slice_04() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice_1 = rope.width_slice(43..45);
         let slice_2 = rope.width_slice(43..43);
 
@@ -1693,7 +1708,7 @@ mod tests {
 
     #[test]
     fn eq_rope_slice_05() {
-        let rope: Rope<Lipsum> = Rope::from_slice([].as_slice());
+        let rope: Rope<Width> = Rope::from_slice([].as_slice());
         let slice = rope.width_slice(0..0);
 
         assert_eq!(slice, slice);
@@ -1701,8 +1716,8 @@ mod tests {
 
     #[test]
     fn cmp_rope_slice_01() {
-        let rope_1 = Rope::from_slice(lorem_ipsum().as_slice());
-        let rope_2 = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope_1 = Rope::from_slice(pseudo_random().as_slice());
+        let rope_2 = Rope::from_slice(pseudo_random().as_slice());
         let slice_1 = rope_1.width_slice(..);
         let slice_2 = rope_2.width_slice(..);
 
@@ -1719,8 +1734,8 @@ mod tests {
 
     #[test]
     fn cmp_rope_slice_02() {
-        let rope_1 = Rope::from_slice(&[Dolor(3), Amet, Consectur("hi"), Adipiscing(true)]);
-        let rope_2 = Rope::from_slice(&[Dolor(3), Sit, Consectur("hi"), Adipiscing(true)]);
+        let rope_1 = Rope::from_slice(&[Width(3), Width(1), Width(2), Width(1)]);
+        let rope_2 = Rope::from_slice(&[Width(3), Width(0), Width(2), Width(1)]);
         let slice_1 = rope_1.width_slice(..);
         let slice_2 = rope_2.width_slice(..);
 
@@ -1730,9 +1745,9 @@ mod tests {
 
     #[test]
     fn to_vec_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(..);
-        let vec: Vec<Lipsum> = slice.into();
+        let vec: Vec<Width> = slice.into();
 
         assert_eq!(rope, vec);
         assert_eq!(vec, slice);
@@ -1740,27 +1755,27 @@ mod tests {
 
     #[test]
     fn to_vec_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(0..24);
-        let vec: Vec<Lipsum> = slice.into();
+        let vec: Vec<Width> = slice.into();
 
         assert_eq!(slice, vec);
     }
 
     #[test]
     fn to_vec_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(13..89);
-        let vec: Vec<Lipsum> = slice.into();
+        let vec: Vec<Width> = slice.into();
 
         assert_eq!(slice, vec);
     }
 
     #[test]
     fn to_vec_04() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(13..41);
-        let vec: Vec<Lipsum> = slice.into();
+        let vec: Vec<Width> = slice.into();
 
         assert_eq!(slice, vec);
     }
@@ -1768,9 +1783,9 @@ mod tests {
     #[test]
     fn to_cow_01() {
         use std::borrow::Cow;
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(13..83);
-        let cow: Cow<[Lipsum]> = slice.into();
+        let cow: Cow<[Width]> = slice.into();
 
         assert_eq!(slice, cow);
     }
@@ -1778,9 +1793,9 @@ mod tests {
     #[test]
     fn to_cow_02() {
         use std::borrow::Cow;
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(13..14);
-        let cow: Cow<[Lipsum]> = rope.width_slice(13..14).into();
+        let cow: Cow<[Width]> = rope.width_slice(13..14).into();
 
         // Make sure it's borrowed.
         if let Cow::Owned(_) = cow {

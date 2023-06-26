@@ -106,11 +106,6 @@
 //!
 //! As a reminder, if you notice similarities with the AnyRope crate, it is because this
 //! is a heavily modified fork of it.
-//!
-//! # Note about documentation
-//!
-//! In the documentation of AnyRope, there will be a struct called [`Lipsum`],
-//! used to exemplify the features of the crate.
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::inline_always)]
 #![allow(clippy::needless_return)]
@@ -132,29 +127,15 @@ pub use crate::rope_builder::RopeBuilder;
 pub use crate::slice::RopeSlice;
 pub use crate::tree::{max_children, max_len};
 
-/// Simple test struct, useful in making sure that the systems work.
+/// A struct meant for testing and exemplification
+///
+/// Its [`width`][Measurable::width] is always equal to the number within.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Lipsum {
-    Lorem,
-    Ipsum,
-    Dolor(usize),
-    Sit,
-    Amet,
-    Consectur(&'static str),
-    Adipiscing(bool),
-}
+pub struct Width(pub usize);
 
-impl Measurable for Lipsum {
+impl Measurable for Width {
     fn width(&self) -> usize {
-        match self {
-            Lipsum::Lorem => 1,
-            Lipsum::Ipsum => 2,
-            Lipsum::Dolor(width) => *width,
-            Lipsum::Sit => 0,
-            Lipsum::Amet => 0,
-            Lipsum::Consectur(text) => text.len(),
-            Lipsum::Adipiscing(boolean) => *boolean as usize,
-        }
+        self.0
     }
 }
 

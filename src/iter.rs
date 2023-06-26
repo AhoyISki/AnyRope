@@ -1,10 +1,10 @@
 //! Iterators over a [`Rope<M>`]'s data.
 //!
-//! The iterators in Any-Ropey can be created from both [`Rope<M>`]s and [`RopeSlice<M>`]s.
-//! When created from a [`RopeSlice<M>`], they iterate over only the data that the
-//! [`RopeSlice<M>`] refers to.  For the [`Chunks`] iterator, the data of the first
-//! and last yielded item will be correctly truncated to match the bounds of
-//! the [`RopeSlice<M>`].
+//! The iterators in Any-Ropey can be created from both [`Rope<M>`]s and
+//! [`RopeSlice<M>`]s. When created from a [`RopeSlice<M>`], they iterate over
+//! only the data that the [`RopeSlice<M>`] refers to.  For the [`Chunks`]
+//! iterator, the data of the first and last yielded item will be correctly
+//! truncated to match the bounds of the [`RopeSlice<M>`].
 //!
 //! # Reverse iteration
 //!
@@ -17,16 +17,16 @@
 //! elements it iterates over, and returns an element when it jumps over it
 //! via the `next()` or `prev()` methods.
 //!
-//! For example, given the slice `[Lorem, Ipsum, Dolor(5)]` and a an iterator starting
-//! at the beginning of the slice, you would get the following sequence of states and
-//! return values by repeatedly calling `next()` (the vertical bar represents
-//! the position of the iterator):
+//! For example, given the slice `[Width(1), Width(2), Width(5)]` and a an
+//! iterator starting at the beginning of the slice, you would get the following
+//! sequence of states and return values by repeatedly calling `next()` (the
+//! vertical bar represents the position of the iterator):
 //!
-//! 0. `[|Lorem, Ipsum, Dolor(5)]`
-//! 1. `[Lorem, |Ipsum, Dolor(5)] -> Some(Lorem)`
-//! 2. `[Lorem, Ipsum, |Dolor(5)] -> Some(Ipsum)`
-//! 3. `[Lorem, Ipsum, Dolor(5)|] -> Some(Dolor(5))`
-//! 4. `[Lorem, Ipsum, Dolor(5)|] -> None`
+//! 0. `[|Width(1), Width(2), Width(5)]`
+//! 1. `[Width(1), |Width(2), Width(5)] -> Some(Width(1))`
+//! 2. `[Width(1), Width(2), |Width(5)] -> Some(Width(2))`
+//! 3. `[Width(1), Width(2), Width(5)|] -> Some(Width(5))`
+//! 4. `[Width(1), Width(2), Width(5)|] -> None`
 //!
 //! The `prev()` method operates identically, except moving in the opposite
 //! direction.  And `reverse()` simply swaps the behavior of `prev()` and
@@ -35,8 +35,8 @@
 //! # Creating iterators at any position
 //!
 //! Iterators in Ropey can be created starting at any position in the rope.
-//! This is accomplished with the [`Iter<M>`] and [`Chunks<M>`] iterators, which can be created by
-//! various functions on a [`Rope<M>`].
+//! This is accomplished with the [`Iter<M>`] and [`Chunks<M>`] iterators, which
+//! can be created by various functions on a [`Rope<M>`].
 //!
 //! When an iterator is created this way, it is positioned such that a call to
 //! `next()` will return the specified element, and a call to `prev()` will
@@ -45,9 +45,9 @@
 //! Importantly, iterators created this way still have access to the entire
 //! contents of the [`Rope<M>`]/[`RopeSlice<M>`] they were created from and the
 //! contents before the specified position is not truncated.  For example, you
-//! can create an [`Iter<M>`] iterator starting at the end of a [`Rope<M>`], and then
-//! use the [`prev()`][Iter::prev] method to iterate backwards over all of that [`Rope<M>`]'s
-//! elements.
+//! can create an [`Iter<M>`] iterator starting at the end of a [`Rope<M>`], and
+//! then use the [`prev()`][Iter::prev] method to iterate backwards over all of
+//! that [`Rope<M>`]'s elements.
 //!
 //! # A possible point of confusion
 //!
@@ -55,14 +55,15 @@
 //! a method [`rev()`]. While this method's name is //! very similar to Ropey's
 //! [`reverse()`][Iter::reverse] method, its behavior is very different.
 //!
-//! [`DoubleEndedIterator`] actually provides two iterators: one starting at each
-//! end of the collection, moving in opposite directions towards each other.
-//! Calling [`rev()`] switches between those two iterators, changing not only the
-//! direction of iteration but also its current position in the collection.
+//! [`DoubleEndedIterator`] actually provides two iterators: one starting at
+//! each end of the collection, moving in opposite directions towards each
+//! other. Calling [`rev()`] switches between those two iterators, changing not
+//! only the direction of iteration but also its current position in the
+//! collection.
 //!
-//! The [`reverse()`][Iter::reverse] method on AnyRopey's iterators, on the other
-//! hand, reverses the direction of the iterator in-place, without changing its
-//! position in the rope.
+//! The [`reverse()`][Iter::reverse] method on AnyRopey's iterators, on the
+//! other hand, reverses the direction of the iterator in-place, without
+//! changing its position in the rope.
 //!
 //! [`Rope<M>`]: crate::rope::Rope
 //! [`RopeSlice<M>`]: crate::slice::RopeSlice
@@ -206,9 +207,8 @@ where
     /// This is useful when chaining iterator methods:
     ///
     /// ```rust
-    /// # use any_rope::Lipsum::*;
-    /// # use any_rope::Rope;
-    /// # let rope = Rope::from_slice(&[Lorem, Ipsum, Dolor(5)]);
+    /// # use any_rope::{Rope, Width};
+    /// # let rope = Rope::from_slice(&[Width(1), Width(2), Width(5)]);
     /// // Print the rope's elements and their widths in reverse.
     /// for (width, element) in rope.iter_at_width(rope.width()).reversed() {
     ///     println!("{} {:?}", width, element);
@@ -329,8 +329,8 @@ where
 
 /// An iterator over a [`Rope<M>`]'s contiguous [`M`] chunks.
 ///
-/// Internally, each [`Rope<M>`] stores [`M`]s as a segemented collection of [`&[M]`][Measurable].
-/// It is useful for situations such as:
+/// Internally, each [`Rope<M>`] stores [`M`]s as a segemented collection of
+/// [`&[M]`][Measurable]. It is useful for situations such as:
 ///
 /// - Streaming a [`Rope<M>`]'s elements data somewhere.
 /// - Writing custom iterators over a [`Rope<M>`]'s data.
@@ -550,10 +550,9 @@ where
     /// This is useful when chaining iterator methods:
     ///
     /// ```rust
-    /// # use any_rope::Lipsum::*;
-    /// # use any_rope::Rope;
+    /// # use any_rope::{Rope, Width};
     /// # let rope = Rope::from_slice(
-    /// #    &[Lorem, Ipsum, Dolor(3), Sit, Amet]
+    /// #    &[Width(1), Width(2), Width(3), Width(0), Width(0)]
     /// # );
     /// // Enumerate the rope's chunks in reverse, starting from the end.
     /// for (index, chunk) in rope.chunks_at_index(rope.len()).0.reversed().enumerate() {
@@ -747,29 +746,26 @@ where
 mod tests {
     #![allow(clippy::while_let_on_iterator)]
     use super::*;
-    use crate::{
-        Lipsum::{self, *},
-        Rope,
-    };
+    use crate::{Rope, Width};
 
-    fn lorem_ipsum() -> Vec<Lipsum> {
+    fn pseudo_random() -> Vec<Width> {
         (0..1400)
             .into_iter()
             .map(|num| match num % 14 {
-                0 => Lorem,
-                1 => Ipsum,
-                2 => Dolor(4),
-                3 => Sit,
-                4 => Amet,
-                5 => Consectur("hello"),
-                6 => Adipiscing(true),
-                7 => Lorem,
-                8 => Ipsum,
-                9 => Dolor(8),
-                10 => Sit,
-                11 => Amet,
-                12 => Consectur("bye"),
-                13 => Adipiscing(false),
+                0 => Width(1),
+                1 => Width(2),
+                2 => Width(4),
+                3 => Width(0),
+                4 => Width(0),
+                5 => Width(5),
+                6 => Width(1),
+                7 => Width(1),
+                8 => Width(2),
+                9 => Width(8),
+                10 => Width(0),
+                11 => Width(0),
+                12 => Width(3),
+                13 => Width(0),
                 _ => unreachable!(),
             })
             .collect()
@@ -778,8 +774,9 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
-        for ((_, from_rope), from_vec) in rope.iter().zip(lorem_ipsum().iter().map(|test| *test)) {
+        let rope = Rope::from_slice(pseudo_random().as_slice());
+        for ((_, from_rope), from_vec) in rope.iter().zip(pseudo_random().iter().map(|test| *test))
+        {
             assert_eq!(from_rope, from_vec);
         }
     }
@@ -787,21 +784,21 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut iter = rope.iter();
         while let Some(_) = iter.next() {}
 
-        let mut i = lorem_ipsum().len();
+        let mut i = pseudo_random().len();
         while let Some((_, element)) = iter.prev() {
             i -= 1;
-            assert_eq!(element, lorem_ipsum()[i]);
+            assert_eq!(element, pseudo_random()[i]);
         }
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut iter = rope.iter();
 
         iter.next();
@@ -812,7 +809,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_04() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut iter = rope.iter();
         while let Some(_) = iter.next() {}
 
@@ -824,7 +821,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_05() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut iter = rope.iter();
 
         assert_eq!(None, iter.prev());
@@ -836,7 +833,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_06() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut iter = rope.iter();
         while let Some(_) = iter.next() {}
 
@@ -849,77 +846,77 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_07() {
-        let mut iter = Iter::from_slice(&[Lorem]);
+        let mut iter = Iter::from_slice(&[Width(1)]);
 
-        assert_eq!(Some((0, Lorem)), iter.next());
+        assert_eq!(Some((0, Width(1))), iter.next());
         assert_eq!(None, iter.next());
-        assert_eq!(Some((0, Lorem)), iter.prev());
+        assert_eq!(Some((0, Width(1))), iter.prev());
         assert_eq!(None, iter.prev());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_08() {
-        let lorem_ipsum = lorem_ipsum();
-        let mut iter = Iter::from_slice(lorem_ipsum.as_slice());
+        let width_vec = pseudo_random();
+        let mut iter = Iter::from_slice(width_vec.as_slice());
 
-        assert_eq!(iter.next(), Some((0, Lorem)));
-        assert_eq!(iter.next(), Some((1, Ipsum)));
-        assert_eq!(iter.next(), Some((3, Dolor(4))));
-        assert_eq!(iter.next(), Some((7, Sit)));
-        assert_eq!(iter.next(), Some((7, Amet)));
-        assert_eq!(iter.next(), Some((7, Consectur("hello"))));
-        assert_eq!(iter.next(), Some((12, Adipiscing(true))));
-        assert_eq!(iter.next(), Some((13, Lorem)));
-        assert_eq!(iter.next(), Some((14, Ipsum)));
-        assert_eq!(iter.next(), Some((16, Dolor(8))));
-        assert_eq!(iter.next(), Some((24, Sit)));
-        assert_eq!(iter.next(), Some((24, Amet)));
-        assert_eq!(iter.next(), Some((24, Consectur("bye"))));
-        assert_eq!(iter.next(), Some((27, Adipiscing(false))));
-        assert_eq!(iter.next(), Some((27, Lorem)));
+        assert_eq!(iter.next(), Some((0, Width(1))));
+        assert_eq!(iter.next(), Some((1, Width(2))));
+        assert_eq!(iter.next(), Some((3, Width(4))));
+        assert_eq!(iter.next(), Some((7, Width(0))));
+        assert_eq!(iter.next(), Some((7, Width(0))));
+        assert_eq!(iter.next(), Some((7, Width(5))));
+        assert_eq!(iter.next(), Some((12, Width(1))));
+        assert_eq!(iter.next(), Some((13, Width(1))));
+        assert_eq!(iter.next(), Some((14, Width(2))));
+        assert_eq!(iter.next(), Some((16, Width(8))));
+        assert_eq!(iter.next(), Some((24, Width(0))));
+        assert_eq!(iter.next(), Some((24, Width(0))));
+        assert_eq!(iter.next(), Some((24, Width(3))));
+        assert_eq!(iter.next(), Some((27, Width(0))));
+        assert_eq!(iter.next(), Some((27, Width(1))));
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_at_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(..79);
         let mut iter = slice.iter_at(56);
 
-        assert_eq!(iter.next(), Some((55, Ipsum)));
-        assert_eq!(iter.next(), Some((57, Dolor(4))));
-        assert_eq!(iter.next(), Some((61, Sit)));
-        assert_eq!(iter.next(), Some((61, Amet)));
-        assert_eq!(iter.next(), Some((61, Consectur("hello"))));
-        assert_eq!(iter.next(), Some((66, Adipiscing(true))));
-        assert_eq!(iter.next(), Some((67, Lorem)));
-        assert_eq!(iter.next(), Some((68, Ipsum)));
-        assert_eq!(iter.next(), Some((70, Dolor(8))));
-        assert_eq!(iter.next(), Some((78, Sit)));
-        assert_eq!(iter.next(), Some((78, Amet)));
-        assert_eq!(iter.next(), Some((78, Consectur("bye"))));
+        assert_eq!(iter.next(), Some((55, Width(2))));
+        assert_eq!(iter.next(), Some((57, Width(4))));
+        assert_eq!(iter.next(), Some((61, Width(0))));
+        assert_eq!(iter.next(), Some((61, Width(0))));
+        assert_eq!(iter.next(), Some((61, Width(5))));
+        assert_eq!(iter.next(), Some((66, Width(1))));
+        assert_eq!(iter.next(), Some((67, Width(1))));
+        assert_eq!(iter.next(), Some((68, Width(2))));
+        assert_eq!(iter.next(), Some((70, Width(8))));
+        assert_eq!(iter.next(), Some((78, Width(0))));
+        assert_eq!(iter.next(), Some((78, Width(0))));
+        assert_eq!(iter.next(), Some((78, Width(3))));
         assert_eq!(iter.next(), None);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_at_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut bytes = rope.iter_at_width(rope.width());
         // Iterating at the end, when there are zero width elements, always yields them.
-        assert_eq!(bytes.next(), Some((2700, Adipiscing(false))));
+        assert_eq!(bytes.next(), Some((2700, Width(0))));
         assert_eq!(bytes.next(), None);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_at_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut iter_1 = rope.iter_at_width(rope.width());
-        let lorem_ipsum = lorem_ipsum();
+        let width_vec = pseudo_random();
         // Skip the last element, since it's zero width.
-        let mut iter_2 = lorem_ipsum.iter().take(1399).map(|lipsum| *lipsum);
+        let mut iter_2 = width_vec.iter().take(1399).map(|lipsum| *lipsum);
 
         while let Some(b) = iter_2.next_back() {
             assert_eq!(iter_1.prev().map(|(_, element)| element), Some(b));
@@ -929,7 +926,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn exact_size_iter_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(34..75);
 
         let mut len = slice.len();
@@ -955,7 +952,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn exact_size_iter_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(34..300);
 
         let mut len = 0;
@@ -983,19 +980,19 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn exact_size_iter_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(34..34);
         let mut iter = slice.iter();
 
-        assert_eq!(iter.next(), Some((34, Sit)));
-        assert_eq!(iter.next(), Some((34, Amet)));
+        assert_eq!(iter.next(), Some((34, Width(0))));
+        assert_eq!(iter.next(), Some((34, Width(0))));
         assert_eq!(iter.next(), None);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_reverse_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut iter = rope.iter();
         let mut stack = Vec::new();
 
@@ -1011,7 +1008,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_reverse_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut iter = rope.iter_at_width(rope.len() / 3);
         let mut stack = Vec::new();
 
@@ -1027,11 +1024,11 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
 
         let mut index = 0;
         for chunk in rope.chunks() {
-            assert_eq!(chunk, &lorem_ipsum()[index..(index + chunk.len())]);
+            assert_eq!(chunk, &pseudo_random()[index..(index + chunk.len())]);
             index += chunk.len();
         }
     }
@@ -1039,7 +1036,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_02() {
-        let rope = Rope::<Lipsum>::from_slice(&[]);
+        let rope = Rope::<Width>::from_slice(&[]);
         let mut iter = rope.chunks();
 
         assert_eq!(None, iter.next());
@@ -1048,7 +1045,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
 
         let mut iter = rope.chunks();
 
@@ -1058,7 +1055,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_04() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
 
         let mut chunks = Vec::new();
         let mut iter = rope.chunks();
@@ -1077,7 +1074,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_at_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
 
         for i in 0..rope.len() {
             let (chunk, index, width) = rope.chunk_at_index(i);
@@ -1092,7 +1089,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_at_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(34..301);
 
         let (mut chunks, _, _) = slice.chunks_at_index(slice.len());
@@ -1105,11 +1102,11 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_at_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(34..34);
 
         let (mut chunks, _, _) = slice.chunks_at_index(0);
-        assert_eq!(chunks.next(), Some([Sit].as_slice()));
+        assert_eq!(chunks.next(), Some([Width(0)].as_slice()));
         assert!(chunks.next().is_some());
 
         let (mut chunks, _, _) = slice.chunks_at_index(0);
@@ -1119,7 +1116,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_reverse_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut iter = rope.chunks();
         let mut stack = Vec::new();
 
@@ -1135,7 +1132,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_reverse_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut iter = rope.chunks_at_width(rope.width() / 3).0;
         let mut stack = Vec::new();
 
@@ -1151,7 +1148,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_reverse_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut iter = rope.chunks_at_width(rope.width() / 3).0;
         let mut stack = Vec::new();
 
@@ -1168,19 +1165,19 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_reverse_04() {
-        let mut iter = Chunks::from_slice(&[Dolor(5), Sit], false);
+        let mut iter = Chunks::from_slice(&[Width(5), Width(0)], false);
 
-        assert_eq!(Some([Dolor(5), Sit].as_slice()), iter.next());
+        assert_eq!(Some([Width(5), Width(0)].as_slice()), iter.next());
         assert_eq!(None, iter.next());
         iter.reverse();
-        assert_eq!(Some([Dolor(5), Sit].as_slice()), iter.next());
+        assert_eq!(Some([Width(5), Width(0)].as_slice()), iter.next());
         assert_eq!(None, iter.next());
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_sliced_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
 
         let slice_start = 34;
         let slice_end = 301;
@@ -1188,7 +1185,7 @@ mod tests {
         let s_end_byte = rope.end_width_to_index(slice_end);
 
         let slice_1 = rope.width_slice(slice_start..slice_end);
-        let slice_2 = &lorem_ipsum()[slice_start_byte..s_end_byte];
+        let slice_2 = &pseudo_random()[slice_start_byte..s_end_byte];
 
         let mut slice_1_iter = slice_1.iter();
         let mut slice_2_iter = slice_2.iter().map(|lipsum| *lipsum);
@@ -1206,17 +1203,17 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_at_sliced_02() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(34..300);
         let mut iter = slice.iter_at(slice.width());
-        // Yields None, since we're iterating in the middle of a Dolor(4) element.
+        // Yields None, since we're iterating in the middle of a Width(4) element.
         assert_eq!(iter.next(), None);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_at_sliced_03() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
 
         let slice_start = 34;
         let slice_end = 300;
@@ -1224,7 +1221,7 @@ mod tests {
         let s_end_byte = rope.end_width_to_index(slice_end);
 
         let slice_1 = rope.width_slice(slice_start..slice_end);
-        let slice_2 = &lorem_ipsum()[slice_start_byte..s_end_byte];
+        let slice_2 = &pseudo_random()[slice_start_byte..s_end_byte];
 
         let mut bytes_1 = slice_1.iter_at(slice_1.width());
         let mut bytes_2 = slice_2.iter().map(|lipsum| *lipsum);
@@ -1236,7 +1233,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_at_sliced_reverse_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
 
         let slice_start = 34;
         let slice_end = 301;
@@ -1256,7 +1253,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_sliced_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
 
         let slice_start = 34;
         let slice_end = 301;
@@ -1264,7 +1261,7 @@ mod tests {
         let slice_end_index = rope.end_width_to_index(slice_end);
 
         let slice_1 = rope.width_slice(slice_start..slice_end);
-        let slice_2 = &lorem_ipsum()[slice_start_index..slice_end_index];
+        let slice_2 = &pseudo_random()[slice_start_index..slice_end_index];
 
         let mut index = 0;
         for chunk in slice_1.chunks() {
@@ -1278,7 +1275,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn chunks_sliced_reverse_01() {
-        let rope = Rope::from_slice(lorem_ipsum().as_slice());
+        let rope = Rope::from_slice(pseudo_random().as_slice());
 
         let slice_start = 34;
         let slice_end = 301;
@@ -1298,8 +1295,8 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn empty_iter() {
-        let rope = Rope::<Lipsum>::from_slice(&[]);
-        let rope: Vec<Lipsum> = rope.iter().map(|(_, element)| element).collect();
+        let rope = Rope::<Width>::from_slice(&[]);
+        let rope: Vec<Width> = rope.iter().map(|(_, element)| element).collect();
         assert_eq!(&*rope, [].as_slice())
     }
 }

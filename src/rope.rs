@@ -11,7 +11,7 @@ use crate::tree::{max_children, max_len, min_len, BranchChildren, Node, SliceInf
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
 /// A object that has a definite size, that can be interpreted by a [`Rope<M>`].
-pub trait Measurable: Debug + Clone + Copy {
+pub trait Measurable: Clone + Copy {
     /// The width of this element, it need not be the actual lenght in bytes,
     /// but just a representative value, to be fed to the [`Rope<M>`].
     fn width(&self) -> usize;
@@ -19,46 +19,57 @@ pub trait Measurable: Debug + Clone + Copy {
 
 /// A rope of elements that are [`Measurable`].
 ///
-/// The time complexity of nearly all edit and query operations on [`Rope<M>`] are
-/// worst-case `O(log N)` in the length of the rope. [`Rope<M>`] is designed to
-/// work efficiently even for huge (in the gigabytes) arrays of [`M`][Measurable].
+/// The time complexity of nearly all edit and query operations on [`Rope<M>`]
+/// are worst-case `O(log N)` in the length of the rope. [`Rope<M>`] is designed
+/// to work efficiently even for huge (in the gigabytes) arrays of
+/// [`M`][Measurable].
 ///
-/// In the examples below, a struct called [`Lipsum`][crate::Lipsum] will be used in
-/// order to demonstrate AnyRope's features.
+/// In the examples below, a struct called [`Width`][crate::Width] will be used
+/// in order to demonstrate AnyRope's features.
 ///
 /// # Editing Operations
 ///
-/// The primary editing operations on [`Rope<M>`] are insertion and removal of slices
-/// or individual elements.
+/// The primary editing operations on [`Rope<M>`] are insertion and removal of
+/// slices or individual elements.
 /// For example:
 ///
 /// ```
-/// # use any_rope::Rope;
-/// # use any_rope::Lipsum::*;
-/// #
-/// let mut rope = Rope::from_slice(
-/// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
-/// );
+/// # use any_rope::{Rope, Width};
+/// let mut rope =
+///     Rope::from_slice(&[Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)]);
 /// rope.remove_inclusive(6..8);
-/// rope.insert(6, Consectur("bye"));
+/// rope.insert(6, Width(5));
 ///
-/// assert_eq!(rope, [Lorem, Ipsum, Dolor(3), Consectur("bye"), Adipiscing(true)].as_slice());
+/// assert_eq!(
+///     rope,
+///     [Width(1), Width(2), Width(3), Width(5), Width(1)].as_slice()
+/// );
 /// ```
 ///
 /// # Query Operations
 ///
 /// [`Rope<M>`] gives you the ability to query an element at any given index or
-/// width, and the convertion between the two. You can either convert an index to
-/// a width, or convert the width at the start or end of an element to an index.
-/// For example:
+/// width, and the convertion between the two. You can either convert an index
+/// to a width, or convert the width at the start or end of an element to an
+/// index. For example:
 ///
 /// ```
-/// # use any_rope::Rope;
-/// # use any_rope::Lipsum::*;
-/// #
-/// let rope = Rope::from_slice(&[Sit, Sit, Lorem, Lorem, Ipsum, Dolor(25), Amet, Amet, Lorem]);
+/// # use any_rope::{Rope, Width};
+/// let rope = Rope::from_slice(&[
+///     Width(0),
+///     Width(0),
+///     Width(1),
+///     Width(1),
+///     Width(2),
+///     Width(25),
+///     Width(0),
+///     Width(0),
+///     Width(1),
+/// ]);
 ///
+/// // `start_width_to_index()` will pick the first element that starts at the given index.
 /// assert_eq!(rope.start_width_to_index(0), 0);
+/// // `end_width_to_index()` will pick the last element that still starts at the given index.
 /// assert_eq!(rope.end_width_to_index(0), 2);
 /// assert_eq!(rope.start_width_to_index(2), 4);
 /// assert_eq!(rope.start_width_to_index(3), 4);
@@ -68,16 +79,14 @@ pub trait Measurable: Debug + Clone + Copy {
 ///
 /// # Slicing
 ///
-/// You can take immutable slices of a [`Rope<M>`] using [`width_slice()`][Rope::width_slice]
+/// You can take immutable slices of a [`Rope<M>`] using
+/// [`width_slice()`][Rope::width_slice]
 /// or [`index_slice()`][Rope::index_slice]:
 ///
 /// ```
-/// # use any_rope::Rope;
-/// # use any_rope::Lipsum::*;
-/// #
-/// let mut rope = Rope::from_slice(
-/// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
-/// );
+/// # use any_rope::{Rope, Width};
+/// let mut rope =
+///     Rope::from_slice(&[Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)]);
 /// let width_slice = rope.width_slice(3..6);
 /// let index_slice = rope.index_slice(2..5);
 ///
@@ -171,13 +180,14 @@ where
 
     /// Shrinks the [`Rope<M>`]'s capacity to the minimum possible.
     ///
-    /// This will rarely result in `Rope::capacity() == Rope::len()`. [`Rope<M>`]
-    /// stores [`M`][Measurable]s in a sequence of fixed-capacity chunks, so an exact fit
-    /// only happens for lists of a lenght that is a multiple of that capacity.
+    /// This will rarely result in `Rope::capacity() == Rope::len()`.
+    /// [`Rope<M>`] stores [`M`][Measurable]s in a sequence of
+    /// fixed-capacity chunks, so an exact fit only happens for lists of a
+    /// lenght that is a multiple of that capacity.
     ///
     /// After calling this, the difference between `capacity()` and
-    /// `len()` is typically under 1000 for each 1000000 [`M`][Measurable] in the
-    /// [`Rope<M>`].
+    /// `len()` is typically under 1000 for each 1000000 [`M`][Measurable] in
+    /// the [`Rope<M>`].
     ///
     /// **NOTE:** calling this on a [`Rope<M>`] clone causes it to stop sharing
     /// all data with its other clones. In such cases you will very likely
@@ -219,8 +229,8 @@ where
 
     /// Inserts [`slice`][Measurable] at `width`.
     ///
-    /// Runs in O(L + log N) time, where N is the length of the [`Rope<M>`] and L
-    /// is the length of [`slice`][Measurable].
+    /// Runs in O(L + log N) time, where N is the length of the [`Rope<M>`] and
+    /// L is the length of [`slice`][Measurable].
     ///
     /// # Panics
     ///
@@ -301,60 +311,67 @@ where
     ///
     /// Uses range syntax, e.g. `2..7`, `2..`, etc.
     ///
-    /// Runs in O(M + log N) time, where N is the length of the [`Rope<M>`] and M
-    /// is the length of the range being removed.
+    /// Runs in O(M + log N) time, where N is the length of the [`Rope<M>`] and
+    /// M is the length of the range being removed.
     ///
-    /// The first removed [`M`][Measurable] will be the first with a end width sum
-    /// greater than the starting bound if its [`width()`][Measurable::width] is greater
-    /// than 0, or equal to the starting bound if its [`width()`][Measurable::width] is
-    /// equal to 0.
+    /// The first removed [`M`][Measurable] will be the first with a end width
+    /// sum greater than the starting bound if its
+    /// [`width()`][Measurable::width] is greater than 0, or equal to the
+    /// starting bound if its [`width()`][Measurable::width] is equal to 0.
     ///
-    /// The last removed [`M`][Measurable] will be the first with a start width sum greater
-    /// than the ending bound if its [`width()`][Measurable::width] is greater than 0,
-    /// or the last one with a start width sum equal to the ending bound if its
+    /// The last removed [`M`][Measurable] will be the first with a start width
+    /// sum greater than the ending bound if its
+    /// [`width()`][Measurable::width] is greater than 0, or the last one
+    /// with a start width sum equal to the ending bound if its
     /// [`width()`][Measurable::width] is equal to 0.
     ///
     /// In essence, this means the following:
-    /// - A range starting between a [`M`][Measurable]'s start and end width sums will remove
+    /// - A range starting between a [`M`][Measurable]'s start and end width
+    ///   sums will remove
     /// said [`M`][Measurable].
-    /// - A range ending in the start of a list of 0 width [`M`][Measurable]s will remove
+    /// - A range ending in the start of a list of 0 width [`M`][Measurable]s
+    ///   will remove
     /// all of them.
-    /// - An empty range that starts and ends in a list of 0 width [`M`][Measurable]s will
-    /// remove all of them, and nothing else. This contrasts with Rust's usual definition
-    /// of an empty range.
+    /// - An empty range that starts and ends in a list of 0 width
+    ///   [`M`][Measurable]s will
+    /// remove all of them, and nothing else. This contrasts with Rust's usual
+    /// definition of an empty range.
     ///
     /// # Examples
     ///
     /// ```rust
-    /// # use any_rope::Rope;
-    /// # use any_rope::Lipsum::*;
-    /// let array = [Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)];
+    /// # use any_rope::{Rope, Width};
+    /// let array = [Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)];
     /// let mut rope = Rope::from_slice(&array);
-    /// // Removing in the middle of `Dolor(3)`.
+    ///
+    /// // Removing in the middle of `Width(3)`.
     /// rope.remove_inclusive(5..);
     ///
-    /// assert_eq!(rope, [Lorem, Ipsum].as_slice());
+    /// assert_eq!(rope, [Width(1), Width(2)].as_slice());
     /// ```
     /// ```rust
-    /// # use any_rope::Rope;
-    /// # use any_rope::Lipsum::*;
-    /// let array = [Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)];
+    /// # use any_rope::{Rope, Width};
+    /// let array = [Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)];
     /// let mut rope = Rope::from_slice(&array);
+    ///
     /// // End bound coincides with a 0 width list.
     /// rope.remove_inclusive(1..6);
     ///
-    /// assert_eq!(rope, [Lorem, Consectur("hi"), Adipiscing(true)].as_slice());
+    /// assert_eq!(rope, [Width(1), Width(2), Width(1)].as_slice());
     /// ```
     /// ```rust
-    /// # use any_rope::Rope;
-    /// # use any_rope::Lipsum::*;
-    /// let array = [Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)];
+    /// # use any_rope::{Rope, Width};
+    /// let array = [Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)];
     /// let mut rope = Rope::from_slice(&array);
+    ///
     /// // Empty range at the start of a 0 width list.
     /// rope.remove_inclusive(6..6);
     ///
     /// // Inclusively removing an empty range does nothing.
-    /// assert_eq!(rope, [Lorem, Ipsum, Dolor(3), Consectur("hi"), Adipiscing(true)].as_slice());
+    /// assert_eq!(
+    ///     rope,
+    ///     [Width(1), Width(2), Width(3), Width(2), Width(1)].as_slice()
+    /// );
     /// ```
     ///
     /// # Panics
@@ -369,29 +386,32 @@ where
         self.try_remove_inclusive(width_range).unwrap()
     }
 
-    /// Same as [`remove_inclusive()`][Rope::remove_inclusive], but keeps elements
-    /// width width equal to 0 at the edges.
+    /// Same as [`remove_inclusive()`][Rope::remove_inclusive], but keeps
+    /// elements width width equal to 0 at the edges.
     ///
-    /// If the `width_range` doesn't cover the entire width of a single [`M`][Measurable],
-    /// then the removal does nothing.
+    /// If the `width_range` doesn't cover the entire width of a single
+    /// [`M`][Measurable], then the removal does nothing.
     ///
     /// # Examples
     ///
     /// ```rust
-    /// # use any_rope::Rope;
-    /// # use any_rope::Lipsum::*;
-    /// let array = [Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)];
+    /// # use any_rope::{Rope, Width};
+    /// let array = [Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)];
     /// let mut rope = Rope::from_slice(&array);
-    /// // End bound coincides with a 0 width list.
+    ///
+    /// // End bound coincides with a 0 width list, which does not get removed.
     /// rope.remove_exclusive(1..6);
     ///
-    /// assert_eq!(rope, [Lorem, Sit, Amet, Consectur("hi"), Adipiscing(true)].as_slice());
+    /// assert_eq!(
+    ///     rope,
+    ///     [Width(1), Width(0), Width(0), Width(2), Width(1)].as_slice()
+    /// );
     /// ```
     /// ```rust
-    /// # use any_rope::Rope;
-    /// # use any_rope::Lipsum::*;
-    /// let array = [Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)];
+    /// # use any_rope::{Rope, Width};
+    /// let array = [Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)];
     /// let mut rope = Rope::from_slice(&array);
+    ///
     /// // Empty range at the start of a 0 width list.
     /// rope.remove_exclusive(6..6);
     ///
@@ -399,11 +419,11 @@ where
     /// assert_eq!(rope, array.as_slice());
     /// ```
     /// ```rust
-    /// # use any_rope::Rope;
-    /// # use any_rope::Lipsum::*;
-    /// let array = [Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)];
+    /// # use any_rope::{Rope, Width};
+    /// let array = [Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)];
     /// let mut rope = Rope::from_slice(&array);
-    /// // Removing in the middle of `Dolor(3)`.
+    ///
+    /// // Removing in the middle of `Width(3)`.
     /// rope.remove_exclusive(5..6);
     ///
     /// // Exclusively removing in the middle of an element does nothing.
@@ -422,7 +442,8 @@ where
         self.try_remove_exclusive(width_range).unwrap()
     }
 
-    /// Splits the [`Rope<M>`] at `width`, returning the right part of the split.
+    /// Splits the [`Rope<M>`] at `width`, returning the right part of the
+    /// split.
     ///
     /// Runs in O(log N) time.
     ///
@@ -434,7 +455,8 @@ where
         self.try_split_off(width).unwrap()
     }
 
-    /// Appends a [`Rope<M>`] to the end of this one, consuming the other [`Rope<M>`].
+    /// Appends a [`Rope<M>`] to the end of this one, consuming the other
+    /// [`Rope<M>`].
     ///
     /// Runs in O(log N) time.
     #[inline]
@@ -636,14 +658,12 @@ where
     /// # Example
     ///
     /// ```
-    /// # use any_rope::Rope;
-    /// # use any_rope::Lipsum::*;
-    /// let mut rope = Rope::from_slice(
-    /// 	&[Lorem, Ipsum, Dolor(3), Sit, Amet, Consectur("hi"), Adipiscing(true)]
-    /// );
+    /// # use any_rope::{Rope, Width};
+    /// let mut rope =
+    ///     Rope::from_slice(&[Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)]);
     /// let slice = rope.width_slice(..5);
     ///
-    /// assert_eq!(slice, [Lorem, Ipsum, Dolor(3)].as_slice());
+    /// assert_eq!(slice, [Width(1), Width(2), Width(3)].as_slice());
     /// ```
     ///
     /// Runs in O(log N) time.
@@ -687,8 +707,8 @@ where
 
     /// Creates an iterator over the [`Rope<M>`].
     ///
-    /// This iterator will return values of type [Option<(usize, M)>], where the `usize`
-    /// is the width sum where the given [`M`][Measurable] starts.
+    /// This iterator will return values of type [Option<(usize, M)>], where the
+    /// `usize` is the width sum where the given [`M`][Measurable] starts.
     ///
     /// Runs in O(log N) time.
     #[inline]
@@ -698,13 +718,15 @@ where
 
     /// Creates an iterator over the  [`Rope<M>`], starting at `width`.
     ///
-    /// This iterator will return values of type [`Option<(usize, M)>`], where the `usize`
-    /// is the width where the given [`M`][Measurable] starts. Since one can iterate in
-    /// between an [`M`][Measurable]s start and end width sums. the first `usize` may not
-    /// actually corelate to the `width` given to the function.
+    /// This iterator will return values of type [`Option<(usize, M)>`], where
+    /// the `usize` is the width where the given [`M`][Measurable] starts.
+    /// Since one can iterate in between an [`M`][Measurable]s start and end
+    /// width sums. the first `usize` may not actually corelate to the
+    /// `width` given to the function.
     ///
     /// If `width == Rope::width()` then an iterator at the end of the
-    /// [`Rope<M>`] is created (i.e. [`next()`][crate::iter::Iter::next] will return [`None`]).
+    /// [`Rope<M>`] is created (i.e. [`next()`][crate::iter::Iter::next] will
+    /// return [`None`]).
     ///
     /// Runs in O(log N) time.
     ///
@@ -739,7 +761,8 @@ where
     /// chunk to be yielded.
     ///
     /// If `index == Rope::len()` an iterator at the end of the [`Rope<M>`]
-    /// (yielding [`None`] on a call to [`next()`][crate::iter::Iter::next]) is created.
+    /// (yielding [`None`] on a call to [`next()`][crate::iter::Iter::next]) is
+    /// created.
     ///
     /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
     ///
@@ -768,7 +791,8 @@ where
     /// chunk to be yielded.
     ///
     /// If `width == Rope::width()` an iterator at the end of the [`Rope<M>`]
-    /// (yielding [`None`] on a call to [`next()`][crate::iter::Iter::next]) is created.
+    /// (yielding [`None`] on a call to [`next()`][crate::iter::Iter::next]) is
+    /// created.
     ///
     /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
     ///
@@ -1027,7 +1051,8 @@ where
         }
     }
 
-    /// Non-panicking version of [`start_width_to_index()`][Rope::start_width_to_index].
+    /// Non-panicking version of
+    /// [`start_width_to_index()`][Rope::start_width_to_index].
     #[inline]
     pub fn try_start_width_to_index(&self, width: usize) -> Result<usize> {
         // Bounds check
@@ -1039,7 +1064,8 @@ where
         }
     }
 
-    /// Non-panicking version of [`end_width_to_index()`][Rope::end_width_to_index].
+    /// Non-panicking version of
+    /// [`end_width_to_index()`][Rope::end_width_to_index].
     #[inline]
     pub fn try_end_width_to_index(&self, width: usize) -> Result<usize> {
         // Bounds check
@@ -1109,11 +1135,12 @@ where
     where
         R: RangeBounds<usize>,
     {
+        let width = self.width();
         let start = start_bound_to_num(width_range.start_bound()).unwrap_or(0);
-        let end = end_bound_to_num(width_range.end_bound()).unwrap_or_else(|| self.width());
+        let end = end_bound_to_num(width_range.end_bound()).unwrap_or(width);
 
         // Bounds check
-        if start <= end && end <= self.width() {
+        if start <= end && end <= width {
             Some(RopeSlice::new_with_range(&self.root, start, end))
         } else {
             None
@@ -1611,34 +1638,34 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Lipsum::{self, *};
+    use crate::Width;
 
     /// 70 elements, total width of 135.
-    fn lorem_ipsum() -> Vec<Lipsum> {
+    fn pseudo_random() -> Vec<Width> {
         (0..70)
             .into_iter()
             .map(|num| match num % 14 {
-                0 | 7 => Lorem,
-                1 | 8 => Ipsum,
-                2 => Dolor(4),
-                3 | 10 => Sit,
-                4 | 11 => Amet,
-                5 => Consectur("hello"),
-                6 => Adipiscing(true),
-                9 => Dolor(8),
-                12 => Consectur("bye"),
-                13 => Adipiscing(false),
+                0 | 7 => Width(1),
+                1 | 8 => Width(2),
+                2 => Width(4),
+                3 | 10 => Width(0),
+                4 | 11 => Width(0),
+                5 => Width(5),
+                6 => Width(1),
+                9 => Width(8),
+                12 => Width(3),
+                13 => Width(0),
                 _ => unreachable!(),
             })
             .collect()
     }
 
     /// 5 elements, total width of 6.
-    const SHORT_LOREM: &[Lipsum] = &[Lorem, Ipsum, Dolor(3), Sit, Amet];
+    const SHORT_LOREM: &[Width] = &[Width(1), Width(2), Width(3), Width(0), Width(0)];
 
     #[test]
     fn new_01() {
-        let rope: Rope<Lipsum> = Rope::new();
+        let rope: Rope<Width> = Rope::new();
         assert_eq!(rope, [].as_slice());
 
         rope.assert_integrity();
@@ -1647,8 +1674,8 @@ mod tests {
 
     #[test]
     fn from_slice() {
-        let rope = Rope::from(lorem_ipsum());
-        assert_eq!(rope, lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
+        assert_eq!(rope, pseudo_random());
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1656,36 +1683,37 @@ mod tests {
 
     #[test]
     fn len_01() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
         assert_eq!(rope.len(), 70);
     }
 
     #[test]
     fn width_02() {
-        let rope: Rope<Lipsum> = Rope::from_slice(&[]);
+        let rope: Rope<Width> = Rope::from_slice(&[]);
         assert_eq!(rope.len(), 0);
     }
 
     #[test]
     fn len_from_widths_01() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
         assert_eq!(rope.width(), 135);
     }
 
     #[test]
     fn len_from_widths_02() {
-        let rope: Rope<Lipsum> = Rope::from_slice(&[]);
+        let rope: Rope<Width> = Rope::from_slice(&[]);
         assert_eq!(rope.width(), 0);
     }
 
     #[test]
     fn insert_01() {
         let mut rope = Rope::from_slice(SHORT_LOREM);
-        rope.insert_slice(3, &[Lorem, Ipsum, Dolor(3)]);
+        rope.insert_slice(3, &[Width(1), Width(2), Width(3)]);
 
         assert_eq!(
             rope,
-            [Lorem, Ipsum, Lorem, Ipsum, Dolor(3), Dolor(3), Sit, Amet].as_slice()
+            [Width(1), Width(2), Width(1), Width(2), Width(3), Width(3), Width(0), Width(0)]
+                .as_slice()
         );
 
         rope.assert_integrity();
@@ -1695,11 +1723,12 @@ mod tests {
     #[test]
     fn insert_02() {
         let mut rope = Rope::from_slice(SHORT_LOREM);
-        rope.insert_slice(0, &[Lorem, Ipsum, Dolor(3)]);
+        rope.insert_slice(0, &[Width(1), Width(2), Width(3)]);
 
         assert_eq!(
             rope,
-            [Lorem, Ipsum, Dolor(3), Lorem, Ipsum, Dolor(3), Sit, Amet].as_slice()
+            [Width(1), Width(2), Width(3), Width(1), Width(2), Width(3), Width(0), Width(0)]
+                .as_slice()
         );
 
         rope.assert_integrity();
@@ -1709,11 +1738,12 @@ mod tests {
     #[test]
     fn insert_03() {
         let mut rope = Rope::from_slice(SHORT_LOREM);
-        rope.insert_slice(6, &[Lorem, Ipsum, Dolor(3)]);
+        rope.insert_slice(6, &[Width(1), Width(2), Width(3)]);
 
         assert_eq!(
             rope,
-            [Lorem, Ipsum, Dolor(3), Sit, Amet, Lorem, Ipsum, Dolor(3)].as_slice()
+            [Width(1), Width(2), Width(3), Width(0), Width(0), Width(1), Width(2), Width(3)]
+                .as_slice()
         );
 
         rope.assert_integrity();
@@ -1723,17 +1753,17 @@ mod tests {
     #[test]
     fn insert_04() {
         let mut rope = Rope::new();
-        rope.insert_slice(0, &[Lorem, Ipsum]);
-        rope.insert_slice(2, &[Dolor(5)]);
-        rope.insert_slice(3, &[Sit]);
-        rope.insert_slice(4, &[Consectur("test")]);
-        rope.insert_slice(11, &[Dolor(3)]);
+        rope.insert_slice(0, &[Width(1), Width(2)]);
+        rope.insert_slice(2, &[Width(5)]);
+        rope.insert_slice(3, &[Width(0)]);
+        rope.insert_slice(4, &[Width(4)]);
+        rope.insert_slice(11, &[Width(3)]);
 
         // NOTE: Inserting in the middle of an item'slice width range, makes it so
         // you actually place it at the end of said item.
         assert_eq!(
             rope,
-            [Lorem, Ipsum, Sit, Dolor(5), Consectur("test"), Dolor(3)].as_slice()
+            [Width(1), Width(2), Width(0), Width(5), Width(4), Width(3)].as_slice()
         );
 
         rope.assert_integrity();
@@ -1743,9 +1773,9 @@ mod tests {
     #[test]
     fn insert_05() {
         let mut rope = Rope::new();
-        rope.insert_slice(0, &[Dolor(15), Dolor(20)]);
-        rope.insert_slice(7, &[Sit, Amet]);
-        assert_eq!(rope, [Dolor(15), Sit, Amet, Dolor(20)].as_slice());
+        rope.insert_slice(0, &[Width(15), Width(20)]);
+        rope.insert_slice(7, &[Width(0), Width(0)]);
+        assert_eq!(rope, [Width(15), Width(0), Width(0), Width(20)].as_slice());
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1754,14 +1784,14 @@ mod tests {
     #[test]
     fn insert_06() {
         let mut rope = Rope::new();
-        rope.insert(0, Dolor(15));
-        rope.insert(1, Dolor(20));
-        rope.insert(2, Dolor(10));
-        rope.insert(3, Dolor(4));
-        rope.insert_slice(20, &[Sit, Amet]);
+        rope.insert(0, Width(15));
+        rope.insert(1, Width(20));
+        rope.insert(2, Width(10));
+        rope.insert(3, Width(4));
+        rope.insert_slice(20, &[Width(0), Width(0)]);
         assert_eq!(
             rope,
-            [Dolor(15), Dolor(4), Dolor(10), Sit, Amet, Dolor(20)].as_slice()
+            [Width(15), Width(4), Width(10), Width(0), Width(0), Width(20)].as_slice()
         );
 
         rope.assert_integrity();
@@ -1770,13 +1800,13 @@ mod tests {
 
     #[test]
     fn remove_01() {
-        let slice = &[Dolor(15), Sit, Amet, Dolor(24), Lorem, Ipsum, Dolor(7)];
+        let slice = &[Width(15), Width(0), Width(0), Width(24), Width(1), Width(2), Width(7)];
         let mut rope = Rope::from_slice(slice);
 
-        rope.remove_inclusive(0..11); // Removes Dolor(15).
-        rope.remove_inclusive(24..31); // Removes [Lorem, Ipsum, Dolor(7)].
-        rope.remove_inclusive(0..0); // Removes Dolor(24).
-        assert_eq!(rope, [Dolor(24)].as_slice());
+        rope.remove_inclusive(0..11); // Removes Width(15).
+        rope.remove_inclusive(24..31); // Removes [Width(1), Width(2), Width(7)].
+        rope.remove_inclusive(0..0); // Removes Width(24).
+        assert_eq!(rope, [Width(24)].as_slice());
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1784,12 +1814,12 @@ mod tests {
 
     #[test]
     fn remove_02() {
-        let slice = &[Lorem; 15];
+        let slice = &[Width(1); 15];
         let mut rope = Rope::from_slice(slice);
 
         // assert_invariants() below.
         rope.remove_inclusive(3..6);
-        assert_eq!(rope, [Lorem; 12].as_slice());
+        assert_eq!(rope, [Width(1); 12].as_slice());
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1797,11 +1827,11 @@ mod tests {
 
     #[test]
     fn remove_03() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
 
         // Make sure removing an empty range, on a non 0 width element, does nothing.
         rope.remove_inclusive(45..45);
-        assert_eq!(rope, lorem_ipsum());
+        assert_eq!(rope, pseudo_random());
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1809,7 +1839,7 @@ mod tests {
 
     #[test]
     fn remove_04() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
 
         // Make sure removing everything works.
         rope.remove_inclusive(0..135);
@@ -1821,11 +1851,11 @@ mod tests {
 
     #[test]
     fn remove_05() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
 
         // Make sure removing a large range works.
         rope.remove_inclusive(3..135);
-        assert_eq!(rope, &lorem_ipsum()[..2]);
+        assert_eq!(rope, &pseudo_random()[..2]);
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1833,20 +1863,23 @@ mod tests {
 
     #[test]
     fn remove_6() {
-        let mut vec = Vec::from([Lorem; 2]);
-        vec.extend_from_slice(&[Sit; 300]);
-        vec.extend_from_slice(&[Ipsum; 3]);
+        let mut vec = Vec::from([Width(1); 2]);
+        vec.extend_from_slice(&[Width(0); 300]);
+        vec.extend_from_slice(&[Width(2); 3]);
 
         let mut rope = Rope::from(vec);
         rope.remove_inclusive(2..2);
 
-        assert_eq!(rope, [Lorem, Lorem, Ipsum, Ipsum, Ipsum].as_slice());
+        assert_eq!(
+            rope,
+            [Width(1), Width(1), Width(2), Width(2), Width(2)].as_slice()
+        );
     }
 
     #[test]
     #[should_panic]
     fn remove_07() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
         #[allow(clippy::reversed_empty_ranges)]
         rope.remove_inclusive(56..55); // Wrong ordering of start/end on purpose.
     }
@@ -1854,17 +1887,17 @@ mod tests {
     #[test]
     #[should_panic]
     fn remove_08() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
         rope.remove_inclusive(134..136); // Removing past the end
     }
 
     #[test]
     fn split_off_01() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
 
         let split = rope.split_off(50);
-        assert_eq!(rope, &lorem_ipsum()[..24]);
-        assert_eq!(split, &lorem_ipsum()[24..]);
+        assert_eq!(rope, &pseudo_random()[..24]);
+        assert_eq!(split, &pseudo_random()[24..]);
 
         rope.assert_integrity();
         split.assert_integrity();
@@ -1874,11 +1907,11 @@ mod tests {
 
     #[test]
     fn split_off_02() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
 
         let split = rope.split_off(1);
-        assert_eq!(rope, [Lorem].as_slice());
-        assert_eq!(split, &lorem_ipsum()[1..]);
+        assert_eq!(rope, [Width(1)].as_slice());
+        assert_eq!(split, &pseudo_random()[1..]);
 
         rope.assert_integrity();
         split.assert_integrity();
@@ -1888,11 +1921,11 @@ mod tests {
 
     #[test]
     fn split_off_03() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
 
         let split = rope.split_off(134);
-        assert_eq!(rope, &lorem_ipsum()[..69]);
-        assert_eq!(split, [Adipiscing(false)].as_slice());
+        assert_eq!(rope, &pseudo_random()[..69]);
+        assert_eq!(split, [Width(0)].as_slice());
 
         rope.assert_integrity();
         split.assert_integrity();
@@ -1902,11 +1935,11 @@ mod tests {
 
     #[test]
     fn split_off_04() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
 
         let split = rope.split_off(0);
         assert_eq!(rope, [].as_slice());
-        assert_eq!(split, lorem_ipsum().as_slice());
+        assert_eq!(split, pseudo_random().as_slice());
 
         rope.assert_integrity();
         split.assert_integrity();
@@ -1916,10 +1949,10 @@ mod tests {
 
     #[test]
     fn split_off_05() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
 
         let split = rope.split_off(135);
-        assert_eq!(rope, lorem_ipsum().as_slice());
+        assert_eq!(rope, pseudo_random().as_slice());
         assert_eq!(split, [].as_slice());
 
         rope.assert_integrity();
@@ -1931,17 +1964,17 @@ mod tests {
     #[test]
     #[should_panic]
     fn split_off_06() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
         rope.split_off(136); // One past the end of the rope
     }
 
     #[test]
     fn append_01() {
-        let mut rope = Rope::from_slice(&lorem_ipsum()[..35]);
-        let append = Rope::from_slice(&lorem_ipsum()[35..]);
+        let mut rope = Rope::from_slice(&pseudo_random()[..35]);
+        let append = Rope::from_slice(&pseudo_random()[35..]);
 
         rope.append(append);
-        assert_eq!(rope, lorem_ipsum().as_slice());
+        assert_eq!(rope, pseudo_random().as_slice());
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1949,11 +1982,11 @@ mod tests {
 
     #[test]
     fn append_02() {
-        let mut rope = Rope::from_slice(&lorem_ipsum()[..68]);
-        let append = Rope::from_slice(&[Consectur("bye"), Adipiscing(false)]);
+        let mut rope = Rope::from_slice(&pseudo_random()[..68]);
+        let append = Rope::from_slice(&[Width(3), Width(0)]);
 
         rope.append(append);
-        assert_eq!(rope, lorem_ipsum());
+        assert_eq!(rope, pseudo_random());
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1961,11 +1994,11 @@ mod tests {
 
     #[test]
     fn append_03() {
-        let mut rope = Rope::from_slice(&[Lorem, Ipsum]);
-        let append = Rope::from_slice(&lorem_ipsum()[2..]);
+        let mut rope = Rope::from_slice(&[Width(1), Width(2)]);
+        let append = Rope::from_slice(&pseudo_random()[2..]);
 
         rope.append(append);
-        assert_eq!(rope, lorem_ipsum());
+        assert_eq!(rope, pseudo_random());
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1973,11 +2006,11 @@ mod tests {
 
     #[test]
     fn append_04() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
         let append = Rope::from_slice([].as_slice());
 
         rope.append(append);
-        assert_eq!(rope, lorem_ipsum());
+        assert_eq!(rope, pseudo_random());
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1986,10 +2019,10 @@ mod tests {
     #[test]
     fn append_05() {
         let mut rope = Rope::from_slice([].as_slice());
-        let append = Rope::from(lorem_ipsum());
+        let append = Rope::from(pseudo_random());
 
         rope.append(append);
-        assert_eq!(rope, lorem_ipsum());
+        assert_eq!(rope, pseudo_random());
 
         rope.assert_integrity();
         rope.assert_invariants();
@@ -1997,7 +2030,7 @@ mod tests {
 
     #[test]
     fn width_to_index_01() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
         assert_eq!(rope.start_width_to_index(0), 0);
         assert_eq!(rope.start_width_to_index(1), 1);
@@ -2014,57 +2047,57 @@ mod tests {
 
     #[test]
     fn from_index_01() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
-        assert_eq!(rope.from_index(0), (0, Lorem));
+        assert_eq!(rope.from_index(0), (0, Width(1)));
 
-        assert_eq!(rope.from_index(67), (132, Amet));
-        assert_eq!(rope.from_index(68), (132, Consectur("bye")));
-        assert_eq!(rope.from_index(69), (135, Adipiscing(false)));
+        assert_eq!(rope.from_index(67), (132, Width(0)));
+        assert_eq!(rope.from_index(68), (132, Width(3)));
+        assert_eq!(rope.from_index(69), (135, Width(0)));
     }
 
     #[test]
     #[should_panic]
     fn from_index_02() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
         rope.from_index(70);
     }
 
     #[test]
     #[should_panic]
     fn from_index_03() {
-        let rope: Rope<Lipsum> = Rope::from_slice(&[]);
+        let rope: Rope<Width> = Rope::from_slice(&[]);
         rope.from_index(0);
     }
 
     #[test]
     fn from_width_01() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
-        assert_eq!(rope.from_width(0), (0, Lorem));
-        assert_eq!(rope.from_width(10), (7, Consectur("hello")));
-        assert_eq!(rope.from_width(18), (16, Dolor(8)));
-        assert_eq!(rope.from_width(108), (108, Adipiscing(false)));
+        assert_eq!(rope.from_width(0), (0, Width(1)));
+        assert_eq!(rope.from_width(10), (7, Width(5)));
+        assert_eq!(rope.from_width(18), (16, Width(8)));
+        assert_eq!(rope.from_width(108), (108, Width(0)));
     }
 
     #[test]
     #[should_panic]
     fn from_width_02() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
         rope.from_width(136);
     }
 
     #[test]
     #[should_panic]
     fn from_width_03() {
-        let rope: Rope<Lipsum> = Rope::from_slice(&[]);
+        let rope: Rope<Width> = Rope::from_slice(&[]);
         rope.from_width(0);
     }
 
     #[test]
     fn chunk_at_index() {
-        let rope = Rope::from(lorem_ipsum());
-        let lorem_ipsum = lorem_ipsum();
+        let rope = Rope::from(pseudo_random());
+        let lorem_ipsum = pseudo_random();
         let mut total = lorem_ipsum.as_slice();
 
         let mut last_chunk = [].as_slice();
@@ -2089,8 +2122,8 @@ mod tests {
 
     #[test]
     fn chunk_at_width() {
-        let rope = Rope::from(lorem_ipsum());
-        let lorem_ipsum = lorem_ipsum();
+        let rope = Rope::from(pseudo_random());
+        let lorem_ipsum = pseudo_random();
         let mut total = lorem_ipsum.as_slice();
 
         let mut last_chunk = [].as_slice();
@@ -2118,34 +2151,34 @@ mod tests {
 
     #[test]
     fn width_slice_01() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
         let slice = rope.width_slice(0..rope.width());
 
-        assert_eq!(slice, lorem_ipsum());
+        assert_eq!(slice, pseudo_random());
     }
 
     #[test]
     fn width_slice_02() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
         let slice = rope.width_slice(5..21);
 
-        assert_eq!(slice, &lorem_ipsum()[2..10]);
+        assert_eq!(slice, &pseudo_random()[2..10]);
     }
 
     #[test]
     fn width_slice_03() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
         let slice = rope.width_slice(31..135);
 
-        assert_eq!(slice, &lorem_ipsum()[16..70]);
+        assert_eq!(slice, &pseudo_random()[16..70]);
     }
 
     #[test]
     fn width_slice_04() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
         let slice = rope.width_slice(53..53);
 
@@ -2155,7 +2188,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn width_slice_05() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
         #[allow(clippy::reversed_empty_ranges)]
         rope.width_slice(53..52); // Wrong ordering on purpose.
     }
@@ -2163,40 +2196,40 @@ mod tests {
     #[test]
     #[should_panic]
     fn width_slice_06() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
         rope.width_slice(134..136);
     }
 
     #[test]
     fn index_slice_01() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
         let slice = rope.index_slice(0..rope.len());
 
-        assert_eq!(lorem_ipsum(), slice);
+        assert_eq!(pseudo_random(), slice);
     }
 
     #[test]
     fn index_slice_02() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
         let slice = rope.index_slice(5..21);
 
-        assert_eq!(&lorem_ipsum()[5..21], slice);
+        assert_eq!(&pseudo_random()[5..21], slice);
     }
 
     #[test]
     fn index_slice_03() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
         let slice = rope.index_slice(31..55);
 
-        assert_eq!(&lorem_ipsum()[31..55], slice);
+        assert_eq!(&pseudo_random()[31..55], slice);
     }
 
     #[test]
     fn index_slice_04() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
         let slice = rope.index_slice(53..53);
 
@@ -2206,7 +2239,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn index_slice_05() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
         #[allow(clippy::reversed_empty_ranges)]
         rope.index_slice(53..52); // Wrong ordering on purpose.
     }
@@ -2214,37 +2247,37 @@ mod tests {
     #[test]
     #[should_panic]
     fn index_slice_06() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
         rope.index_slice(20..72);
     }
 
     #[test]
     fn eq_rope_01() {
-        let rope: Rope<Lipsum> = Rope::from_slice([].as_slice());
+        let rope: Rope<Width> = Rope::from_slice([].as_slice());
 
         assert_eq!(rope, rope);
     }
 
     #[test]
     fn eq_rope_02() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
         assert_eq!(rope, rope);
     }
 
     #[test]
     fn eq_rope_03() {
-        let rope_1 = Rope::from(lorem_ipsum());
+        let rope_1 = Rope::from(pseudo_random());
         let mut rope_2 = rope_1.clone();
         rope_2.remove_inclusive(26..27);
-        rope_2.insert(26, Dolor(1000));
+        rope_2.insert(26, Width(1000));
 
         assert_ne!(rope_1, rope_2);
     }
 
     #[test]
     fn eq_rope_04() {
-        let rope: Rope<Lipsum> = Rope::from_slice([].as_slice());
+        let rope: Rope<Width> = Rope::from_slice([].as_slice());
 
         assert_eq!(rope, [].as_slice());
         assert_eq!([].as_slice(), rope);
@@ -2252,26 +2285,26 @@ mod tests {
 
     #[test]
     fn eq_rope_05() {
-        let rope = Rope::from(lorem_ipsum());
+        let rope = Rope::from(pseudo_random());
 
-        assert_eq!(rope, lorem_ipsum());
-        assert_eq!(lorem_ipsum(), rope);
+        assert_eq!(rope, pseudo_random());
+        assert_eq!(pseudo_random(), rope);
     }
 
     #[test]
     fn eq_rope_06() {
-        let mut rope = Rope::from(lorem_ipsum());
+        let mut rope = Rope::from(pseudo_random());
         rope.remove_inclusive(26..27);
-        rope.insert(26, Dolor(5000));
+        rope.insert(26, Width(5000));
 
-        assert_ne!(rope, lorem_ipsum());
-        assert_ne!(lorem_ipsum(), rope);
+        assert_ne!(rope, pseudo_random());
+        assert_ne!(pseudo_random(), rope);
     }
 
     #[test]
     fn eq_rope_07() {
-        let rope = Rope::from(lorem_ipsum());
-        let slice: Vec<Lipsum> = lorem_ipsum().into();
+        let rope = Rope::from(pseudo_random());
+        let slice: Vec<Width> = pseudo_random().into();
 
         assert_eq!(rope, slice);
         assert_eq!(slice, rope);
@@ -2279,8 +2312,8 @@ mod tests {
 
     #[test]
     fn to_vec_01() {
-        let rope = Rope::from(lorem_ipsum());
-        let slice: Vec<Lipsum> = (&rope).into();
+        let rope = Rope::from(pseudo_random());
+        let slice: Vec<Width> = (&rope).into();
 
         assert_eq!(rope, slice);
     }
@@ -2288,8 +2321,8 @@ mod tests {
     #[test]
     fn to_cow_01() {
         use std::borrow::Cow;
-        let rope = Rope::from(lorem_ipsum());
-        let cow: Cow<[Lipsum]> = (&rope).into();
+        let rope = Rope::from(pseudo_random());
+        let cow: Cow<[Width]> = (&rope).into();
 
         assert_eq!(rope, cow);
     }
@@ -2297,8 +2330,8 @@ mod tests {
     #[test]
     fn to_cow_02() {
         use std::borrow::Cow;
-        let rope = Rope::from(lorem_ipsum());
-        let cow: Cow<[Lipsum]> = (rope.clone()).into();
+        let rope = Rope::from(pseudo_random());
+        let cow: Cow<[Width]> = (rope.clone()).into();
 
         assert_eq!(rope, cow);
     }
@@ -2306,8 +2339,8 @@ mod tests {
     #[test]
     fn to_cow_03() {
         use std::borrow::Cow;
-        let rope = Rope::from_slice(&[Lorem]);
-        let cow: Cow<[Lipsum]> = (&rope).into();
+        let rope = Rope::from_slice(&[Width(1)]);
+        let cow: Cow<[Width]> = (&rope).into();
 
         // Make sure it'slice borrowed.
         if let Cow::Owned(_) = cow {
@@ -2319,9 +2352,9 @@ mod tests {
 
     #[test]
     fn from_rope_slice_01() {
-        let rope_1 = Rope::from(lorem_ipsum());
+        let rope_1 = Rope::from(pseudo_random());
         let slice = rope_1.width_slice(..);
-        let rope_2: Rope<Lipsum> = slice.into();
+        let rope_2: Rope<Width> = slice.into();
 
         assert_eq!(rope_1, rope_2);
         assert_eq!(slice, rope_2);
@@ -2329,34 +2362,34 @@ mod tests {
 
     #[test]
     fn from_rope_slice_02() {
-        let rope_1 = Rope::from(lorem_ipsum());
+        let rope_1 = Rope::from(pseudo_random());
         let slice = rope_1.width_slice(0..24);
-        let rope_2: Rope<Lipsum> = slice.into();
+        let rope_2: Rope<Width> = slice.into();
 
         assert_eq!(slice, rope_2);
     }
 
     #[test]
     fn from_rope_slice_03() {
-        let rope_1 = Rope::from(lorem_ipsum());
+        let rope_1 = Rope::from(pseudo_random());
         let slice = rope_1.width_slice(13..89);
-        let rope_2: Rope<Lipsum> = slice.into();
+        let rope_2: Rope<Width> = slice.into();
 
         assert_eq!(slice, rope_2);
     }
 
     #[test]
     fn from_rope_slice_04() {
-        let rope_1 = Rope::from(lorem_ipsum());
+        let rope_1 = Rope::from(pseudo_random());
         let slice = rope_1.width_slice(13..41);
-        let rope_2: Rope<Lipsum> = slice.into();
+        let rope_2: Rope<Width> = slice.into();
 
         assert_eq!(slice, rope_2);
     }
 
     #[test]
     fn from_iter_01() {
-        let rope_1 = Rope::from(lorem_ipsum());
+        let rope_1 = Rope::from(pseudo_random());
         let rope_2 = Rope::from_iter(rope_1.chunks());
 
         assert_eq!(rope_1, rope_2);
@@ -2364,7 +2397,7 @@ mod tests {
 
     #[test]
     fn is_instance_01() {
-        let rope = Rope::from_slice(&[Lorem, Ipsum, Dolor(10), Sit, Amet]);
+        let rope = Rope::from_slice(&[Width(1), Width(2), Width(10), Width(0), Width(0)]);
         let mut c1 = rope.clone();
         let c2 = c1.clone();
 
@@ -2372,12 +2405,10 @@ mod tests {
         assert!(rope.is_instance(&c2));
         assert!(c1.is_instance(&c2));
 
-        c1.insert_slice(0, &[Consectur("oh noes!")]);
+        c1.insert_slice(0, &[Width(8)]);
 
         assert!(!rope.is_instance(&c1));
         assert!(rope.is_instance(&c2));
         assert!(!c1.is_instance(&c2));
     }
-
-    // Iterator tests are in the iter module
 }

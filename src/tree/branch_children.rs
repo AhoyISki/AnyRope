@@ -217,8 +217,8 @@ where
         self.0.insert(index, item)
     }
 
-    /// Inserts an element into a the array, and then splits it in half, returning
-    /// the right half.
+    /// Inserts an element into a the array, and then splits it in half,
+    /// returning the right half.
     ///
     /// This works even when the array is full.
     pub fn insert_split(&mut self, index: usize, item: (SliceInfo, Arc<Node<M>>)) -> Self {
@@ -242,7 +242,8 @@ where
         self.0.remove(index)
     }
 
-    /// Splits the array in two at `index`, returning the right part of the split.
+    /// Splits the array in two at `index`, returning the right part of the
+    /// split.
     ///
     /// TODO: implement this more efficiently.
     pub fn split_off(&mut self, index: usize) -> Self {
@@ -508,12 +509,14 @@ where
 /// through a safe API.
 ///
 /// Try to keep this as small as possible, and implement functionality on
-/// [`BranchChildren<M>`][super::BranchChildren] via the safe APIs whenever possible.
+/// [`BranchChildren<M>`][super::BranchChildren] via the safe APIs whenever
+/// possible.
 ///
 /// It's split out this way because it was too easy to accidentally access the
-/// fixed size arrays directly, leading to memory-unsafety bugs when accidentally
-/// accessing elements that are semantically out of bounds. This happened once,
-/// and it was a pain to track down--as memory safety bugs often are.
+/// fixed size arrays directly, leading to memory-unsafety bugs when
+/// accidentally accessing elements that are semantically out of bounds. This
+/// happened once, and it was a pain to track down--as memory safety bugs often
+/// are.
 mod inner {
     use crate::rope::Measurable;
     use crate::tree::max_len;
@@ -524,7 +527,8 @@ mod inner {
     use std::ptr;
     use std::sync::Arc;
 
-    /// This is essentially a fixed-capacity, stack-allocated [Vec<(M, SliceInfo)>].
+    /// This is essentially a fixed-capacity, stack-allocated [Vec<(M,
+    /// SliceInfo)>].
     #[repr(C)]
     pub(crate) struct BranchChildrenInternal<M>
     where
@@ -616,7 +620,8 @@ mod inner {
             assert!(self.len() < max_children::<M>());
             self.info[self.len()] = MaybeUninit::new((item.0, item.1.zero_width_end()));
             self.nodes[self.len as usize] = MaybeUninit::new(item.1);
-            // We have just initialized both info and node and 0..=len, so we can increase it
+            // We have just initialized both info and node and 0..=len, so we can increase
+            // it
             self.len += 1;
         }
 
@@ -628,7 +633,8 @@ mod inner {
             assert!(self.len() > 0);
             self.len -= 1;
             // SAFETY: before this, len was long enough to guarantee that both must be init
-            // We just decreased the length, guaranteeing that the elements will never be read again
+            // We just decreased the length, guaranteeing that the elements will never be
+            // read again
             (unsafe { self.info[self.len()].assume_init().0 }, unsafe {
                 ptr::read(&self.nodes[self.len()]).assume_init()
             })
@@ -658,7 +664,8 @@ mod inner {
             // We have just made space for the two new elements, so insert them
             self.info[index] = MaybeUninit::new((item.0, item.1.zero_width_end()));
             self.nodes[index] = MaybeUninit::new(item.1);
-            // Now that all elements from 0..=len are initialized, we can increase the length
+            // Now that all elements from 0..=len are initialized, we can increase the
+            // length
             self.len += 1;
         }
 
@@ -770,8 +777,10 @@ mod inner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tree::{LeafSlice, Node, SliceInfo};
-    use crate::Lipsum::*;
+    use crate::{
+        tree::{LeafSlice, Node, SliceInfo},
+        Width,
+    };
     use std::sync::Arc;
 
     #[test]
@@ -779,17 +788,17 @@ mod tests {
         let mut children = BranchChildren::new();
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(1), Width(2), Width(4)]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Sit, Amet]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(0), Width(0)]))),
         ));
         children.push((
             SliceInfo::new(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[
-                Consectur("text here"),
-                Adipiscing(true),
+                Width(9),
+                Width(1),
             ]))),
         ));
 
@@ -824,17 +833,17 @@ mod tests {
         let mut children = BranchChildren::new();
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(1), Width(2), Width(4)]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Sit, Amet]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(0), Width(0)]))),
         ));
         children.push((
             SliceInfo::new(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[
-                Consectur("text here"),
-                Adipiscing(true),
+                Width(9),
+                Width(1),
             ]))),
         ));
 
@@ -850,17 +859,17 @@ mod tests {
         let mut children = BranchChildren::new();
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(1), Width(2), Width(4)]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Sit, Amet]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(0), Width(0)]))),
         ));
         children.push((
             SliceInfo::new(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[
-                Consectur("text here"),
-                Adipiscing(true),
+                Width(9),
+                Width(1),
             ]))),
         ));
 
@@ -920,17 +929,17 @@ mod tests {
         let mut children = BranchChildren::new();
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Lorem, Ipsum, Dolor(4)]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(1), Width(2), Width(4)]))),
         ));
         children.push((
             SliceInfo::new(),
-            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Sit, Amet]))),
+            Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(0), Width(0)]))),
         ));
         children.push((
             SliceInfo::new(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[
-                Consectur("text here"),
-                Adipiscing(true),
+                Width(9),
+                Width(1),
             ]))),
         ));
 
