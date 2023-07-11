@@ -438,7 +438,7 @@ where
         // Find left child and info
         for (info, zero_width_end) in self.info()[..(self.len() - 1)].iter() {
             let next_accum = accum_width + info.width as usize;
-            if (*zero_width_end && next_accum >= start_index) || next_accum > start_index {
+            if (*zero_width_end && next_accum == start_index) || next_accum > start_index {
                 break;
             }
             accum_width = next_accum;
@@ -450,7 +450,7 @@ where
         // Find right child and info
         for (info, zero_width_end) in self.info()[index..(self.len() - 1)].iter() {
             let next_accum = accum_width + info.width as usize;
-            if (!*zero_width_end && next_accum >= end_index)
+            if (!*zero_width_end && next_accum == end_index)
                 || next_accum > end_index
                 || index == self.len() - 1
             {

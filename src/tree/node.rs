@@ -12,7 +12,7 @@ pub(crate) enum Node<M>
 where
     M: Measurable,
     [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized
+    [(); max_children::<M>()]: Sized,
 {
     Leaf(LeafSlice<M>),
     Branch(BranchChildren<M>),
@@ -22,7 +22,7 @@ impl<M> Node<M>
 where
     M: Measurable,
     [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized
+    [(); max_children::<M>()]: Sized,
 {
     /// Creates an empty [`Node<M>`].
     #[inline(always)]
@@ -47,26 +47,27 @@ where
     /// There are three parameters:
     /// - width: the chunk that contains this width is fetched,
     /// - node_info: this is the [`SliceInfo`] of the node it's being called on.
-    ///              This makes it a little awkward to call, but is needed since
-    ///              it's actually the parent node that contains the [`SliceInfo`],
-    ///              so the info needs to be passed in.
+    ///   This makes it a little awkward to call, but is needed since it's
+    ///   actually the parent node that contains the [`SliceInfo`], so the info
+    ///   needs to be passed in.
     /// - edit: the closure that receives the chunk and does the edits.
     ///
     /// The closure is effectively the termination case for the recursion,
     /// and takes essentially same parameters and returns the same things as
     /// the method itself. In particular, the closure receives the width offset
     /// of the width within the given chunk and the [`SliceInfo`] of the chunk.
-    /// The main difference is that it receives a [`LeafSlice<M>`] instead of a node.
+    /// The main difference is that it receives a [`LeafSlice<M>`] instead of a
+    /// node.
     ///
-    /// The closure is expected to return the updated [`SliceInfo`] of the [`Node<M>`],
-    /// and if the node had to be split, then it also returns the right-hand
-    /// [`Node<M>`] along with its [`SliceInfo`] as well.
+    /// The closure is expected to return the updated [`SliceInfo`] of the
+    /// [`Node<M>`], and if the node had to be split, then it also returns
+    /// the right-hand [`Node<M>`] along with its [`SliceInfo`] as well.
     ///
-    /// The main method call will then return the total updated [`SliceInfo`] for
-    /// the whole tree, and a new [`Node<M>`] only if the whole tree had to be split.
-    /// It is up to the caller to check for that new [`Node<M>`], and handle it by
-    /// creating a new root with both the original [`Node<M>`] and the new node as
-    /// children.
+    /// The main method call will then return the total updated [`SliceInfo`]
+    /// for the whole tree, and a new [`Node<M>`] only if the whole tree had
+    /// to be split. It is up to the caller to check for that new
+    /// [`Node<M>`], and handle it by creating a new root with both the
+    /// original [`Node<M>`] and the new node as children.
     pub fn edit_chunk_at_width<F>(
         &mut self,
         width: usize,
@@ -136,185 +137,26 @@ where
     ///
     /// Returns (in this order):
     /// - The updated [`SliceInfo`] for the node.
-    /// - Whether [`fix_tree_seam()`][Node::fix_tree_seam] needs to be run after this.
+    /// - Whether [`fix_tree_seam()`][Node::fix_tree_seam] needs to be run after
+    ///   this.
     ///
     /// WARNING: does not correctly handle all slice being removed. That
     /// should be special-cased in calling code.
     pub fn remove_range(
         &mut self,
-        start_width: usize,
-        end_width: usize,
+        s_width: usize,
+        e_width: usize,
         node_info: SliceInfo,
-        l_edge: bool,
-        r_edge: bool,
+        include_l: bool,
+        include_r: bool,
     ) -> (SliceInfo, bool) {
         match *self {
-            // If it's a leaf
             Node::Leaf(ref mut slice) => {
-                let s_index = if l_edge {
-                    start_width_to_index(slice, start_width)
-                } else {
-                    end_width_to_index(slice, start_width)
-                };
-
-                // In this circumstance, nothing needs to be done, since we're removing
-                // in the middle of an element.
-                let zero_width = slice.get(s_index).map(|m| m.width() > 0).unwrap_or(true);
-                if start_width == end_width && zero_width {
-                    return (SliceInfo::from_slice(slice), false);
-                }
-
-                let e_index = if r_edge {
-                    end_width_to_index(slice, end_width)
-                } else {
-                    start_width_to_index(slice, end_width)
-                };
-
-                // Remove slice and calculate new info & seam info.
-                if s_index > 0 || e_index < slice.len() {
-                    let seg_len = e_index - s_index; // Length of removal segement
-                    if seg_len < (slice.len() - seg_len) {
-                        #[allow(unused_mut)]
-                        let info = node_info - SliceInfo::from_slice(&slice[s_index..e_index]);
-
-                        // Remove the slice.
-                        slice.remove_range(s_index, e_index);
-
-                        (info, false)
-                    } else {
-                        // Remove the slice.
-                        slice.remove_range(s_index, e_index);
-
-                        (SliceInfo::from_slice(slice), false)
-                    }
-                } else {
-                    // Remove the whole slice.
-                    slice.remove_range(s_index, e_index);
-
-                    (SliceInfo::new(), false)
-                }
+                remove_from_slice(slice, s_width, e_width, include_l, include_r)
             }
 
-            // If it's internal, it's much more complicated
             Node::Branch(ref mut children) => {
-                // Shared code for handling children.
-                // Returns (in this order):
-                // - Whether the tree may need invariant fixing.
-                // - Updated SliceInfo of the node.
-                let handle_child = |children: &mut BranchChildren<M>,
-                                    child_i: usize,
-                                    c_width_acc: usize,
-                                    l_edge: bool,
-                                    r_edge: bool|
-                 -> (bool, SliceInfo) {
-                    // Recurse into child
-                    let (tmp_info, _) = children.info()[child_i];
-                    let tmp_width = children.info()[child_i].0.width as usize;
-                    let (new_info, needs_fix) = Arc::make_mut(&mut children.nodes_mut()[child_i])
-                        .remove_range(
-                            start_width - c_width_acc.min(start_width),
-                            (end_width - c_width_acc).min(tmp_width),
-                            tmp_info,
-                            l_edge,
-                            r_edge,
-                        );
-
-                    // Handle result
-                    if new_info.len == 0 {
-                        children.remove(child_i);
-                    } else {
-                        let zero_width_end = children.nodes()[child_i].zero_width_end();
-                        children.info_mut()[child_i] = (new_info, zero_width_end);
-                    }
-
-                    (needs_fix, new_info)
-                };
-
-                // Shared code for merging children
-                let merge_child = |children: &mut BranchChildren<M>, child_i: usize| {
-                    if child_i < children.len()
-                        && children.len() > 1
-                        && children.nodes()[child_i].is_undersized()
-                    {
-                        if child_i == 0 {
-                            children.merge_distribute(child_i, child_i + 1);
-                        } else {
-                            children.merge_distribute(child_i - 1, child_i);
-                        }
-                    }
-                };
-
-                // Get child info for the two widths
-                let ((l_child_i, l_width_acc), (r_child_i, r_width_acc)) =
-                    children.search_width_range(start_width, end_width);
-
-                // Both indices point into the same child
-                if l_child_i == r_child_i {
-                    let (info, _) = children.info()[l_child_i];
-                    let (mut needs_fix, new_info) =
-                        handle_child(children, l_child_i, l_width_acc, l_edge, r_edge);
-
-                    if children.len() > 0 {
-                        merge_child(children, l_child_i);
-
-                        // If we couldn't get all children >= minimum size, then
-                        // we'll need to fix that later.
-                        if children.nodes()[l_child_i.min(children.len() - 1)].is_undersized() {
-                            needs_fix = true;
-                        }
-                    }
-
-                    return (node_info - info + new_info, needs_fix);
-                }
-                // We're dealing with more than one child.
-                else {
-                    let mut needs_fix = false;
-
-                    // Calculate the start..end range of nodes to be removed.
-                    let r_child_exists: bool;
-                    let start_i = l_child_i + 1;
-                    let end_i =
-                        if r_width_acc + children.info()[r_child_i].0.width as usize == end_width {
-                            r_child_exists = false;
-                            r_child_i + 1
-                        } else {
-                            r_child_exists = true;
-                            r_child_i
-                        };
-
-                    // Remove the children
-                    for _ in start_i..end_i {
-                        children.remove(start_i);
-                    }
-
-                    // Handle right child
-                    if r_child_exists {
-                        let (fix, _) =
-                            handle_child(children, l_child_i + 1, r_width_acc, true, r_edge);
-                        needs_fix |= fix;
-                    }
-
-                    // Handle left child
-                    let (fix, _) = handle_child(children, l_child_i, l_width_acc, l_edge, true);
-                    needs_fix |= fix;
-
-                    if children.len() > 0 {
-                        // Handle merging
-                        let merge_extent = 1 + if r_child_exists { 1 } else { 0 };
-                        for i in (l_child_i..(l_child_i + merge_extent)).rev() {
-                            merge_child(children, i);
-                        }
-
-                        // If we couldn't get all children >= minimum size, then
-                        // we'll need to fix that later.
-                        if children.nodes()[l_child_i.min(children.len() - 1)].is_undersized() {
-                            needs_fix = true;
-                        }
-                    }
-
-                    // Return
-                    return (children.combined_info(), needs_fix);
-                }
+                remove_from_children(children, s_width, e_width, include_l, include_r, node_info)
             }
         }
     }
@@ -411,7 +253,8 @@ where
         }
     }
 
-    /// Splits the [`Node<M>`] at `width`, returning the right side of the split.
+    /// Splits the [`Node<M>`] at `width`, returning the right side of the
+    /// split.
     pub fn end_split(&mut self, width: usize) -> Self {
         debug_assert!(width != 0);
         debug_assert!(width != (self.slice_info().width as usize));
@@ -446,7 +289,8 @@ where
         }
     }
 
-    /// Splits the [`Node<M>`] index `width`, returning the right side of the split.
+    /// Splits the [`Node<M>`] index `width`, returning the right side of the
+    /// split.
     pub fn start_split(&mut self, width: usize) -> Self {
         debug_assert!(width != 0);
         debug_assert!(width != (self.slice_info().width as usize));
@@ -837,6 +681,184 @@ where
         match self {
             Node::Leaf(ref leaf) => leaf.zero_width_end(),
             Node::Branch(ref branch) => branch.zero_width_end(),
+        }
+    }
+}
+
+fn remove_from_slice<M>(
+    slice: &mut LeafSlice<M>,
+    s_width: usize,
+    e_width: usize,
+    include_l: bool,
+    include_r: bool,
+) -> (SliceInfo, bool)
+where
+    M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+{
+    let s_index = if include_l {
+        start_width_to_index(slice, s_width)
+    } else {
+        end_width_to_index(slice, s_width)
+    };
+    // In this circumstance, nothing needs to be done, since we're removing
+    // in the middle of an element.
+    let zero_width = slice.get(s_index).map(|m| m.width() > 0).unwrap_or(true);
+    if s_width == e_width && zero_width {
+        return (SliceInfo::from_slice(slice), false);
+    }
+    let e_index = if include_r {
+        end_width_to_index(slice, e_width)
+    } else {
+        start_width_to_index(slice, e_width)
+    };
+    slice.remove_range(s_index, e_index);
+    (SliceInfo::from_slice(slice), false)
+}
+
+fn remove_from_children<M>(
+    children: &mut BranchChildren<M>,
+    s_width: usize,
+    e_width: usize,
+    include_l: bool,
+    include_r: bool,
+    node_info: SliceInfo,
+) -> (SliceInfo, bool)
+where
+    M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+{
+    let ((l_child, l_width_acc), (r_child, r_width_acc)) =
+        children.search_width_range(s_width, e_width);
+
+    if l_child == r_child {
+        let (info, _) = children.info()[l_child];
+        let (new_info, mut needs_fix) = handle_width_range(
+            children, l_child, l_width_acc, s_width, e_width, include_l, include_r,
+        );
+
+        if children.len() > 0 {
+            merge_child(children, l_child);
+
+            // If we couldn't get all children >= minimum size, then
+            // we'll need to fix that later.
+            if children.nodes()[l_child.min(children.len() - 1)].is_undersized() {
+                needs_fix = true;
+            }
+        }
+
+        (node_info - info + new_info, needs_fix)
+    // We're dealing with more than one child.
+    } else {
+        let mut needs_fix = false;
+
+        // Calculate the start..end range of nodes to be removed.
+        let first = l_child + 1;
+        let (last, r_child_exists) = {
+            let r_child_width = children.info()[r_child].0.width as usize;
+            if r_width_acc + r_child_width == e_width {
+                (r_child + 1, false)
+            } else {
+                (r_child, true)
+            }
+        };
+
+        // Remove the children
+        for _ in first..last {
+            children.remove(first);
+        }
+
+        // Handle right child
+        if r_child_exists {
+            let include_l = include_l || (s_width < r_width_acc && r_width_acc + 1 < e_width);
+            let (_, fix) = handle_width_range(
+                children, first, r_width_acc, s_width, e_width, include_l, include_r,
+            );
+            needs_fix |= fix;
+        }
+
+        // Handle left child
+        let (_, fix) = {
+            let include_r = include_r || (s_width < r_width_acc && r_width_acc + 1 < e_width);
+            handle_width_range(
+                children, l_child, l_width_acc, s_width, e_width, include_l, include_r,
+            )
+        };
+        needs_fix |= fix;
+
+        if children.len() > 0 {
+            // Handle merging
+            let merge_extent = 1 + if r_child_exists { 1 } else { 0 };
+            for i in (l_child..(l_child + merge_extent)).rev() {
+                merge_child(children, i);
+            }
+
+            // If we couldn't get all children >= minimum size, then
+            // we'll need to fix that later.
+            if children.nodes()[l_child.min(children.len() - 1)].is_undersized() {
+                needs_fix = true;
+            }
+        }
+
+        (children.combined_info(), needs_fix)
+    }
+}
+
+/// Shared code for handling children.
+/// Returns (in this order):
+///
+/// - Whether the tree may need invariant fixing.
+/// - Updated SliceInfo of the node.
+fn handle_width_range<M>(
+    children: &mut BranchChildren<M>,
+    child_i: usize,
+    accum: usize,
+    start: usize,
+    end: usize,
+    include_left: bool,
+    include_right: bool,
+) -> (SliceInfo, bool)
+where
+    M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+{
+    // Recurse into child
+    let (child_info, _) = children.info()[child_i];
+    let child_width = children.info()[child_i].0.width as usize;
+    let (new_info, needs_fix) = Arc::make_mut(&mut children.nodes_mut()[child_i]).remove_range(
+        start - accum.min(start),
+        (end - accum).min(child_width),
+        child_info,
+        include_left,
+        include_right,
+    );
+
+    // Handle result
+    if new_info.len == 0 {
+        children.remove(child_i);
+    } else {
+        let zero_width_end = children.nodes()[child_i].zero_width_end();
+        children.info_mut()[child_i] = (new_info, zero_width_end);
+    }
+
+    (new_info, needs_fix)
+}
+
+/// Merges a child with its sibling.
+fn merge_child<M>(children: &mut BranchChildren<M>, child_i: usize)
+where
+    M: Measurable,
+    [(); max_len::<M>()]: Sized,
+    [(); max_children::<M>()]: Sized,
+{
+    if child_i < children.len() && children.len() > 1 && children.nodes()[child_i].is_undersized() {
+        if child_i == 0 {
+            children.merge_distribute(child_i, child_i + 1);
+        } else {
+            children.merge_distribute(child_i - 1, child_i);
         }
     }
 }
