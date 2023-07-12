@@ -90,15 +90,14 @@ where
                 Node::Branch(ref children) => {
                     let mut start_width = 0;
                     for (i, (info, zero_width_end)) in children.info().iter().enumerate() {
-                        if n_start >= start_width {
-                            if n_end == start_width + info.width as usize && *zero_width_end {
+                        if n_start >= start_width && n_end < (start_width + info.width as usize) {
+                            if *zero_width_end {
                                 break;
-                            } else if n_end <= start_width + info.width as usize {
+                            }
                                 n_start -= start_width;
                                 n_end -= start_width;
                                 node = &children.nodes()[i];
                                 continue 'outer;
-                            }
                         }
                         start_width += info.width as usize;
                     }
