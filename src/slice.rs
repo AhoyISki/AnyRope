@@ -94,10 +94,10 @@ where
                             if *zero_width_end {
                                 break;
                             }
-                                n_start -= start_width;
-                                n_end -= start_width;
-                                node = &children.nodes()[i];
-                                continue 'outer;
+                            n_start -= start_width;
+                            n_end -= start_width;
+                            node = &children.nodes()[i];
+                            continue 'outer;
                         }
                         start_width += info.width as usize;
                     }
