@@ -1,4 +1,3 @@
-use std::fmt::Debug;
 use std::iter::FromIterator;
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -10,7 +9,8 @@ use crate::slice_utils::{end_width_to_index, index_to_width, start_width_to_inde
 use crate::tree::{max_children, max_len, min_len, BranchChildren, Node, SliceInfo};
 use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
 
-/// A object that has a definite size, that can be interpreted by a [`Rope<M>`].
+/// A object that has a user defined size, that can be interpreted by a
+/// [`Rope<M>`].
 pub trait Measurable: Clone + Copy {
     /// The width of this element, it need not be the actual lenght in bytes,
     /// but just a representative value, to be fed to the [`Rope<M>`].
@@ -149,6 +149,14 @@ where
     #[inline]
     pub fn len(&self) -> usize {
         self.root.len()
+    }
+
+    /// Returns `true` if the [`Rope<M>`] is empty.
+    ///
+    /// Runs in O(N) time.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.root.len() == 0
     }
 
     /// Sum of all widths of in [`Rope<M>`].
@@ -897,15 +905,13 @@ where
         // Bounds check
         if width <= self.width() {
             // We have three cases here:
-            // 1. The insertion slice is very large, in which case building a new
-            //    Rope out of it and splicing it into the existing Rope is most
-            //    efficient.
-            // 2. The insertion slice is somewhat large, in which case splitting it
-            //    up into chunks and repeatedly inserting them is the most
-            //    efficient. The splitting is necessary because the insertion code
-            //    only works correctly below a certain insertion size.
-            // 3. The insertion slice is small, in which case we can simply insert
-            //    it.
+            // 1. The insertion slice is very large, in which case building a new Rope out
+            //    of it and splicing it into the existing Rope is most efficient.
+            // 2. The insertion slice is somewhat large, in which case splitting it up into
+            //    chunks and repeatedly inserting them is the most efficient. The splitting
+            //    is necessary because the insertion code only works correctly below a
+            //    certain insertion size.
+            // 3. The insertion slice is small, in which case we can simply insert it.
             //
             // Cases #2 and #3 are rolled into one case here, where case #3 just
             // results in the slice being "split" into only one chunk.
@@ -1095,7 +1101,7 @@ where
     #[inline]
     pub fn get_from_width(&self, width: usize) -> Option<(usize, M)> {
         // Bounds check
-        if width <= self.width() && self.len() > 0 {
+        if width <= self.width() && !self.is_empty() {
             let (chunk, _, chunk_width) = self.chunk_at_width(width);
             let index = start_width_to_index(chunk, width - chunk_width);
             let width = index_to_width(chunk, index);
@@ -1121,7 +1127,7 @@ where
     #[inline]
     pub fn get_chunk_at_width(&self, width: usize) -> Option<(&[M], usize, usize)> {
         // Bounds check
-        if width <= self.width() && self.len() > 0 {
+        if width <= self.width() && !self.is_empty() {
             let (chunk, info) = self.root.get_first_chunk_at_width(width);
             Some((chunk, info.len as usize, info.width as usize))
         } else {
@@ -1359,12 +1365,7 @@ where
     #[inline]
     fn from(r: &'a Rope<M>) -> Self {
         let mut vec = Vec::with_capacity(r.len());
-        vec.extend(
-            r.chunks()
-                .map(|chunk| chunk.iter())
-                .flatten()
-                .map(|measurable| *measurable),
-        );
+        vec.extend(r.chunks().flat_map(|chunk| chunk.iter()).copied());
         vec
     }
 }
@@ -1437,7 +1438,7 @@ where
     }
 }
 
-impl<'a, M> FromIterator<Vec<M>> for Rope<M>
+impl<M> FromIterator<Vec<M>> for Rope<M>
 where
     M: Measurable,
     [(); max_len::<M>()]: Sized,
@@ -1460,7 +1461,7 @@ where
 
 impl<M> std::fmt::Debug for Rope<M>
 where
-    M: Measurable + Debug,
+    M: Measurable + std::fmt::Debug,
     [(); max_len::<M>()]: Sized,
     [(); max_children::<M>()]: Sized,
 {
@@ -1471,13 +1472,23 @@ where
 
 impl<M> std::fmt::Display for Rope<M>
 where
-    M: Measurable + Debug,
+    M: Measurable + std::fmt::Display,
     [(); max_len::<M>()]: Sized,
     [(); max_children::<M>()]: Sized,
 {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.debug_list().entries(self.chunks()).finish()
+        f.write_str("[")?;
+
+        let mut iter = self.iter();
+        iter.next()
+            .map(|(_, measurable)| f.write_fmt(format_args!("{}", measurable)))
+            .transpose()?;
+
+        for (_, measurable) in iter {
+            f.write_fmt(format_args!(", {}", measurable))?;
+        }
+        f.write_str("]")
     }
 }
 
@@ -1561,7 +1572,7 @@ where
     }
 }
 
-impl<'a, M> std::cmp::PartialEq<Vec<M>> for Rope<M>
+impl<M> std::cmp::PartialEq<Vec<M>> for Rope<M>
 where
     M: Measurable + PartialEq,
     [(); max_len::<M>()]: Sized,
@@ -1573,7 +1584,7 @@ where
     }
 }
 
-impl<'a, M> std::cmp::PartialEq<Rope<M>> for Vec<M>
+impl<M> std::cmp::PartialEq<Rope<M>> for Vec<M>
 where
     M: Measurable + PartialEq,
     [(); max_len::<M>()]: Sized,
@@ -1862,7 +1873,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_6() {
+    fn remove_06() {
         let mut vec = Vec::from([Width(1); 2]);
         vec.extend_from_slice(&[Width(0); 300]);
         vec.extend_from_slice(&[Width(2); 3]);
@@ -2110,12 +2121,12 @@ mod tests {
                 last_chunk = chunk;
             }
 
-            let lipsum_1 = lorem_ipsum.iter().nth(i).unwrap();
-            let lipsum_2 = {
+            let width_1 = lorem_ipsum.get(i).unwrap();
+            let width_2 = {
                 let i2 = i - index;
-                chunk.iter().nth(i2).unwrap()
+                chunk.get(i2).unwrap()
             };
-            assert_eq!(lipsum_1, lipsum_2);
+            assert_eq!(width_1, width_2);
         }
         assert_eq!(total.len(), 0);
     }
@@ -2135,16 +2146,17 @@ mod tests {
                 last_chunk = chunk;
             }
 
-            let lipsum_1 = {
+            let width_1 = {
                 let index_1 = start_width_to_index(&lorem_ipsum, i);
-                lorem_ipsum.iter().nth(index_1).unwrap()
+                lorem_ipsum.get(index_1).unwrap()
             };
-            let lipsum_2 = {
-                let index_2 = start_width_to_index(&chunk, i - width);
-                chunk.iter().nth(index_2).unwrap()
+            let width_2 = {
+                let index_2 = start_width_to_index(chunk, i - width);
+                chunk.get(index_2)
             };
-
-            assert_eq!(lipsum_1, lipsum_2);
+            if let Some(width_2) = width_2 {
+                assert_eq!(width_1, width_2);
+            }
         }
         assert_eq!(total.len(), 0);
     }

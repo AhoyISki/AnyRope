@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::fmt::{Debug, Display};
 use std::ops::Deref;
 
 use crate::max_children;
@@ -92,14 +91,6 @@ where
         self.0.inline_if_possible();
         other
     }
-
-    pub fn zero_width_end(&self) -> bool {
-        self.0
-            .as_slice()
-            .last()
-            .map(|measurable| measurable.width() == 0)
-            .unwrap_or(false)
-    }
 }
 
 impl<M> std::cmp::PartialEq for LeafSlice<M>
@@ -135,21 +126,32 @@ where
 
 impl<M> std::fmt::Display for LeafSlice<M>
 where
-    M: Measurable + Display + Debug,
+    M: Measurable + std::fmt::Display,
     [(); max_len::<M>()]: Sized,
 {
-    fn fmt(&self, fm: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        LeafSlice::deref(self).fmt(fm)
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        let mut iter = self.iter();
+        f.write_str("[")?;
+
+        iter.next()
+            .map(|measurable| f.write_fmt(format_args!("{}", measurable)))
+            .transpose()?;
+
+        for measurable in iter {
+            f.write_fmt(format_args!(", {}", measurable))?;
+        }
+
+        f.write_str("]")
     }
 }
 
 impl<M> std::fmt::Debug for LeafSlice<M>
 where
-    M: Measurable + Debug,
+    M: Measurable + std::fmt::Debug,
     [(); max_len::<M>()]: Sized,
 {
-    fn fmt(&self, fm: &mut std::fmt::Formatter) -> std::fmt::Result {
-        LeafSlice::deref(self).fmt(fm)
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        LeafSlice::deref(self).fmt(f)
     }
 }
 

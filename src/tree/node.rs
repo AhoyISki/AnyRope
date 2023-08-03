@@ -101,14 +101,13 @@ where
 
                 // Find the child we care about.
                 let (child_i, acc_width) = children.search_width_only(width);
-                let (info, _) = children.info()[child_i];
+                let info = children.info()[child_i];
 
                 // Recurse into the child.
                 let (l_info, residual) = Arc::make_mut(&mut children.nodes_mut()[child_i])
                     .edit_chunk_at_width(width - acc_width, info, edit);
 
-                let zero_width_end = children.nodes()[child_i].zero_width_end();
-                children.info_mut()[child_i] = (l_info, zero_width_end);
+                children.info_mut()[child_i] = l_info;
 
                 // Handle the residual node if there is one and return.
                 if let Some((r_info, r_node)) = residual {
@@ -265,7 +264,7 @@ where
             }
             Node::Branch(ref mut children) => {
                 let (child_i, acc_info) = children.search_end_width(width);
-                let (child_info, _) = children.info()[child_i];
+                let child_info = children.info()[child_i];
 
                 if width == acc_info.width as usize {
                     Node::Branch(children.split_off(child_i))
@@ -301,7 +300,7 @@ where
             }
             Node::Branch(ref mut children) => {
                 let (child_i, acc_info) = children.search_start_width(width);
-                let (child_info, _) = children.info()[child_i];
+                let child_info = children.info()[child_i];
 
                 if width == acc_info.width as usize {
                     Node::Branch(children.split_off(child_i))
@@ -507,9 +506,8 @@ where
         match *self {
             Node::Leaf(_) => {}
             Node::Branch(ref children) => {
-                for ((info, zero_width_end), node) in children.iter() {
+                for (info, node) in children.iter() {
                     assert_eq!(*info, node.slice_info());
-                    assert_eq!(*zero_width_end, node.zero_width_end());
                     node.assert_integrity();
                 }
             }
@@ -619,13 +617,13 @@ where
     ///
     /// Returns whether it did anything or not that would affect the
     /// parent. True: did stuff, false: didn't do stuff
-    pub fn fix_tree_seam(&mut self, widt: usize) -> bool {
+    pub fn fix_tree_seam(&mut self, width: usize) -> bool {
         if let Node::Branch(ref mut children) = *self {
             let mut did_stuff = false;
             loop {
                 // Do merging
                 if children.len() > 1 {
-                    let (child_i, start_info) = children.search_start_width(widt);
+                    let (child_i, start_info) = children.search_start_width(width);
                     let mut do_merge = match *children.nodes()[child_i] {
                         Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
                         Node::Branch(ref children2) => children2.len() < min_children::<M>(),
@@ -637,7 +635,7 @@ where
                         }
                     } else {
                         do_merge |= {
-                            start_info.width as usize == widt
+                            start_info.width as usize == width
                                 && match *children.nodes()[child_i - 1] {
                                     Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
                                     Node::Branch(ref children2) => {
@@ -653,10 +651,10 @@ where
                 }
 
                 // Do recursion
-                let (child_i, start_info) = children.search_start_width(widt);
+                let (child_i, start_info) = children.search_start_width(width);
 
-                if start_info.width as usize == widt && child_i != 0 {
-                    let tmp = children.info()[child_i - 1].0.width as usize;
+                if start_info.width as usize == width && child_i != 0 {
+                    let tmp = children.info()[child_i - 1].width as usize;
                     let effect_1 =
                         Arc::make_mut(&mut children.nodes_mut()[child_i - 1]).fix_tree_seam(tmp);
                     let effect_2 =
@@ -665,7 +663,7 @@ where
                         break;
                     }
                 } else if !Arc::make_mut(&mut children.nodes_mut()[child_i])
-                    .fix_tree_seam(widt - start_info.width as usize)
+                    .fix_tree_seam(width - start_info.width as usize)
                 {
                     break;
                 }
@@ -674,13 +672,6 @@ where
             did_stuff
         } else {
             false
-        }
-    }
-
-    pub fn zero_width_end(&self) -> bool {
-        match self {
-            Node::Leaf(ref leaf) => leaf.zero_width_end(),
-            Node::Branch(ref branch) => branch.zero_width_end(),
         }
     }
 }
@@ -734,7 +725,7 @@ where
         children.search_width_range(s_width, e_width);
 
     if l_child == r_child {
-        let (info, _) = children.info()[l_child];
+        let info = children.info()[l_child];
         let (new_info, mut needs_fix) = handle_width_range(
             children, l_child, l_width_acc, s_width, e_width, include_l, include_r,
         );
@@ -757,7 +748,7 @@ where
         // Calculate the start..end range of nodes to be removed.
         let first = l_child + 1;
         let (last, r_child_exists) = {
-            let r_child_width = children.info()[r_child].0.width as usize;
+            let r_child_width = children.info()[r_child].width as usize;
             if r_width_acc + r_child_width == e_width {
                 (r_child + 1, false)
             } else {
@@ -826,8 +817,8 @@ where
     [(); max_children::<M>()]: Sized,
 {
     // Recurse into child
-    let (child_info, _) = children.info()[child_i];
-    let child_width = children.info()[child_i].0.width as usize;
+    let child_info = children.info()[child_i];
+    let child_width = children.info()[child_i].width as usize;
     let (new_info, needs_fix) = Arc::make_mut(&mut children.nodes_mut()[child_i]).remove_range(
         start - accum.min(start),
         (end - accum).min(child_width),
@@ -840,8 +831,7 @@ where
     if new_info.len == 0 {
         children.remove(child_i);
     } else {
-        let zero_width_end = children.nodes()[child_i].zero_width_end();
-        children.info_mut()[child_i] = (new_info, zero_width_end);
+        children.info_mut()[child_i] = new_info;
     }
 
     (new_info, needs_fix)

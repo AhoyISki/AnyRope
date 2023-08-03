@@ -53,7 +53,7 @@ fn main() {
     search_and_replace(&mut text, &[Dolor(5), Sit, Amet], &[Lorem, Ipsum, Lorem]);
 
     // Print the new text to stdout.
-    println!("{}", text);
+    println!("{:?}", text);
 }
 
 /// Searches the rope for `search_pattern` and replaces all matches with

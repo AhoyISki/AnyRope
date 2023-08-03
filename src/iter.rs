@@ -486,7 +486,7 @@ where
                                 len: index_range.1 as u64,
                                 width: width_range.1 as u64,
                             };
-                            (*node_stack.last_mut().unwrap()).1 += 1;
+                            node_stack.last_mut().unwrap().1 += 1;
                         }
                         break;
                     }

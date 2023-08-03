@@ -1,4 +1,4 @@
-#![allow(incomplete_features)]
+#![allow(incomplete_features, clippy::arc_with_non_send_sync)]
 #![feature(generic_const_exprs)]
 //! AnyRope is an arbitrary data rope for Rust.
 //!
@@ -33,24 +33,24 @@
 //! // A simple tag structure that our program can understand.
 //! #[derive(Clone, Copy)]
 //! enum Tag {
-//! 	InRed,
-//! 	UnderLine,
-//! 	Normal,
-//! 	// The `usize` in here represents an amount of characters that won't change
-//! 	// the color of the text.
-//! 	Skip(usize)
+//!     InRed,
+//!     UnderLine,
+//!     Normal,
+//!     // The `usize` in here represents an amount of characters that won't change
+//!     // the color of the text.
+//!     Skip(usize)
 //! }
 //!
 //! impl Measurable for Tag {
-//! 	fn width(&self) -> usize {
-//! 		match self {
-//! 			// The coloring tags are only meant to color, not to "move forward".
-//! 			Tag::InRed | Tag::UnderLine | Tag::Normal => 0,
-//! 			// The Skip tag represents an amount of characters in which no
-//! 			// tags are applied.
-//! 			Tag::Skip(amount) => *amount
-//! 		}
-//! 	}
+//!     fn width(&self) -> usize {
+//!         match self {
+//!             // The coloring tags are only meant to color, not to "move forward".
+//!             Tag::InRed | Tag::UnderLine | Tag::Normal => 0,
+//!             // The Skip tag represents an amount of characters in which no
+//!             // tags are applied.
+//!             Tag::Skip(amount) => *amount
+//!         }
+//!     }
 //! }
 //! use Tag::*;
 //!
@@ -68,25 +68,25 @@
 //! // Do note that Tag::Skip only represents characters because we are also iterating
 //! // over a `Chars` iterator, and have chosen to do so.
 //!
-//!	let mut tags_iter = my_tagger.iter().peekable();
+//! let mut tags_iter = my_tagger.iter().peekable();
 //! for (cur_index, ch) in my_str.chars().enumerate() {
-//! 	// The while let loop here is a useful way to activate all tags within the same
-//! 	// character. Note the sequence of [.., InRed, UnderLine, ..], both of which have
-//! 	// a width of 0. This means that both would be triggered before moving on to the next
-//! 	// character.
-//!		while let Some((index, tag)) = tags_iter.peek() {
-//!			// The returned index is always the width where an element began. In this
-//!			// case, `tags_iter.peek()` would return `Some((0, Skip(5)))`, and then
-//!			// `Some((5, InRed))`.
-//!			if *index == cur_index {
-//!				activate_tag(tag);
-//!				tags_iter.next();
-//!			} else {
-//!				break;
-//!			}
-//!		}
+//!     // The while let loop here is a useful way to activate all tags within the same
+//!     // character. Note the sequence of [.., InRed, UnderLine, ..], both of which have
+//!     // a width of 0. This means that both would be triggered before moving on to the next
+//!     // character.
+//!     while let Some((index, tag)) = tags_iter.peek() {
+//!         // The returned index is always the width where an element began. In this
+//!         // case, `tags_iter.peek()` would return `Some((0, Skip(5)))`, and then
+//!         // `Some((5, InRed))`.
+//!         if *index == cur_index {
+//!             activate_tag(tag);
+//!             tags_iter.next();
+//!         } else {
+//!             break;
+//!         }
+//!     }
 //!
-//!		print!("{}", ch);
+//!     print!("{}", ch);
 //! }
 //! ```
 //!
