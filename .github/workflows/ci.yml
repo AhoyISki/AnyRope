@@ -47,7 +47,7 @@ jobs:
         env:
           MIRIFLAGS: "-Zmiri-strict-provenance"
 
-  clippy-check:
+  clippy:
     name: Run Clippy
     runs-on: ubuntu-latest
     steps:
@@ -57,8 +57,8 @@ jobs:
             toolchain: nightly
             components: clippy
             override: true
-      - uses: actions-rs/clippy-check@v1
+      - uses: actions-rs/clippy@master
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features --all-targets
     
 
