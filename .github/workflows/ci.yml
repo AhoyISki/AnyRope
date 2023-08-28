@@ -48,7 +48,7 @@ jobs:
           MIRIFLAGS: "-Zmiri-strict-provenance"
 
   clippy-check:
-    name: Build Docs
+    name: Run Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
