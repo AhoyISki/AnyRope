@@ -15,7 +15,7 @@ env:
 
 jobs:
   build-and-test-stable:
-    name: Build and test, Rust-stable
+    name: Build and test, Rust-nightly
     runs-on: ubuntu-latest
     steps:
       # Get a checkout and rust toolchain.
@@ -23,28 +23,13 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: nightly
           override: true
 
       # Build and test
-      - run: cargo +stable build
-      - run: cargo +stable test
+      - run: cargo +nightly build
+      - run: cargo +nightly test
 
-  build-and-test-beta:
-    name: Build and test, Rust-beta
-    runs-on: ubuntu-latest
-    steps:
-      # Get a checkout and rust toolchain.
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: beta
-          override: true
-
-      # Build and test
-      - run: cargo +beta build
-      - run: cargo +beta test
   run-miri:
     name: Run Miri
     runs-on: ubuntu-latest
@@ -61,4 +46,19 @@ jobs:
       - run: cargo miri test
         env:
           MIRIFLAGS: "-Zmiri-strict-provenance"
+
+  clippy-check:
+    name: Build Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: nightly
+            components: clippy
+            override: true
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+    
 
