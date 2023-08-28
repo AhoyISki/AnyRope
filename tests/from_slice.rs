@@ -35,7 +35,6 @@ fn from_str() {
 
     let small_vec: Vec<Lipsum> = {
         (0..1000)
-            .into_iter()
             .map(|_| match rng.gen::<usize>() % 14 {
                 0 | 7 => Lorem,
                 1 | 8 => Ipsum,

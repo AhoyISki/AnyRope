@@ -752,7 +752,6 @@ mod tests {
 
     fn pseudo_random() -> Vec<Width> {
         (0..1400)
-            .into_iter()
             .map(|num| match num % 14 {
                 0 => Width(1),
                 1 => Width(2),
@@ -777,8 +776,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn iter_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        for ((_, from_rope), from_vec) in rope.iter().zip(pseudo_random().iter().map(|test| *test))
-        {
+        for ((_, from_rope), from_vec) in rope.iter().zip(pseudo_random().iter().copied()) {
             assert_eq!(from_rope, from_vec);
         }
     }
@@ -918,7 +916,7 @@ mod tests {
         let mut iter_1 = rope.iter_at_width(rope.width());
         let width_vec = pseudo_random();
         // Skip the last element, since it's zero width.
-        let mut iter_2 = width_vec.iter().take(1399).map(|lipsum| *lipsum);
+        let mut iter_2 = width_vec.iter().take(1399).copied();
 
         while let Some(b) = iter_2.next_back() {
             assert_eq!(iter_1.prev().map(|(_, element)| element), Some(b));
@@ -1190,7 +1188,7 @@ mod tests {
         let slice_2 = &pseudo_random()[slice_start_byte..s_end_byte];
 
         let mut slice_1_iter = slice_1.iter();
-        let mut slice_2_iter = slice_2.iter().map(|lipsum| *lipsum);
+        let mut slice_2_iter = slice_2.iter().copied();
 
         assert_eq!(slice_1, slice_2);
         assert_eq!(slice_1.from_index(0).1, slice_2[0]);
@@ -1226,7 +1224,7 @@ mod tests {
         let slice_2 = &pseudo_random()[slice_start_byte..s_end_byte];
 
         let mut bytes_1 = slice_1.iter_at(slice_1.width());
-        let mut bytes_2 = slice_2.iter().map(|lipsum| *lipsum);
+        let mut bytes_2 = slice_2.iter().copied();
         while let Some(b) = bytes_2.next_back() {
             assert_eq!(bytes_1.prev().map(|(_, element)| element), Some(b));
         }

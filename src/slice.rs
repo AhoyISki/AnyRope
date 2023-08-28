@@ -1354,8 +1354,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use rand::distributions::weighted::alias_method::WeightedIndex;
-
     use crate::{
         slice_utils::{index_to_width, start_width_to_index},
         Rope, Width,
@@ -1364,7 +1362,6 @@ mod tests {
     /// 70 elements, total width of 135.
     fn pseudo_random() -> Vec<Width> {
         (0..70)
-            .into_iter()
             .map(|num| match num % 14 {
                 0 | 7 => Width(1),
                 1 | 8 => Width(2),

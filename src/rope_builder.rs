@@ -332,7 +332,6 @@ mod tests {
     /// 70 elements, total width of 135.
     fn lorem_ipsum() -> Vec<Width> {
         (0..70)
-            .into_iter()
             .map(|num| match num % 14 {
                 0 | 7 => Width(1),
                 1 | 8 => Width(2),

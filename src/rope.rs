@@ -1725,7 +1725,6 @@ mod tests {
     /// 70 elements, total width of 135.
     fn pseudo_random() -> Vec<Width> {
         (0..70)
-            .into_iter()
             .map(|num| match num % 14 {
                 0 | 7 => Width(1),
                 1 | 8 => Width(2),
@@ -2430,7 +2429,7 @@ mod tests {
     #[test]
     fn eq_rope_07() {
         let rope = Rope::from(pseudo_random());
-        let slice: Vec<Width> = pseudo_random().into();
+        let slice: Vec<Width> = pseudo_random();
 
         assert_eq!(rope, slice);
         assert_eq!(slice, rope);

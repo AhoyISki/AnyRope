@@ -1,3 +1,4 @@
+#![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 //! Example of basic search-and-replace functionality implemented on top
 //! of AnyRope.
@@ -93,7 +94,7 @@ where
     [(); max_children::<M>()]: Sized,
 {
     const BATCH_SIZE: usize = 256;
-    let replacement_text_len = replacement_slice.iter().count();
+    let replacement_text_len = replacement_slice.len();
 
     let mut head = 0; // Keep track of where we are between searches
     let mut matches = Vec::with_capacity(BATCH_SIZE);
@@ -172,7 +173,7 @@ where
         SearchIter {
             iter: slice.iter(),
             search_pattern,
-            search_pattern_char_len: search_pattern.iter().count(),
+            search_pattern_char_len: search_pattern.len(),
             cur_index: 0,
             possible_matches: Vec::new(),
         }
@@ -205,7 +206,7 @@ where
             while i < self.possible_matches.len() {
                 let pattern_char = self.possible_matches[i].next().unwrap();
                 if next_element == *pattern_char {
-                    if let None = self.possible_matches[i].clone().next() {
+                    if self.possible_matches[i].clone().next().is_none() {
                         // We have a match!  Reset possible matches and
                         // return the successful match's char indices.
                         let char_match_range = (

@@ -29,7 +29,6 @@ use self::Lipsum::*;
 
 fn random_slice(rng: &mut ThreadRng) -> Vec<Lipsum> {
     (0..rng.gen::<usize>() % 10)
-        .into_iter()
         .map(|_| match rng.gen::<usize>() % 14 {
             0 | 7 => Lorem,
             1 | 8 => Ipsum,

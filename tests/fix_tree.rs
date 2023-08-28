@@ -34,7 +34,6 @@ fn remove_at_chunk_boundery() {
 
     let medium_vec: Vec<Lipsum> = {
         (0..100000)
-            .into_iter()
             .map(|_| match rng.gen::<usize>() % 14 {
                 0 | 7 => Lorem,
                 1 | 8 => Ipsum,
