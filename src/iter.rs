@@ -71,9 +71,11 @@
 
 use std::sync::Arc;
 
-use crate::rope::Measurable;
-use crate::slice_utils::{index_to_width, start_width_to_index, width_of};
-use crate::tree::{max_children, max_len, Node, SliceInfo};
+use crate::{
+    rope::Measurable,
+    slice_utils::{index_to_width, start_width_to_index, width_of},
+    tree::{max_children, max_len, Node, SliceInfo},
+};
 
 //==========================================================
 
@@ -1092,10 +1094,10 @@ mod tests {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(34..301);
 
-        let (mut chunks, _, _) = slice.chunks_at_index(slice.len());
+        let (mut chunks, ..) = slice.chunks_at_index(slice.len());
         assert_eq!(chunks.next(), None);
 
-        let (mut chunks, _, _) = slice.chunks_at_index(slice.len());
+        let (mut chunks, ..) = slice.chunks_at_index(slice.len());
         assert_eq!(slice.chunks().last(), chunks.prev());
     }
 
@@ -1105,11 +1107,11 @@ mod tests {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.width_slice(34..34);
 
-        let (mut chunks, _, _) = slice.chunks_at_index(0);
+        let (mut chunks, ..) = slice.chunks_at_index(0);
         assert_eq!(chunks.next(), Some([Width(0)].as_slice()));
         assert!(chunks.next().is_some());
 
-        let (mut chunks, _, _) = slice.chunks_at_index(0);
+        let (mut chunks, ..) = slice.chunks_at_index(0);
         assert_eq!(chunks.prev(), None);
     }
 

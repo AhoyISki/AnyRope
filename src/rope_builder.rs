@@ -2,8 +2,10 @@ use std::sync::Arc;
 
 use smallvec::SmallVec;
 
-use crate::rope::{Measurable, Rope};
-use crate::tree::{max_children, max_len, min_len, BranchChildren, LeafSlice, Node};
+use crate::{
+    rope::{Measurable, Rope},
+    tree::{max_children, max_len, min_len, BranchChildren, LeafSlice, Node},
+};
 
 /// An efficient incremental [`Rope<M>`] builder.
 ///
@@ -207,8 +209,7 @@ where
     ) -> (NextSlice<'a, M>, &'a [M]) {
         assert!(
             self.buffer.len() < max_len::<M>(),
-            "RopeBuilder: buffer is already full when receiving a chunk! \
-             This should never happen!",
+            "RopeBuilder: buffer is already full when receiving a chunk! This should never happen!",
         );
 
         // Simplest case: empty buffer and enough in `slice` for a full

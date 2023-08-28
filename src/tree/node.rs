@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-use crate::rope::Measurable;
-use crate::slice_utils::{end_width_to_index, index_to_width, start_width_to_index};
-use crate::tree::{
-    max_children, max_len, min_children, min_len, BranchChildren, Count, LeafSlice, SliceInfo,
+use crate::{
+    rope::Measurable,
+    slice_utils::{end_width_to_index, index_to_width, start_width_to_index},
+    tree::{
+        max_children, max_len, min_children, min_len, BranchChildren, Count, LeafSlice, SliceInfo,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -727,7 +729,13 @@ where
     if l_child == r_child {
         let info = children.info()[l_child];
         let (new_info, mut needs_fix) = handle_width_range(
-            children, l_child, l_width_acc, s_width, e_width, include_l, include_r,
+            children,
+            l_child,
+            l_width_acc,
+            s_width,
+            e_width,
+            include_l,
+            include_r,
         );
 
         if children.len() > 0 {
@@ -765,7 +773,13 @@ where
         if r_child_exists {
             let include_l = include_l || (s_width < r_width_acc && r_width_acc + 1 < e_width);
             let (_, fix) = handle_width_range(
-                children, first, r_width_acc, s_width, e_width, include_l, include_r,
+                children,
+                first,
+                r_width_acc,
+                s_width,
+                e_width,
+                include_l,
+                include_r,
             );
             needs_fix |= fix;
         }
@@ -774,7 +788,13 @@ where
         let (_, fix) = {
             let include_r = include_r || (s_width < r_width_acc && r_width_acc + 1 < e_width);
             handle_width_range(
-                children, l_child, l_width_acc, s_width, e_width, include_l, include_r,
+                children,
+                l_child,
+                l_width_acc,
+                s_width,
+                e_width,
+                include_l,
+                include_r,
             )
         };
         needs_fix |= fix;

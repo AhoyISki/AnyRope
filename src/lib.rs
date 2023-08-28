@@ -5,12 +5,12 @@
 //! AnyRope's [`Rope<M>`] contains elements `M` that implement [`Measurable`], a
 //! trait that assigns an arbitrary "width" to each element, through the
 //! [`width()`][Measurable::width] function. AnyRope can then use these "widths"
-//! to retrieve and iterate over elements in any given "width" from the beginning
-//! of the [`Rope<M>`].
+//! to retrieve and iterate over elements in any given "width" from the
+//! beginning of the [`Rope<M>`].
 //!
-//! Keep in mind that the "width" does not correspond to the actual size of a type
-//! in bits or bytes, but is instead decided by the implementor, and can be whatever
-//! value they want.
+//! Keep in mind that the "width" does not correspond to the actual size of a
+//! type in bits or bytes, but is instead decided by the implementor, and can be
+//! whatever value they want.
 //!
 //! The library is made up of four main components:
 //!
@@ -22,7 +22,8 @@
 //! # A Basic Example
 //!
 //! Let's say we want create a tagging system that will be applied to text,
-//! in which the tags either tell you to print normally, print in red, underline, or skip:
+//! in which the tags either tell you to print normally, print in red,
+//! underline, or skip:
 //!
 //! ```rust
 //! # use std::io::Result;
@@ -90,8 +91,8 @@
 //! }
 //! ```
 //!
-//! An example can be found in the `examples` directory, detailing a "search and replace"
-//! functionality for [`Rope<M>`].
+//! An example can be found in the `examples` directory, detailing a "search and
+//! replace" functionality for [`Rope<M>`].
 //!
 //! # Low-level APIs
 //!
@@ -99,13 +100,14 @@
 //! code to efficiently work with a [`Rope<M>`]'s data and implement new
 //! functionality.  The most important of those API's are:
 //!
-//! - The [`chunk_at_*()`][Rope::chunk_at_width]
-//!   chunk-fetching methods of [`Rope<M>`] and [`RopeSlice<M>`].
+//! - The [`chunk_at_*()`][Rope::chunk_at_width] chunk-fetching methods of
+//!   [`Rope<M>`] and [`RopeSlice<M>`].
 //! - The [`Chunks`](iter::Chunks) iterator.
-//! - The functions in `slice_utils` for operating on [`&[M]`][Measurable] slices.
+//! - The functions in `slice_utils` for operating on [`&[M]`][Measurable]
+//!   slices.
 //!
-//! As a reminder, if you notice similarities with the AnyRope crate, it is because this
-//! is a heavily modified fork of it.
+//! As a reminder, if you notice similarities with the AnyRope crate, it is
+//! because this is a heavily modified fork of it.
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::inline_always)]
 #![allow(clippy::needless_return)]
@@ -122,10 +124,12 @@ pub mod iter;
 
 use std::ops::Bound;
 
-pub use crate::rope::{Measurable, Rope};
-pub use crate::rope_builder::RopeBuilder;
-pub use crate::slice::RopeSlice;
-pub use crate::tree::{max_children, max_len};
+pub use crate::{
+    rope::{Measurable, Rope},
+    rope_builder::RopeBuilder,
+    slice::RopeSlice,
+    tree::{max_children, max_len},
+};
 
 /// A struct meant for testing and exemplification
 ///
@@ -178,22 +182,26 @@ pub enum Error {
         usize, // End.
     ),
 
-    /// Indicates that the passed index range was partially or fully out of bounds.
+    /// Indicates that the passed index range was partially or fully out of
+    /// bounds.
     ///
     /// Contains the [start, end) indices of the range and the actual
     /// length of the [`Rope<M>`]/[`RopeSlice<M>`], in that order.
-    /// When either the start or end are [`None`], that indicates a half-open range.
+    /// When either the start or end are [`None`], that indicates a half-open
+    /// range.
     IndexRangeOutOfBounds(
         Option<usize>, // Start.
         Option<usize>, // End.
         usize,         // Rope byte length.
     ),
 
-    /// Indicates that the passed width range was partially or fully out of bounds.
+    /// Indicates that the passed width range was partially or fully out of
+    /// bounds.
     ///
     /// Contains the [start, end) widths of the range and the actual
     /// width of the [`Rope<M>`]/[`RopeSlice<M>`], in that order.
-    /// When either the start or end are [`None`], that indicates a half-open range.
+    /// When either the start or end are [`None`], that indicates a half-open
+    /// range.
     WidthRangeOutOfBounds(
         Option<usize>, // Start.
         Option<usize>, // End.

@@ -1,11 +1,14 @@
-use std::ops::RangeBounds;
-use std::sync::Arc;
+use std::{ops::RangeBounds, sync::Arc};
 
-use crate::iter::{Chunks, Iter};
-use crate::rope::{Measurable, Rope};
-use crate::slice_utils::{end_width_to_index, index_to_width, start_width_to_index, width_of};
-use crate::tree::{max_children, max_len, Count, Node, SliceInfo};
-use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
+use crate::{
+    end_bound_to_num,
+    iter::{Chunks, Iter},
+    rope::{Measurable, Rope},
+    slice_utils::{end_width_to_index, index_to_width, start_width_to_index, width_of},
+    start_bound_to_num,
+    tree::{max_children, max_len, Count, Node, SliceInfo},
+    Error, Result,
+};
 
 /// An immutable view into part of a [`Rope<M>`].
 ///
@@ -387,8 +390,15 @@ where
     /// ```
     /// # use any_rope::Rope;
     /// # use any_rope::Width;
-    /// let mut rope =
-    ///     Rope::from_slice(&[Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)]);
+    /// let mut rope = Rope::from_slice(&[
+    ///     Width(1),
+    ///     Width(2),
+    ///     Width(3),
+    ///     Width(0),
+    ///     Width(0),
+    ///     Width(2),
+    ///     Width(1),
+    /// ]);
     /// let slice = rope.width_slice(..5);
     ///
     /// assert_eq!(slice, [Width(1), Width(2), Width(3)].as_slice());

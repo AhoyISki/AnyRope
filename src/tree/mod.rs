@@ -3,10 +3,9 @@ mod leaf_slice;
 mod node;
 mod slice_info;
 
-pub(crate) use self::branch_children::BranchChildren;
-pub(crate) use self::leaf_slice::LeafSlice;
-pub(crate) use self::node::Node;
-pub(crate) use self::slice_info::SliceInfo;
+pub(crate) use self::{
+    branch_children::BranchChildren, leaf_slice::LeafSlice, node::Node, slice_info::SliceInfo,
+};
 
 // Type used for storing tree metadata, such as indices and widths.
 pub(crate) type Count = u64;
@@ -14,21 +13,19 @@ pub(crate) type Count = u64;
 // Real constants used in release builds.
 #[cfg(not(test))]
 mod constants {
-    use super::SliceInfo;
-    use smallvec::SmallVec;
     use std::{
         mem::{align_of, size_of},
         sync::Arc,
     };
 
+    use smallvec::SmallVec;
+
+    use super::SliceInfo;
+
     // Because stdlib's max is not const for some reason.
     // TODO: replace with stdlib max once it's const.
     const fn cmax(a: usize, b: usize) -> usize {
-        if a > b {
-            a
-        } else {
-            b
-        }
+        if a > b { a } else { b }
     }
 
     // Aim for Node + Arc counters to be 1024 bytes.  Keeping the nodes
@@ -107,6 +104,5 @@ mod test_constants {
 
 #[cfg(not(test))]
 pub use self::constants::{max_children, max_len, min_children, min_len};
-
 #[cfg(test)]
 pub use self::test_constants::{max_children, max_len, min_children, min_len};

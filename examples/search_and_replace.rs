@@ -1,15 +1,12 @@
 #![feature(generic_const_exprs)]
 //! Example of basic search-and-replace functionality implemented on top
-//! of Ropey.
-//!
-//! Usage:
-//!     search_and_replace <search_pattern> <replacement_text> <input_filepath>
+//! of AnyRope.
 //!
 //! The file contents with the search-and-replace performed on it is sent to
 //! stdout.
 
 #![allow(clippy::redundant_field_names)]
-use any_rope::{iter::Iter, Measurable, Rope, RopeSlice, max_children, max_len};
+use any_rope::{iter::Iter, max_children, max_len, Measurable, Rope, RopeSlice};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Lipsum {
@@ -61,31 +58,31 @@ fn main() {
 ///
 /// There are several ways this could be done:  
 ///
-/// 1. Clone the rope and then do the search on the original while replacing
-///    on the clone.  This isn't as awful as it sounds because the clone
-///    operation is constant-time and the two ropes will share most of their
-///    storage in typical cases.  However, this probably isn't the best
-///    general solution because it will use a lot of additional space if a
-///    large percentage of the text is being replaced.
+/// 1. Clone the rope and then do the search on the original while replacing on
+///    the clone.  This isn't as awful as it sounds because the clone operation
+///    is constant-time and the two ropes will share most of their storage in
+///    typical cases.  However, this probably isn't the best general solution
+///    because it will use a lot of additional space if a large percentage of
+///    the text is being replaced.
 ///
-/// 2. A two-stage approach: first find and collect all the matches, then
-///    do the replacements on the original rope.  This is a good solution
-///    when a relatively small number of matches are expected.  However, if
-///    there are a large number of matches then the space to store the
-///    matches themselves can become large.
+/// 2. A two-stage approach: first find and collect all the matches, then do the
+///    replacements on the original rope.  This is a good solution when a
+///    relatively small number of matches are expected.  However, if there are a
+///    large number of matches then the space to store the matches themselves
+///    can become large.
 ///
 /// 3. A piece-meal approach: search for the first match, replace it, then
 ///    restart the search from there, repeat.  This is a good solution for
-///    memory-constrained situations.  However, computationally it is likely
-///    the most expensive when there are a large number of matches and there
-///    are costs associated with repeatedly restarting the search.
+///    memory-constrained situations.  However, computationally it is likely the
+///    most expensive when there are a large number of matches and there are
+///    costs associated with repeatedly restarting the search.
 ///
 /// 4. Combine approaches #2 and #3: collect a fixed number of matches and
-///    replace them, then collect another batch of matches and replace them,
-///    and so on.  This is probably the best general solution, because it
-///    combines the best of both #2 and #3: it allows you to collect the
-///    matches in a bounded amount of space, and any costs associated with
-///    restarting the search are amortized over multiple matches.
+///    replace them, then collect another batch of matches and replace them, and
+///    so on.  This is probably the best general solution, because it combines
+///    the best of both #2 and #3: it allows you to collect the matches in a
+///    bounded amount of space, and any costs associated with restarting the
+///    search are amortized over multiple matches.
 ///
 /// In this implementation we take approach #4 because it seems the
 /// all-around best.
@@ -156,8 +153,9 @@ where
     iter: Iter<'a, M>,
     search_pattern: &'a [M],
     search_pattern_char_len: usize,
-    cur_index: usize,                   // The current char index of the search head.
-    possible_matches: Vec<std::slice::Iter<'a, M>>, // Tracks where we are in the search pattern for the current possible matches.
+    cur_index: usize, // The current char index of the search head.
+    possible_matches: Vec<std::slice::Iter<'a, M>>, /* Tracks where we are in the search pattern
+                                                     * for the current possible matches. */
 }
 
 impl<'a, M> SearchIter<'a, M>
@@ -173,7 +171,7 @@ where
         );
         SearchIter {
             iter: slice.iter(),
-            search_pattern: search_pattern,
+            search_pattern,
             search_pattern_char_len: search_pattern.iter().count(),
             cur_index: 0,
             possible_matches: Vec::new(),

@@ -1,12 +1,8 @@
-use std::borrow::Borrow;
-use std::ops::Deref;
-
-use crate::max_children;
-use crate::rope::Measurable;
+use std::{borrow::Borrow, ops::Deref};
 
 use self::inner::LeafSmallVec;
-
 use super::max_len;
+use crate::{max_children, rope::Measurable};
 
 /// A custom small string.  The unsafe guts of this are in [`LeafSmallVec`]
 /// further down in this file.
@@ -194,10 +190,10 @@ where
 /// Try to keep this as small as possible, and implement functionality on
 /// NodeText via the safe APIs whenever possible.
 mod inner {
-    use crate::tree::max_len;
     use smallvec::{Array, SmallVec};
 
     use super::Measurable;
+    use crate::tree::max_len;
 
     /// The backing internal buffer type for [`LeafSlice`][super::LeafSlice].
     #[derive(Copy, Clone)]
@@ -217,6 +213,7 @@ mod inner {
         [(); max_len::<M>()]: Sized,
     {
         type Item = M;
+
         fn size() -> usize {
             max_len::<M>()
         }

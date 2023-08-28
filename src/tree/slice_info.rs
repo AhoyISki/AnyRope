@@ -28,6 +28,7 @@ impl SliceInfo {
 
 impl Add for SliceInfo {
     type Output = Self;
+
     #[inline]
     fn add(self, rhs: SliceInfo) -> SliceInfo {
         SliceInfo {
@@ -46,6 +47,7 @@ impl AddAssign for SliceInfo {
 
 impl Sub for SliceInfo {
     type Output = Self;
+
     #[inline]
     fn sub(self, rhs: SliceInfo) -> SliceInfo {
         SliceInfo {

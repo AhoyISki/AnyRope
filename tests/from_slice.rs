@@ -1,4 +1,4 @@
-use any_rope::{Rope, Measurable};
+use any_rope::{Measurable, Rope};
 use rand::Rng;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

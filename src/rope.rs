@@ -1,13 +1,15 @@
-use std::iter::FromIterator;
-use std::ops::RangeBounds;
-use std::sync::Arc;
+use std::{iter::FromIterator, ops::RangeBounds, sync::Arc};
 
-use crate::iter::{Chunks, Iter};
-use crate::rope_builder::RopeBuilder;
-use crate::slice::RopeSlice;
-use crate::slice_utils::{end_width_to_index, index_to_width, start_width_to_index};
-use crate::tree::{max_children, max_len, min_len, BranchChildren, Node, SliceInfo};
-use crate::{end_bound_to_num, start_bound_to_num, Error, Result};
+use crate::{
+    end_bound_to_num,
+    iter::{Chunks, Iter},
+    rope_builder::RopeBuilder,
+    slice::RopeSlice,
+    slice_utils::{end_width_to_index, index_to_width, start_width_to_index},
+    start_bound_to_num,
+    tree::{max_children, max_len, min_len, BranchChildren, Node, SliceInfo},
+    Error, Result,
+};
 
 /// A object that has a user defined size, that can be interpreted by a
 /// [`Rope<M>`].
@@ -35,8 +37,15 @@ pub trait Measurable: Clone + Copy {
 ///
 /// ```
 /// # use any_rope::{Rope, Width};
-/// let mut rope =
-///     Rope::from_slice(&[Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)]);
+/// let mut rope = Rope::from_slice(&[
+///     Width(1),
+///     Width(2),
+///     Width(3),
+///     Width(0),
+///     Width(0),
+///     Width(2),
+///     Width(1),
+/// ]);
 /// rope.remove_inclusive(6..8);
 /// rope.insert(6, Width(5));
 ///
@@ -85,8 +94,15 @@ pub trait Measurable: Clone + Copy {
 ///
 /// ```
 /// # use any_rope::{Rope, Width};
-/// let mut rope =
-///     Rope::from_slice(&[Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)]);
+/// let mut rope = Rope::from_slice(&[
+///     Width(1),
+///     Width(2),
+///     Width(3),
+///     Width(0),
+///     Width(0),
+///     Width(2),
+///     Width(1),
+/// ]);
 /// let width_slice = rope.width_slice(3..6);
 /// let index_slice = rope.index_slice(2..5);
 ///
@@ -349,7 +365,15 @@ where
     ///
     /// ```rust
     /// # use any_rope::{Rope, Width};
-    /// let array = [Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)];
+    /// let array = [
+    ///     Width(1),
+    ///     Width(2),
+    ///     Width(3),
+    ///     Width(0),
+    ///     Width(0),
+    ///     Width(2),
+    ///     Width(1),
+    /// ];
     /// let mut rope = Rope::from_slice(&array);
     ///
     /// // Removing in the middle of `Width(3)`.
@@ -359,7 +383,15 @@ where
     /// ```
     /// ```rust
     /// # use any_rope::{Rope, Width};
-    /// let array = [Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)];
+    /// let array = [
+    ///     Width(1),
+    ///     Width(2),
+    ///     Width(3),
+    ///     Width(0),
+    ///     Width(0),
+    ///     Width(2),
+    ///     Width(1),
+    /// ];
     /// let mut rope = Rope::from_slice(&array);
     ///
     /// // End bound coincides with a 0 width list.
@@ -369,7 +401,15 @@ where
     /// ```
     /// ```rust
     /// # use any_rope::{Rope, Width};
-    /// let array = [Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)];
+    /// let array = [
+    ///     Width(1),
+    ///     Width(2),
+    ///     Width(3),
+    ///     Width(0),
+    ///     Width(0),
+    ///     Width(2),
+    ///     Width(1),
+    /// ];
     /// let mut rope = Rope::from_slice(&array);
     ///
     /// // Empty range at the start of a 0 width list.
@@ -404,7 +444,15 @@ where
     ///
     /// ```rust
     /// # use any_rope::{Rope, Width};
-    /// let array = [Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)];
+    /// let array = [
+    ///     Width(1),
+    ///     Width(2),
+    ///     Width(3),
+    ///     Width(0),
+    ///     Width(0),
+    ///     Width(2),
+    ///     Width(1),
+    /// ];
     /// let mut rope = Rope::from_slice(&array);
     ///
     /// // End bound coincides with a 0 width list, which does not get removed.
@@ -417,7 +465,15 @@ where
     /// ```
     /// ```rust
     /// # use any_rope::{Rope, Width};
-    /// let array = [Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)];
+    /// let array = [
+    ///     Width(1),
+    ///     Width(2),
+    ///     Width(3),
+    ///     Width(0),
+    ///     Width(0),
+    ///     Width(2),
+    ///     Width(1),
+    /// ];
     /// let mut rope = Rope::from_slice(&array);
     ///
     /// // Empty range at the start of a 0 width list.
@@ -428,7 +484,15 @@ where
     /// ```
     /// ```rust
     /// # use any_rope::{Rope, Width};
-    /// let array = [Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)];
+    /// let array = [
+    ///     Width(1),
+    ///     Width(2),
+    ///     Width(3),
+    ///     Width(0),
+    ///     Width(0),
+    ///     Width(2),
+    ///     Width(1),
+    /// ];
     /// let mut rope = Rope::from_slice(&array);
     ///
     /// // Removing in the middle of `Width(3)`.
@@ -667,8 +731,15 @@ where
     ///
     /// ```
     /// # use any_rope::{Rope, Width};
-    /// let mut rope =
-    ///     Rope::from_slice(&[Width(1), Width(2), Width(3), Width(0), Width(0), Width(2), Width(1)]);
+    /// let mut rope = Rope::from_slice(&[
+    ///     Width(1),
+    ///     Width(2),
+    ///     Width(3),
+    ///     Width(0),
+    ///     Width(0),
+    ///     Width(2),
+    ///     Width(1),
+    /// ]);
     /// let slice = rope.width_slice(..5);
     ///
     /// assert_eq!(slice, [Width(1), Width(2), Width(3)].as_slice());
@@ -1723,8 +1794,17 @@ mod tests {
 
         assert_eq!(
             rope,
-            [Width(1), Width(2), Width(1), Width(2), Width(3), Width(3), Width(0), Width(0)]
-                .as_slice()
+            [
+                Width(1),
+                Width(2),
+                Width(1),
+                Width(2),
+                Width(3),
+                Width(3),
+                Width(0),
+                Width(0)
+            ]
+            .as_slice()
         );
 
         rope.assert_integrity();
@@ -1738,8 +1818,17 @@ mod tests {
 
         assert_eq!(
             rope,
-            [Width(1), Width(2), Width(3), Width(1), Width(2), Width(3), Width(0), Width(0)]
-                .as_slice()
+            [
+                Width(1),
+                Width(2),
+                Width(3),
+                Width(1),
+                Width(2),
+                Width(3),
+                Width(0),
+                Width(0)
+            ]
+            .as_slice()
         );
 
         rope.assert_integrity();
@@ -1753,8 +1842,17 @@ mod tests {
 
         assert_eq!(
             rope,
-            [Width(1), Width(2), Width(3), Width(0), Width(0), Width(1), Width(2), Width(3)]
-                .as_slice()
+            [
+                Width(1),
+                Width(2),
+                Width(3),
+                Width(0),
+                Width(0),
+                Width(1),
+                Width(2),
+                Width(3)
+            ]
+            .as_slice()
         );
 
         rope.assert_integrity();
@@ -1802,7 +1900,15 @@ mod tests {
         rope.insert_slice(20, &[Width(0), Width(0)]);
         assert_eq!(
             rope,
-            [Width(15), Width(4), Width(10), Width(0), Width(0), Width(20)].as_slice()
+            [
+                Width(15),
+                Width(4),
+                Width(10),
+                Width(0),
+                Width(0),
+                Width(20)
+            ]
+            .as_slice()
         );
 
         rope.assert_integrity();
@@ -1811,7 +1917,15 @@ mod tests {
 
     #[test]
     fn remove_01() {
-        let slice = &[Width(15), Width(0), Width(0), Width(24), Width(1), Width(2), Width(7)];
+        let slice = &[
+            Width(15),
+            Width(0),
+            Width(0),
+            Width(24),
+            Width(1),
+            Width(2),
+            Width(7),
+        ];
         let mut rope = Rope::from_slice(slice);
 
         rope.remove_inclusive(0..11); // Removes Width(15).

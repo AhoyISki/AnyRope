@@ -1,10 +1,14 @@
-use std::fmt;
-use std::iter::{Iterator, Zip};
-use std::slice;
-use std::sync::Arc;
+use std::{
+    fmt,
+    iter::{Iterator, Zip},
+    slice,
+    sync::Arc,
+};
 
-use crate::rope::Measurable;
-use crate::tree::{max_children, max_len, Node, SliceInfo};
+use crate::{
+    rope::Measurable,
+    tree::{max_children, max_len, Node, SliceInfo},
+};
 
 /// A fixed-capacity vec of child Arc-pointers and child metadata.
 ///
@@ -517,14 +521,10 @@ where
 /// happened once, and it was a pain to track down--as memory safety bugs often
 /// are.
 mod inner {
-    use crate::rope::Measurable;
-    use crate::tree::max_len;
+    use std::{mem, mem::MaybeUninit, ptr, sync::Arc};
 
     use super::{max_children, Node, SliceInfo};
-    use std::mem;
-    use std::mem::MaybeUninit;
-    use std::ptr;
-    use std::sync::Arc;
+    use crate::{rope::Measurable, tree::max_len};
 
     /// This is essentially a fixed-capacity, stack-allocated [Vec<(M,
     /// SliceInfo)>].
@@ -775,12 +775,13 @@ mod inner {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::{
         tree::{LeafSlice, Node, SliceInfo},
         Width,
     };
-    use std::sync::Arc;
 
     #[test]
     fn search_width_01() {
