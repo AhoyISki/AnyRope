@@ -72,7 +72,7 @@
 use std::sync::Arc;
 
 use crate::{
-    rope::Measurable,
+    Measurable,
     slice_utils::{index_to_width, start_width_to_index, width_of},
     tree::{max_children, max_len, Node, SliceInfo},
 };

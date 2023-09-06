@@ -2,7 +2,7 @@ use std::{borrow::Borrow, ops::Deref};
 
 use self::inner::LeafSmallVec;
 use super::max_len;
-use crate::{max_children, rope::Measurable};
+use crate::{max_children, Measurable};
 
 /// A custom small string.  The unsafe guts of this are in [`LeafSmallVec`]
 /// further down in this file.

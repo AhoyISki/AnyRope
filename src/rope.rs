@@ -1,6 +1,7 @@
 use std::{iter::FromIterator, ops::RangeBounds, sync::Arc};
 
 use crate::{
+    Measurable,
     end_bound_to_num,
     iter::{Chunks, Iter},
     rope_builder::RopeBuilder,
@@ -10,14 +11,6 @@ use crate::{
     tree::{max_children, max_len, min_len, BranchChildren, Node, SliceInfo},
     Error, Result,
 };
-
-/// A object that has a user defined size, that can be interpreted by a
-/// [`Rope<M>`].
-pub trait Measurable: Clone + Copy {
-    /// The width of this element, it need not be the actual lenght in bytes,
-    /// but just a representative value, to be fed to the [`Rope<M>`].
-    fn width(&self) -> usize;
-}
 
 /// A rope of elements that are [`Measurable`].
 ///
@@ -818,9 +811,9 @@ where
             out
         } else {
             panic!(
-                "Attempt to index past end of Rope: index {}, Rope length {}",
+                "Attempt to index past end of Rope: width {}, Rope width {}",
                 width,
-                self.len()
+                self.width()
             );
         }
     }

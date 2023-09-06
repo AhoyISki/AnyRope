@@ -108,11 +108,13 @@
 //!
 //! As a reminder, if you notice similarities with the AnyRope crate, it is
 //! because this is a heavily modified fork of it.
-#![allow(clippy::collapsible_if)]
-#![allow(clippy::inline_always)]
-#![allow(clippy::needless_return)]
-#![allow(clippy::redundant_field_names)]
-#![allow(clippy::type_complexity)]
+#![allow(
+    clippy::collapsible_if,
+    clippy::inline_always,
+    clippy::needless_return,
+    clippy::redundant_field_names,
+    clippy::type_complexity
+)]
 
 mod rope;
 mod rope_builder;
@@ -125,18 +127,28 @@ pub mod iter;
 use std::ops::Bound;
 
 pub use crate::{
-    rope::{Measurable, Rope},
+    rope::{Rope},
     rope_builder::RopeBuilder,
     slice::RopeSlice,
     tree::{max_children, max_len},
 };
 
+/// A object that has a user defined size, that can be interpreted by a
+/// [`Rope<M>`].
+pub trait Measurable: Clone + Copy {
+    /// The width of this element, it need not be the actual lenght in bytes,
+    /// but just a representative value, to be fed to the [`Rope<M>`].
+    fn width(&self) -> usize;
+}
+
 /// A struct meant for testing and exemplification
 ///
 /// Its [`width`][Measurable::width] is always equal to the number within.
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Width(pub usize);
 
+#[cfg(test)]
 impl Measurable for Width {
     fn width(&self) -> usize {
         self.0
@@ -295,15 +307,4 @@ pub(crate) fn end_bound_to_num(b: Bound<&usize>) -> Option<usize> {
         Bound::Excluded(n) => Some(*n),
         Bound::Unbounded => None,
     }
-}
-
-/// Internal macro used to log information.
-#[macro_export]
-#[doc(hidden)]
-macro_rules! log_info {
-    ($($text:tt)*) => {{
-        use std::{fs, io::Write};
-        let mut log = fs::OpenOptions::new().append(true).open("log").unwrap();
-        log.write_fmt(format_args!($($text)*)).unwrap();
-    }};
 }

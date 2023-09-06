@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    rope::Measurable,
+    Measurable,
     slice_utils::{end_width_to_index, index_to_width, start_width_to_index},
     tree::{
         max_children, max_len, min_children, min_len, BranchChildren, Count, LeafSlice, SliceInfo,

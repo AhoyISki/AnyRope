@@ -3,7 +3,8 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use crate::{
-    rope::{Measurable, Rope},
+    Measurable,
+    rope::{Rope},
     tree::{max_children, max_len, min_len, BranchChildren, LeafSlice, Node},
 };
 

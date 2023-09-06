@@ -1,9 +1,10 @@
 use std::{ops::RangeBounds, sync::Arc};
 
 use crate::{
+    Measurable,
     end_bound_to_num,
     iter::{Chunks, Iter},
-    rope::{Measurable, Rope},
+    rope::{Rope},
     slice_utils::{end_width_to_index, index_to_width, start_width_to_index, width_of},
     start_bound_to_num,
     tree::{max_children, max_len, Count, Node, SliceInfo},

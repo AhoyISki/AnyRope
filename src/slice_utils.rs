@@ -1,4 +1,4 @@
-use crate::rope::Measurable;
+use crate::Measurable;
 
 #[inline(always)]
 pub fn width_of<M>(slice: &[M]) -> usize

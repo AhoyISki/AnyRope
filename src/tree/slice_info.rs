@@ -1,6 +1,6 @@
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-use crate::{rope::Measurable, slice_utils::width_of, tree::Count};
+use crate::{Measurable, slice_utils::width_of, tree::Count};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct SliceInfo {

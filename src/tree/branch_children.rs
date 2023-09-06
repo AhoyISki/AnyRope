@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    rope::Measurable,
+    Measurable,
     tree::{max_children, max_len, Node, SliceInfo},
 };
 
@@ -524,7 +524,7 @@ mod inner {
     use std::{mem, mem::MaybeUninit, ptr, sync::Arc};
 
     use super::{max_children, Node, SliceInfo};
-    use crate::{rope::Measurable, tree::max_len};
+    use crate::{Measurable, tree::max_len};
 
     /// This is essentially a fixed-capacity, stack-allocated [Vec<(M,
     /// SliceInfo)>].
