@@ -124,10 +124,14 @@ mod tree;
 
 pub mod iter;
 
-use std::ops::Bound;
+use std::{
+    cmp::Ordering,
+    fmt::Debug,
+    ops::{Add, AddAssign, Bound, RangeBounds, Sub, SubAssign},
+};
 
 pub use crate::{
-    rope::{Rope},
+    rope::Rope,
     rope_builder::RopeBuilder,
     slice::RopeSlice,
     tree::{max_children, max_len},
@@ -135,10 +139,33 @@ pub use crate::{
 
 /// A object that has a user defined size, that can be interpreted by a
 /// [`Rope<M>`].
-pub trait Measurable: Clone + Copy {
+pub trait Measurable: Clone + Copy + PartialEq + Eq {
+    /// This type is what will be used to query, iterate, modify, and slice up
+    /// the [`Rope`].
+    ///
+    /// It needs to be light, since it will be heavily utilized from within
+    /// `any-rope`, and needs to be malleable, such that it can be compared,
+    /// added and subtracted at will by the rope.
+    ///
+    /// Normally, if you wanted to query the measurable at a given place in the
+    /// rope, you'd use a comparator function, provided by the type itself. For
+    /// example
+    type Measure: Debug
+        + Default
+        + Clone
+        + Copy
+        + PartialEq
+        + Eq
+        + PartialOrd
+        + Ord
+        + Add<Output = Self::Measure>
+        + AddAssign
+        + Sub<Output = Self::Measure>
+        + SubAssign;
+
     /// The width of this element, it need not be the actual lenght in bytes,
     /// but just a representative value, to be fed to the [`Rope<M>`].
-    fn width(&self) -> usize;
+    fn measure(&self) -> Self::Measure;
 }
 
 /// A struct meant for testing and exemplification
@@ -150,7 +177,9 @@ pub struct Width(pub usize);
 
 #[cfg(test)]
 impl Measurable for Width {
-    fn width(&self) -> usize {
+    type Measure = usize;
+
+    fn measure(&self) -> Self::Measure {
         self.0
     }
 }
@@ -159,12 +188,12 @@ impl Measurable for Width {
 // Error reporting types.
 
 /// AnyRope's result type.
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T, M: Measurable> = std::result::Result<T, Error<M>>;
 
 /// AnyRope's error type.
 #[derive(Clone, Copy)]
 #[non_exhaustive]
-pub enum Error {
+pub enum Error<M: Measurable> {
     /// Indicates that the passed index was out of bounds.
     ///
     /// Contains the index attempted and the actual length of the
@@ -175,24 +204,18 @@ pub enum Error {
     ///
     /// Contains the index attempted and the actual width of the
     /// [`Rope<M>`]/[`RopeSlice<M>`], in that order.
-    WidthOutOfBounds(usize, usize),
+    MeasureOutOfBounds(M::Measure, M::Measure),
 
     /// Indicates that a reversed index range (end < start) was encountered.
     ///
     /// Contains the [start, end) indices of the range, in that order.
-    IndexRangeInvalid(
-        usize, // Start.
-        usize, // End.
-    ),
+    IndexRangeInvalid(usize, usize),
 
     /// Indicates that a reversed width range (end < start) was
     /// encountered.
     ///
     /// Contains the [start, end) widths of the range, in that order.
-    WidthRangeInvalid(
-        usize, // Start.
-        usize, // End.
-    ),
+    MeasureRangeInvalid(Option<M::Measure>, Option<M::Measure>),
 
     /// Indicates that the passed index range was partially or fully out of
     /// bounds.
@@ -201,27 +224,29 @@ pub enum Error {
     /// length of the [`Rope<M>`]/[`RopeSlice<M>`], in that order.
     /// When either the start or end are [`None`], that indicates a half-open
     /// range.
-    IndexRangeOutOfBounds(
-        Option<usize>, // Start.
-        Option<usize>, // End.
-        usize,         // Rope byte length.
-    ),
+    IndexRangeOutOfBounds(Option<usize>, Option<usize>, usize),
 
     /// Indicates that the passed width range was partially or fully out of
     /// bounds.
     ///
-    /// Contains the [start, end) widths of the range and the actual
-    /// width of the [`Rope<M>`]/[`RopeSlice<M>`], in that order.
+    /// Contains the [start, end) measures of the range and the actual
+    /// measure of the [`Rope<M>`]/[`RopeSlice<M>`], in that order.
     /// When either the start or end are [`None`], that indicates a half-open
     /// range.
-    WidthRangeOutOfBounds(
-        Option<usize>, // Start.
-        Option<usize>, // End.
-        usize,         // Rope char length.
-    ),
+    MeasureRangeOutOfBounds(Option<M::Measure>, Option<M::Measure>, M::Measure),
+
+    /// Indicates that a range was passed whoose start is an exclusive bound.
+    ///
+    /// Contains the (start, end) measures of the range.
+    MeasureRangeWithExclusiveStart(M::Measure, Bound<M::Measure>),
+
+    /// Indicates that a range was passed whoose end is an inclusive bound.
+    ///
+    /// Contains the [start, end] measures of the range.
+    MeasureRangeWithInclusiveEnd(Bound<M::Measure>, M::Measure),
 }
 
-impl std::fmt::Debug for Error {
+impl<M: Measurable> std::fmt::Debug for Error<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
             Error::IndexOutOfBounds(index, len) => {
@@ -231,60 +256,76 @@ impl std::fmt::Debug for Error {
                     index, len
                 )
             }
-            Error::WidthOutOfBounds(index, len) => {
+            Error::MeasureOutOfBounds(measure, max) => {
                 write!(
                     f,
-                    "Width out of bounds: width {}, Rope/RopeSlice char length {}",
-                    index, len
+                    "Measure out of bounds: measure {:?}, Rope/RopeSlice measure {:?}",
+                    measure, max
                 )
             }
-            Error::IndexRangeInvalid(start_idx, end_idx) => {
+            Error::IndexRangeInvalid(start_index, end_index) => {
                 write!(
                     f,
                     "Invalid index range {}..{}: start must be <= end",
-                    start_idx, end_idx
+                    start_index, end_index
                 )
             }
-            Error::WidthRangeInvalid(start_idx, end_idx) => {
+            Error::MeasureRangeInvalid(start_measure, end_measure) => {
                 write!(
                     f,
-                    "Invalid width range {}..{}: start must be <= end",
-                    start_idx, end_idx
+                    "Invalid measure range {:?}..{:?}: start must be <= end",
+                    start_measure, end_measure
                 )
             }
-            Error::IndexRangeOutOfBounds(start_idx_opt, end_idx_opt, len) => {
+            Error::IndexRangeOutOfBounds(start, end, len) => {
                 write!(f, "Index range out of bounds: index range ")?;
-                write_range(f, start_idx_opt, end_idx_opt)?;
+                write_range(f, start, end)?;
                 write!(f, ", Rope/RopeSlice byte length {}", len)
             }
-            Error::WidthRangeOutOfBounds(start_idx_opt, end_idx_opt, len) => {
-                write!(f, "Width range out of bounds: width range ")?;
-                write_range(f, start_idx_opt, end_idx_opt)?;
-                write!(f, ", Rope/RopeSlice char length {}", len)
+            Error::MeasureRangeOutOfBounds(start, end, measure) => {
+                write!(f, "Measure range out of bounds: measure range ")?;
+                write_range(f, start, end)?;
+                write!(f, ", Rope/RopeSlice measure {:?}", measure)
+            }
+            Error::MeasureRangeWithExclusiveStart(start, end) => {
+                write!(f, "Measure range with exclusive start: {:?}!..", start)?;
+                match end {
+                    Bound::Included(end) => write!(f, "={:?}", end),
+                    Bound::Excluded(end) => write!(f, "{:?}", end),
+                    Bound::Unbounded => Ok(()),
+                }
+            }
+            Error::MeasureRangeWithInclusiveEnd(start, end) => {
+                write!(f, "Measure range with inclusive end: ")?;
+                match start {
+                    Bound::Included(start) => write!(f, "{:?}..={:?}", start, end),
+                    Bound::Excluded(start) => write!(f, "{:?}!..={:?}", start, end),
+                    Bound::Unbounded => write!(f, "..={:?}", end),
+                }
             }
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl<M: Measurable> std::error::Error for Error<M> {}
 
-impl std::fmt::Display for Error {
+impl<M: Measurable> std::fmt::Display for Error<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Just re-use the debug impl.
         std::fmt::Debug::fmt(self, f)
     }
 }
 
-fn write_range(
+fn write_range<T: Debug>(
     f: &mut std::fmt::Formatter<'_>,
-    start_idx: Option<usize>,
-    end_idx: Option<usize>,
+    start_idx: Option<T>,
+    end_idx: Option<T>,
 ) -> std::fmt::Result {
     match (start_idx, end_idx) {
         (None, None) => write!(f, ".."),
-        (Some(start), None) => write!(f, "{}..", start),
-        (None, Some(end)) => write!(f, "..{}", end),
-        (Some(start), Some(end)) => write!(f, "{}..{}", start, end),
+        (None, Some(end)) => write!(f, "..{:?}", end),
+        (Some(start), None) => write!(f, "{:?}..", start),
+        (Some(start), Some(end)) => write!(f, "{:?}..{:?}", start, end),
     }
 }
 
@@ -292,7 +333,7 @@ fn write_range(
 // Range handling utilities.
 
 #[inline(always)]
-pub(crate) fn start_bound_to_num(b: Bound<&usize>) -> Option<usize> {
+fn start_bound_to_num(b: Bound<&usize>) -> Option<usize> {
     match b {
         Bound::Included(n) => Some(*n),
         Bound::Excluded(n) => Some(*n + 1),
@@ -301,10 +342,92 @@ pub(crate) fn start_bound_to_num(b: Bound<&usize>) -> Option<usize> {
 }
 
 #[inline(always)]
-pub(crate) fn end_bound_to_num(b: Bound<&usize>) -> Option<usize> {
+fn end_bound_to_num(b: Bound<&usize>) -> Option<usize> {
     match b {
         Bound::Included(n) => Some(*n + 1),
         Bound::Excluded(n) => Some(*n),
         Bound::Unbounded => None,
     }
+}
+
+#[inline(always)]
+fn form_measure_range<M: Measurable>(
+    range: &impl RangeBounds<M::Measure>,
+    limit: M::Measure,
+) -> Result<(M::Measure, M::Measure), M> {
+    match (range.start_bound(), range.end_bound()) {
+        (Bound::Included(start), Bound::Included(end)) => {
+            assert_default_is_min::<M>(start);
+            assert_default_is_min::<M>(end);
+            Err(Error::MeasureRangeWithInclusiveEnd(
+                range.start_bound().cloned(),
+                *end,
+            ))
+        }
+        (Bound::Unbounded, Bound::Included(end)) => {
+            assert_default_is_min::<M>(end);
+            Err(Error::MeasureRangeWithInclusiveEnd(
+                range.start_bound().cloned(),
+                *end,
+            ))
+        }
+        (Bound::Included(start), Bound::Excluded(end)) => {
+            assert_default_is_min::<M>(start);
+            if start > end {
+                assert_default_is_min::<M>(end);
+                Err(Error::MeasureRangeInvalid(Some(*start), Some(*end)))
+            } else if *end > limit || *start > limit {
+                Err(Error::MeasureRangeOutOfBounds(
+                    Some(*start),
+                    Some(*end),
+                    limit,
+                ))
+            } else {
+                Ok((*start, *end))
+            }
+        }
+        (Bound::Excluded(start), Bound::Included(end))
+        | (Bound::Excluded(start), Bound::Excluded(end)) => {
+            assert_default_is_min::<M>(start);
+            assert_default_is_min::<M>(end);
+            Err(Error::MeasureRangeWithExclusiveStart(
+                *start,
+                range.end_bound().cloned(),
+            ))
+        }
+        (Bound::Excluded(start), Bound::Unbounded) => {
+            assert_default_is_min::<M>(start);
+            Err(Error::MeasureRangeWithExclusiveStart(
+                *start,
+                range.end_bound().cloned(),
+            ))
+        }
+        (Bound::Included(start), Bound::Unbounded) => {
+            assert_default_is_min::<M>(start);
+            if *start > limit {
+                Err(Error::MeasureRangeOutOfBounds(Some(*start), None, limit))
+            } else {
+                Ok((*start, limit))
+            }
+        }
+        (Bound::Unbounded, Bound::Excluded(end)) => {
+            assert_default_is_min::<M>(end);
+            if *end > limit {
+                Err(Error::MeasureRangeOutOfBounds(None, Some(*end), limit))
+            } else {
+                Ok((M::Measure::default(), *end))
+            }
+        }
+        (Bound::Unbounded, Bound::Unbounded) => Ok((M::Measure::default(), limit)),
+    }
+}
+
+fn assert_default_is_min<M: Measurable>(cmp: &M::Measure) {
+    debug_assert!(
+        M::Measure::default() <= *cmp,
+        "{:?} (Measure::default()) is supposed to be the smallest possible value for \
+         Measurable::Measure, and yet {:?} is smaller",
+        M::Measure::default(),
+        cmp
+    )
 }
