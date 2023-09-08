@@ -372,7 +372,7 @@ where
         for info in self.info()[..self.info().len() - 1].iter() {
             let new_accum = accum + *info;
 
-            if measure <= new_accum.measure {
+            if cmp(&measure, &new_accum.measure).is_le() {
                 break;
             }
 
@@ -381,7 +381,7 @@ where
         }
 
         debug_assert!(
-            measure <= (accum.measure + self.info()[index].measure),
+            cmp(&measure, &(accum.measure + self.info()[index].measure)).is_le(),
             "Index out of bounds."
         );
 
@@ -402,7 +402,7 @@ where
         let (index, accum) = self.search_by(|end| cmp(&measure, &end.measure).is_lt());
 
         debug_assert!(
-            measure <= (accum.measure + self.info()[index].measure),
+            cmp(&measure, &(accum.measure + self.info()[index].measure)).is_le(),
             "Index out of bounds."
         );
 
@@ -439,7 +439,7 @@ where
 
         debug_assert!(
             cmp(&measure, &(accum + self.info()[index].measure)).is_le(),
-            "Index out of bounds."
+            "Index out of bounds. {:?}, {:?}", measure, accum + self.info()[index].measure
         );
 
         (index, accum)

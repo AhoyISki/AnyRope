@@ -1,4 +1,8 @@
-#![allow(incomplete_features, clippy::arc_with_non_send_sync)]
+#![allow(
+    incomplete_features,
+    clippy::arc_with_non_send_sync,
+    clippy::too_many_arguments
+)]
 #![feature(generic_const_exprs)]
 //! AnyRope is an arbitrary data rope for Rust.
 //!
@@ -181,6 +185,13 @@ impl Measurable for Width {
     fn measure(&self) -> Self::Measure {
         self.0
     }
+}
+
+fn saturating_sub<T>(lhs: T, rhs: T) -> T
+where
+    T: Default + PartialOrd + Sub<Output = T>,
+{
+    if rhs > lhs { T::default() } else { lhs - rhs }
 }
 
 //==============================================================

@@ -23,7 +23,6 @@ mod constants {
     use smallvec::SmallVec;
 
     use super::SliceInfo;
-    use crate::Measurable;
 
     // Because stdlib's max is not const for some reason.
     // TODO: replace with stdlib max once it's const.

@@ -63,6 +63,7 @@ fn shrink_to_fit() {
         );
     }
 
+
     let rope2 = rope.clone();
     rope.shrink_to_fit();
 

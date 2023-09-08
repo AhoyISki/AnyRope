@@ -1027,7 +1027,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Result<(), M> {
         // Bounds check
-        if measure <= self.measure() {
+        if cmp(&measure, &self.measure()).is_le() {
             // We have three cases here:
             // 1. The insertion slice is very large, in which case building a new Rope out
             //    of it and splicing it into the existing Rope is most efficient.
@@ -1056,13 +1056,12 @@ where
                     // We do this from the end instead of the front so that
                     // the repeated insertions can keep re-using the same
                     // insertion point.
-                    let split_index =
-                        slice.len() - (max_len::<M, M::Measure>() - 4).min(slice.len());
+                    let split_index = slice.len().saturating_sub(max_len::<M, M::Measure>() - 4);
                     let ins_slice = &slice[split_index..];
                     slice = &slice[..split_index];
 
                     // Do the insertion.
-                    self.insert_internal(measure, ins_slice, &M::Measure::cmp);
+                    self.insert_internal(measure, ins_slice, &cmp);
                 }
             }
             Ok(())
@@ -1270,7 +1269,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Option<(&[M], usize, M::Measure)> {
         // Bounds check
-        if measure <= self.measure() && !self.is_empty() {
+        if cmp(&measure, &self.measure()).is_le() && !self.is_empty() {
             let (chunk, info) = self.root.get_first_chunk_at_measure(measure, &cmp);
             Some((chunk, info.len as usize, info.measure))
         } else {
@@ -2003,9 +2002,9 @@ mod tests {
         ];
         let mut rope = Rope::from_slice(slice);
 
-        rope.remove_inclusive(0..11, usize::cmp); // Removes Width(15).
-        rope.remove_inclusive(24..31, usize::cmp); // Removes [Width(1), Width(2), Width(7)].
-        rope.remove_inclusive(0..0, usize::cmp); // Removes Width(24).
+        rope.remove_inclusive(0..11, usize::cmp);
+        rope.remove_inclusive(24..31, usize::cmp);
+        rope.remove_inclusive(0..0, usize::cmp);
         assert_eq!(rope, [Width(24)].as_slice());
 
         rope.assert_integrity();

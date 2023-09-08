@@ -5,6 +5,7 @@ use crate::{
     iter::{Chunks, Iter},
     measures_from_range,
     rope::Rope,
+    saturating_sub,
     slice_utils::{end_measure_to_index, index_to_measure, measure_of, start_measure_to_index},
     start_bound_to_num,
     tree::{max_children, max_len, Count, Node, SliceInfo},
@@ -58,7 +59,7 @@ where
         cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Self {
         // Early-out shortcut for taking a slice of the full thing.
-        if start == M::Measure::default() && end == node.measure() {
+        if cmp(&start, &M::Measure::default()).is_eq() && cmp(&end, &node.measure()).is_eq() {
             if node.is_leaf() {
                 let slice = node.leaf_slice();
                 return RopeSlice(RSEnum::Light { slice });
@@ -96,7 +97,9 @@ where
                 Node::Branch(ref children) => {
                     let mut start_measure = M::Measure::default();
                     for (i, info) in children.info().iter().enumerate() {
-                        if n_start > start_measure && n_end < (start_measure + info.measure) {
+                        if cmp(&n_start, &start_measure).is_gt()
+                            && cmp(&n_end, &(start_measure + info.measure)).is_lt()
+                        {
                             n_start -= start_measure;
                             n_end -= start_measure;
                             node = &children.nodes()[i];
@@ -653,7 +656,7 @@ where
     }
 
     /// Non-panicking version of
-    /// [`start_width_to_index()`][RopeSlice::start_width_to_index].
+    /// [`start_measure_to_index()`][RopeSlice::start_measure_to_index].
     #[inline]
     pub fn try_start_measure_to_index(
         &self,
@@ -661,7 +664,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Result<usize, M> {
         // Bounds check
-        if measure <= self.measure() {
+        if cmp(&measure, &self.measure()).is_le() {
             let (chunk, b, c) = self.chunk_at_measure(measure, &cmp);
             Ok(b + start_measure_to_index(chunk, measure - c, cmp))
         } else {
@@ -670,19 +673,19 @@ where
     }
 
     /// Non-panicking version of
-    /// [`end_width_to_index()`][RopeSlice::end_width_to_index].
+    /// [`end_measure_to_index()`][RopeSlice::end_measure_to_index].
     #[inline]
     pub fn try_end_measure_to_index(
         &self,
-        width: M::Measure,
+        measure: M::Measure,
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Result<usize, M> {
         // Bounds check
-        if width <= self.measure() {
-            let (chunk, b, c) = self.chunk_at_measure(width, &cmp);
-            Ok(b + end_measure_to_index(chunk, width - c, cmp))
+        if cmp(&measure, &self.measure()).is_le() {
+            let (chunk, b, c) = self.chunk_at_measure(measure, &cmp);
+            Ok(b + end_measure_to_index(chunk, measure - c, cmp))
         } else {
-            Err(Error::MeasureOutOfBounds(width, self.measure()))
+            Err(Error::MeasureOutOfBounds(measure, self.measure()))
         }
     }
 
@@ -708,7 +711,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Option<(M::Measure, M)> {
         // Bounds check
-        if measure < self.measure() {
+        if cmp(&measure, &self.measure()).is_lt() {
             let (chunk, _, chunk_width) = self.chunk_at_measure(measure, &cmp);
             let index = start_measure_to_index(chunk, measure - chunk_width, cmp);
             let width = index_to_measure(chunk, index);
@@ -743,7 +746,7 @@ where
                     Ok((
                         &chunk[chunk_start_index as usize..chunk_end_index as usize],
                         chunk_start_info.len.saturating_sub(start_info.len) as usize,
-                        chunk_start_info.measure - start_info.measure,
+                        saturating_sub(chunk_start_info.measure, start_info.measure),
                     ))
                 }
                 RopeSlice(RSEnum::Light { slice, .. }) => Ok((slice, 0, M::Measure::default())),
@@ -762,7 +765,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Option<(&'a [M], usize, M::Measure)> {
         // Bounds check
-        if measure <= self.measure() {
+        if cmp(&measure, &self.measure()).is_le() {
             match *self {
                 RopeSlice(RSEnum::Full {
                     node,
@@ -782,7 +785,7 @@ where
                     Some((
                         &chunk[chunk_start_index as usize..chunk_end_index as usize],
                         chunk_start_info.len.saturating_sub(start_info.len) as usize,
-                        chunk_start_info.measure - start_info.measure,
+                        saturating_sub(chunk_start_info.measure, start_info.measure),
                     ))
                 }
                 RopeSlice(RSEnum::Light { slice, .. }) => Some((slice, 0, M::Measure::default())),
@@ -806,7 +809,7 @@ where
         }
 
         // Bounds check
-        if start <= end && end <= self.measure() {
+        if cmp(&start, &end).is_le() && cmp(&end, &self.measure()).is_le() {
             match *self {
                 RopeSlice(RSEnum::Full {
                     node, start_info, ..
@@ -909,7 +912,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Option<Iter<'a, M>> {
         // Bounds check
-        if measure <= self.measure() {
+        if cmp(&measure, &self.measure()).is_le() {
             match *self {
                 RopeSlice(RSEnum::Full {
                     node,
@@ -980,7 +983,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Option<(Chunks<'a, M>, usize, M::Measure)> {
         // Bounds check
-        if measure <= self.measure() {
+        if cmp(&measure, &self.measure()).is_le() {
             match *self {
                 RopeSlice(RSEnum::Full {
                     node,
@@ -1002,11 +1005,11 @@ where
                     ))
                 }
                 RopeSlice(RSEnum::Light { slice, .. }) => {
-                    let slice_width = measure_of(slice);
-                    let chunks = Chunks::from_slice(slice, measure == slice_width);
+                    let slice_measure = measure_of(slice);
+                    let chunks = Chunks::from_slice(slice, cmp(&measure, &slice_measure).is_eq());
 
-                    if measure == slice_width {
-                        Some((chunks, slice.len(), slice_width))
+                    if cmp(&measure, &slice_measure).is_eq() {
+                        Some((chunks, slice.len(), slice_measure))
                     } else {
                         Some((chunks, 0, M::Measure::default()))
                     }
@@ -1466,7 +1469,7 @@ mod tests {
     }
 
     #[test]
-    fn width_to_index_01() {
+    fn measure_to_index_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.measure_slice(88..135, usize::cmp);
 
@@ -1475,7 +1478,7 @@ mod tests {
         // For example, `Width("bye")` only lasts for 2 widths, even
         // though its width is 3.
         // This is because there are 0 width elements preceding it, and the
-        // width in `width_to_index()` merely corresponds to the end of an
+        // width in `measure_to_index()` merely corresponds to the end of an
         // element, and has no relation to the referred element's width.
         assert_eq!(slice.start_measure_to_index(0, usize::cmp), 0);
         assert_eq!(slice.start_measure_to_index(1, usize::cmp), 2);

@@ -383,7 +383,9 @@ where
                     info += acc_info;
 
                     node = &*children.nodes()[child_i];
+                    println!("\x1b[32mGOT HERE n 1\x1b[39m");
                     measure -= acc_info.measure;
+                    println!("\x1b[31mGOT HERE n 1\x1b[39m");
                 }
             }
         }
@@ -679,7 +681,7 @@ where
                         }
                     } else {
                         do_merge |= {
-                            start_info.measure == measure
+                            cmp(&start_info.measure, &measure).is_eq()
                                 && match *children.nodes()[child_i - 1] {
                                     Node::Leaf(ref slice) => {
                                         slice.len() < min_len::<M, M::Measure>()
@@ -699,7 +701,7 @@ where
                 // Do recursion
                 let (child_i, start_info) = children.search_start_measure(measure, cmp);
 
-                if start_info.measure == measure && child_i != 0 {
+                if cmp(&start_info.measure, &measure).is_eq() && child_i != 0 {
                     let tmp = children.info()[child_i - 1].measure;
                     let effect_1 = Arc::make_mut(&mut children.nodes_mut()[child_i - 1])
                         .fix_tree_seam(tmp, cmp);
@@ -744,10 +746,10 @@ where
     // in the middle of an element.
     let non_zero_width = slice
         .get(start_index)
-        .map(|m| cmp(&m.measure(), &M::Measure::default()).is_ge())
+        .map(|m| cmp(&m.measure(), &M::Measure::default()).is_gt())
         .unwrap_or(true);
 
-    if start == end && non_zero_width {
+    if cmp(&start, &end).is_eq() && non_zero_width {
         return (SliceInfo::<M::Measure>::from_slice(slice), false);
     }
 
@@ -763,8 +765,8 @@ where
 
 fn remove_from_children<M>(
     children: &mut BranchChildren<M>,
-    start_bound: M::Measure,
-    end_bound: M::Measure,
+    start: M::Measure,
+    end: M::Measure,
     cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
     incl_left: bool,
     incl_right: bool,
@@ -776,19 +778,12 @@ where
     [(); max_children::<M, M::Measure>()]: Sized,
 {
     let ((left_child, left_accum), (right_child, right_accum)) =
-        children.search_measure_range(start_bound, end_bound, cmp);
+        children.search_measure_range(start, end, cmp);
 
     if left_child == right_child {
         let child_info = children.info()[left_child];
         let (new_info, mut needs_fix) = handle_measure_range(
-            children,
-            left_child,
-            left_accum,
-            start_bound,
-            end_bound,
-            cmp,
-            incl_left,
-            incl_right,
+            children, left_child, left_accum, start, end, cmp, incl_left, incl_right,
         );
 
         if children.len() > 0 {
@@ -810,7 +805,7 @@ where
         let first = left_child + 1;
         let (last, right_child_exists) = {
             let right_measure = children.info()[right_child].measure;
-            if right_accum + right_measure == end_bound {
+            if right_accum + right_measure == end {
                 (right_child + 1, false)
             } else {
                 (right_child, true)
@@ -822,8 +817,8 @@ where
             children.remove(first);
         }
 
-        // POINT OF CONTENTION, MAY FAIL LOL.
-        let between_two_children = start_bound < right_accum && right_accum < end_bound;
+        let between_two_children =
+            cmp(&start, &right_accum).is_lt() && cmp(&right_accum, &end).is_lt();
 
         // Handle right child
         if right_child_exists {
@@ -831,8 +826,8 @@ where
                 children,
                 first,
                 right_accum,
-                start_bound,
-                end_bound,
+                start,
+                end,
                 cmp,
                 incl_left || between_two_children,
                 incl_right,
@@ -846,8 +841,8 @@ where
                 children,
                 left_child,
                 left_accum,
-                start_bound,
-                end_bound,
+                start,
+                end,
                 cmp,
                 incl_left,
                 incl_right || between_two_children,

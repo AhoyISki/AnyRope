@@ -34,8 +34,8 @@ pub fn start_measure_to_index<M: Measurable>(
         let measure = measurable.measure();
         let next_accum = accum + measure;
 
-        if cmp(&start, &next_accum).is_le()
-            || (measure == M::Measure::default() && cmp(&start, &next_accum).is_eq())
+        if cmp(&next_accum, &start).is_gt()
+            || (cmp(&measure, &M::Measure::default()).is_eq() && cmp(&start, &next_accum).is_eq())
         {
             break;
         }
@@ -59,8 +59,8 @@ pub fn end_measure_to_index<M: Measurable>(
     for measurable in slice {
         let measure = measurable.measure();
         // This makes it so that every 0 width node exactly at `width` is also captured.
-        if cmp(&end, &accum).is_le()
-            || (measure != M::Measure::default() && cmp(&end, &accum).is_eq())
+        if cmp(&accum, &end).is_gt()
+            || (cmp(&measure, &M::Measure::default()).is_ne() && cmp(&end, &accum).is_eq())
         {
             break;
         }
