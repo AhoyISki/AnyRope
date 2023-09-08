@@ -93,18 +93,20 @@ mod constants {
 // the tests.
 #[cfg(test)]
 mod test_constants {
-    pub const fn max_children<T>() -> usize {
+    use crate::Measurable;
+
+    pub const fn max_children<M: Measurable>() -> usize {
         5
     }
-    pub const fn min_children<T>() -> usize {
-        max_children::<T>() / 2
+    pub const fn min_children<M: Measurable>() -> usize {
+        max_children::<M>() / 2
     }
 
-    pub const fn max_len<T>() -> usize {
+    pub const fn max_len<M>() -> usize {
         9
     }
-    pub const fn min_len<T>() -> usize {
-        (max_len::<T>() / 2) - (max_len::<T>() / 32)
+    pub const fn min_len<M: Measurable>() -> usize {
+        (max_len::<M>() / 2) - (max_len::<M>() / 32)
     }
 }
 

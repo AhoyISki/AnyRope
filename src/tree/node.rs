@@ -651,14 +651,14 @@ where
     pub fn fix_tree_seam(
         &mut self,
         measure: M::Measure,
-        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+        cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> bool {
         if let Node::Branch(ref mut children) = *self {
             let mut did_stuff = false;
             loop {
                 // Do merging
                 if children.len() > 1 {
-                    let (child_i, start_info) = children.search_start_measure(measure, &cmp);
+                    let (child_i, start_info) = children.search_start_measure(measure, cmp);
                     let mut do_merge = match *children.nodes()[child_i] {
                         Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
                         Node::Branch(ref children2) => children2.len() < min_children::<M>(),
@@ -686,19 +686,19 @@ where
                 }
 
                 // Do recursion
-                let (child_i, start_info) = children.search_start_measure(measure, &cmp);
+                let (child_i, start_info) = children.search_start_measure(measure, cmp);
 
                 if start_info.measure == measure && child_i != 0 {
                     let tmp = children.info()[child_i - 1].measure;
                     let effect_1 = Arc::make_mut(&mut children.nodes_mut()[child_i - 1])
-                        .fix_tree_seam(tmp, &cmp);
+                        .fix_tree_seam(tmp, cmp);
                     let effect_2 = Arc::make_mut(&mut children.nodes_mut()[child_i])
-                        .fix_tree_seam(M::Measure::default(), &cmp);
+                        .fix_tree_seam(M::Measure::default(), cmp);
                     if (!effect_1) && (!effect_2) {
                         break;
                     }
                 } else if !Arc::make_mut(&mut children.nodes_mut()[child_i])
-                    .fix_tree_seam(measure - start_info.measure, &cmp)
+                    .fix_tree_seam(measure - start_info.measure, cmp)
                 {
                     break;
                 }

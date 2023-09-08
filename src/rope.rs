@@ -584,7 +584,7 @@ where
             if (left_info.len as usize) < min_len::<M>()
                 || (right_info.len as usize) < min_len::<M>()
             {
-                root.fix_tree_seam(left_info.measure, M::Measure::cmp);
+                root.fix_tree_seam(left_info.measure, &M::Measure::cmp);
             }
             self.pull_up_singular_nodes();
         }
