@@ -20,14 +20,14 @@ use crate::{
 pub(crate) struct BranchChildren<M>(inner::BranchChildrenInternal<M>)
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized;
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized;
 
 impl<M> BranchChildren<M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     /// Creates a new empty array.
     pub fn new() -> Self {
@@ -41,7 +41,7 @@ where
 
     /// Returns whether the array is full or not.
     pub fn is_full(&self) -> bool {
-        self.len() == max_children::<M>()
+        self.len() == max_children::<M, M::Measure>()
     }
 
     /// Access to the nodes array.
@@ -55,17 +55,17 @@ where
     }
 
     /// Access to the info array.
-    pub fn info(&self) -> &[SliceInfo<M>] {
+    pub fn info(&self) -> &[SliceInfo<M::Measure>] {
         self.0.info()
     }
 
     /// Mutable access to the info array.
-    pub fn info_mut(&mut self) -> &mut [SliceInfo<M>] {
+    pub fn info_mut(&mut self) -> &mut [SliceInfo<M::Measure>] {
         self.0.info_mut()
     }
 
     /// Mutable access to both the info and nodes arrays simultaneously.
-    pub fn data_mut(&mut self) -> (&mut [SliceInfo<M>], &mut [Arc<Node<M>>]) {
+    pub fn data_mut(&mut self) -> (&mut [SliceInfo<M::Measure>], &mut [Arc<Node<M>>]) {
         self.0.data_mut()
     }
 
@@ -78,7 +78,7 @@ where
     /// Pushes an item into the end of the array.
     ///
     /// Increases length by one. Panics if already full.
-    pub fn push(&mut self, item: (SliceInfo<M>, Arc<Node<M>>)) {
+    pub fn push(&mut self, item: (SliceInfo<M::Measure>, Arc<Node<M>>)) {
         self.0.push(item)
     }
 
@@ -86,7 +86,7 @@ where
     /// returning the right half.
     ///
     /// This works even when the array is full.
-    pub fn push_split(&mut self, new_child: (SliceInfo<M>, Arc<Node<M>>)) -> Self {
+    pub fn push_split(&mut self, new_child: (SliceInfo<M::Measure>, Arc<Node<M>>)) -> Self {
         let r_count = (self.len() + 1) / 2;
         let l_count = (self.len() + 1) - r_count;
 
@@ -112,7 +112,7 @@ where
             match *node1 {
                 Node::Leaf(ref mut slice1) => {
                     if let Node::Leaf(ref mut slice2) = *node2 {
-                        if (slice1.len() + slice2.len()) <= max_children::<M>() {
+                        if (slice1.len() + slice2.len()) <= max_children::<M, M::Measure>() {
                             slice1.push_slice(slice2);
                             true
                         } else {
@@ -127,7 +127,7 @@ where
 
                 Node::Branch(ref mut children1) => {
                     if let Node::Branch(ref mut children2) = *node2 {
-                        if (children1.len() + children2.len()) <= max_children::<M>() {
+                        if (children1.len() + children2.len()) <= max_children::<M, M::Measure>() {
                             for _ in 0..children2.len() {
                                 children1.push(children2.remove(0));
                             }
@@ -176,7 +176,7 @@ where
         let mut i = 1;
         while i < self.len() {
             if (self.nodes()[i - 1].leaf_slice().len() + self.nodes()[i].leaf_slice().len())
-                <= max_len::<M>()
+                <= max_len::<M, M::Measure>()
             {
                 // Scope to contain borrows
                 {
@@ -186,13 +186,13 @@ where
                     slice_l.push_slice(slice_r);
                 }
                 self.remove(i);
-            } else if self.nodes()[i - 1].leaf_slice().len() < max_len::<M>() {
+            } else if self.nodes()[i - 1].leaf_slice().len() < max_len::<M, M::Measure>() {
                 // Scope to contain borrows
                 {
                     let ((_, node_l), (_, node_r)) = self.get_two_mut(i - 1, i);
                     let slice_l = Arc::make_mut(node_l).leaf_slice_mut();
                     let slice_r = Arc::make_mut(node_r).leaf_slice_mut();
-                    let split_index_r = max_len::<M>() - slice_l.len();
+                    let split_index_r = max_len::<M, M::Measure>() - slice_l.len();
                     slice_l.push_slice(&slice_r[..split_index_r]);
                     slice_r.truncate_front(split_index_r);
                 }
@@ -210,7 +210,7 @@ where
     /// Pops an item off the end of the array and returns it.
     ///
     /// Decreases length by one. Panics if already empty.
-    pub fn pop(&mut self) -> (SliceInfo<M>, Arc<Node<M>>) {
+    pub fn pop(&mut self) -> (SliceInfo<M::Measure>, Arc<Node<M>>) {
         self.0.pop()
     }
 
@@ -218,7 +218,7 @@ where
     ///
     /// Increases length by one. Panics if already full. Preserves ordering
     /// of the other items.
-    pub fn insert(&mut self, index: usize, item: (SliceInfo<M>, Arc<Node<M>>)) {
+    pub fn insert(&mut self, index: usize, item: (SliceInfo<M::Measure>, Arc<Node<M>>)) {
         self.0.insert(index, item)
     }
 
@@ -226,7 +226,11 @@ where
     /// returning the right half.
     ///
     /// This works even when the array is full.
-    pub fn insert_split(&mut self, index: usize, item: (SliceInfo<M>, Arc<Node<M>>)) -> Self {
+    pub fn insert_split(
+        &mut self,
+        index: usize,
+        item: (SliceInfo<M::Measure>, Arc<Node<M>>),
+    ) -> Self {
         assert!(self.len() > 0);
         assert!(index <= self.len());
         let extra = if index < self.len() {
@@ -243,7 +247,7 @@ where
     /// Removes the item at the given index from the the array.
     ///
     /// Decreases length by one. Preserves ordering of the other items.
-    pub fn remove(&mut self, index: usize) -> (SliceInfo<M>, Arc<Node<M>>) {
+    pub fn remove(&mut self, index: usize) -> (SliceInfo<M::Measure>, Arc<Node<M>>) {
         self.0.remove(index)
     }
 
@@ -272,8 +276,8 @@ where
         index1: usize,
         index2: usize,
     ) -> (
-        (&mut SliceInfo<M>, &mut Arc<Node<M>>),
-        (&mut SliceInfo<M>, &mut Arc<Node<M>>),
+        (&mut SliceInfo<M::Measure>, &mut Arc<Node<M>>),
+        (&mut SliceInfo<M::Measure>, &mut Arc<Node<M>>),
     ) {
         assert!(index1 < index2);
         assert!(index2 < self.len());
@@ -293,14 +297,14 @@ where
     }
 
     /// Creates an iterator over the array's items.
-    pub fn iter(&self) -> Zip<slice::Iter<SliceInfo<M>>, slice::Iter<Arc<Node<M>>>> {
+    pub fn iter(&self) -> Zip<slice::Iter<SliceInfo<M::Measure>>, slice::Iter<Arc<Node<M>>>> {
         Iterator::zip(self.info().iter(), self.nodes().iter())
     }
 
     #[allow(clippy::needless_range_loop)]
-    pub fn combined_info(&self) -> SliceInfo<M> {
+    pub fn combined_info(&self) -> SliceInfo<M::Measure> {
         let info = self.info();
-        let mut acc = SliceInfo::new();
+        let mut acc = SliceInfo::<M::Measure>::new::<M>();
 
         // Doing this with an explicit loop is notably faster than
         // using an iterator in this case.
@@ -316,14 +320,14 @@ where
     ///
     /// If no child matches the predicate, the last child is returned.
     #[inline(always)]
-    pub fn search_by<F>(&self, pred: F) -> (usize, SliceInfo<M>)
+    pub fn search_by<F>(&self, pred: F) -> (usize, SliceInfo<M::Measure>)
     where
         // (left-accumulated start info, left-accumulated end info)
-        F: Fn(SliceInfo<M>) -> bool,
+        F: Fn(SliceInfo<M::Measure>) -> bool,
     {
         debug_assert!(self.len() > 0);
 
-        let mut accum = SliceInfo::new();
+        let mut accum = SliceInfo::<M::Measure>::new::<M>();
         let mut index = 0;
         for info in self.info()[0..(self.len() - 1)].iter() {
             let next_accum = accum + *info;
@@ -341,7 +345,7 @@ where
     /// child that contains the given index.
     ///
     /// One-past-the end is valid, and will return the last child.
-    pub fn search_index(&self, index: usize) -> (usize, SliceInfo<M>) {
+    pub fn search_index(&self, index: usize) -> (usize, SliceInfo<M::Measure>) {
         let (index, accum) = self.search_by(|end| index < end.len as usize);
 
         debug_assert!(
@@ -360,10 +364,10 @@ where
         &self,
         measure: M::Measure,
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
-    ) -> (usize, SliceInfo<M>) {
+    ) -> (usize, SliceInfo<M::Measure>) {
         debug_assert!(self.len() > 0);
 
-        let mut accum = SliceInfo::new();
+        let mut accum = SliceInfo::<M::Measure>::new::<M>();
         let mut index = 0;
         for info in self.info()[..self.info().len() - 1].iter() {
             let new_accum = accum + *info;
@@ -388,10 +392,14 @@ where
     /// child that contains the given width.
     ///
     /// One-past-the end is valid, and will return the last child.
-    pub fn search_end_measure(&self, measure: M::Measure) -> (usize, SliceInfo<M>) {
+    pub fn search_end_measure(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> (usize, SliceInfo<M::Measure>) {
         // The search uses the `<=` comparison because any slice may end with 0 width
         // elements, and the use of the `<` comparison would leave those behind.
-        let (index, accum) = self.search_by(|end| measure < end.measure);
+        let (index, accum) = self.search_by(|end| cmp(&measure, &end.measure).is_lt());
 
         debug_assert!(
             measure <= (accum.measure + self.info()[index].measure),
@@ -409,7 +417,11 @@ where
     ///
     /// One-past-the end is valid, and will return the last child.
     #[inline(always)]
-    pub fn search_measure_only(&self, measure: M::Measure) -> (usize, M::Measure) {
+    pub fn search_measure_only(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> (usize, M::Measure) {
         debug_assert!(self.len() > 0);
 
         let mut accum = M::Measure::default();
@@ -418,7 +430,7 @@ where
         for info in self.info()[..self.info().len() - 1].iter() {
             let new_accum = accum + info.measure;
 
-            if measure < new_accum {
+            if cmp(&measure, &new_accum).is_lt() {
                 break;
             }
             accum = new_accum;
@@ -426,7 +438,7 @@ where
         }
 
         debug_assert!(
-            measure <= (accum + self.info()[index].measure),
+            cmp(&measure, &(accum + self.info()[index].measure)).is_le(),
             "Index out of bounds."
         );
 
@@ -501,8 +513,8 @@ impl<M> fmt::Debug for BranchChildren<M>
 where
     M: Measurable + fmt::Debug,
     M::Measure: fmt::Debug,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("NodeChildren")
@@ -539,23 +551,23 @@ mod inner {
     pub(crate) struct BranchChildrenInternal<M>
     where
         M: Measurable,
-        [(); max_len::<M>()]: Sized,
-        [(); max_children::<M>()]: Sized,
+        [(); max_len::<M, M::Measure>()]: Sized,
+        [(); max_children::<M, M::Measure>()]: Sized,
     {
         /// An array of the child nodes.
         /// INVARIANT: The nodes from 0..len must be initialized
-        nodes: [MaybeUninit<Arc<Node<M>>>; max_children::<M>()],
+        nodes: [MaybeUninit<Arc<Node<M>>>; max_children::<M, M::Measure>()],
         /// An array of the child node [`SliceInfo`]s
         /// INVARIANT: The nodes from 0..len must be initialized
-        info: [MaybeUninit<SliceInfo<M>>; max_children::<M>()],
+        info: [MaybeUninit<SliceInfo<M::Measure>>; max_children::<M, M::Measure>()],
         len: u8,
     }
 
     impl<M> BranchChildrenInternal<M>
     where
         M: Measurable,
-        [(); max_len::<M>()]: Sized,
-        [(); max_children::<M>()]: Sized,
+        [(); max_len::<M, M::Measure>()]: Sized,
+        [(); max_children::<M, M::Measure>()]: Sized,
     {
         /// Creates a new empty array.
         #[inline(always)]
@@ -593,7 +605,7 @@ mod inner {
 
         /// Access to the info array.
         #[inline(always)]
-        pub fn info(&self) -> &[SliceInfo<M>] {
+        pub fn info(&self) -> &[SliceInfo<M::Measure>] {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the info from 0..len are guaranteed to be initialized
             unsafe { mem::transmute(&self.info[..(self.len())]) }
@@ -601,7 +613,7 @@ mod inner {
 
         /// Mutable access to the info array.
         #[inline(always)]
-        pub fn info_mut(&mut self) -> &mut [SliceInfo<M>] {
+        pub fn info_mut(&mut self) -> &mut [SliceInfo<M::Measure>] {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the info from 0..len are guaranteed to be initialized
             unsafe { mem::transmute(&mut self.info[..(self.len as usize)]) }
@@ -609,7 +621,7 @@ mod inner {
 
         /// Mutable access to both the info and nodes arrays simultaneously.
         #[inline(always)]
-        pub fn data_mut(&mut self) -> (&mut [SliceInfo<M>], &mut [Arc<Node<M>>]) {
+        pub fn data_mut(&mut self) -> (&mut [SliceInfo<M::Measure>], &mut [Arc<Node<M>>]) {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the info from 0..len are guaranteed to be initialized
             (
@@ -622,8 +634,8 @@ mod inner {
         ///
         /// Increases length by one. Panics if already full.
         #[inline(always)]
-        pub fn push(&mut self, item: (SliceInfo<M>, Arc<Node<M>>)) {
-            assert!(self.len() < max_children::<M>());
+        pub fn push(&mut self, item: (SliceInfo<M::Measure>, Arc<Node<M>>)) {
+            assert!(self.len() < max_children::<M, M::Measure>());
             self.info[self.len()] = MaybeUninit::new(item.0);
             self.nodes[self.len as usize] = MaybeUninit::new(item.1);
             // We have just initialized both info and node and 0..=len, so we can increase
@@ -635,7 +647,7 @@ mod inner {
         ///
         /// Decreases length by one. Panics if already empty.
         #[inline(always)]
-        pub fn pop(&mut self) -> (SliceInfo<M>, Arc<Node<M>>) {
+        pub fn pop(&mut self) -> (SliceInfo<M::Measure>, Arc<Node<M>>) {
             assert!(self.len() > 0);
             self.len -= 1;
             // SAFETY: before this, len was long enough to guarantee that both must be init
@@ -651,9 +663,9 @@ mod inner {
         /// Increases length by one. Panics if already full. Preserves ordering
         /// of the other items.
         #[inline(always)]
-        pub fn insert(&mut self, index: usize, item: (SliceInfo<M>, Arc<Node<M>>)) {
+        pub fn insert(&mut self, index: usize, item: (SliceInfo<M::Measure>, Arc<Node<M>>)) {
             assert!(index <= self.len());
-            assert!(self.len() < max_children::<M>());
+            assert!(self.len() < max_children::<M, M::Measure>());
 
             let len = self.len();
             // This unsafe code simply shifts the elements of the arrays over
@@ -679,7 +691,7 @@ mod inner {
         ///
         /// Decreases length by one. Preserves ordering of the other items.
         #[inline(always)]
-        pub fn remove(&mut self, index: usize) -> (SliceInfo<M>, Arc<Node<M>>) {
+        pub fn remove(&mut self, index: usize) -> (SliceInfo<M::Measure>, Arc<Node<M>>) {
             assert!(self.len() > 0);
             assert!(index < self.len());
 
@@ -711,8 +723,8 @@ mod inner {
     impl<M> Drop for BranchChildrenInternal<M>
     where
         M: Measurable,
-        [(); max_len::<M>()]: Sized,
-        [(); max_children::<M>()]: Sized,
+        [(); max_len::<M, M::Measure>()]: Sized,
+        [(); max_children::<M, M::Measure>()]: Sized,
     {
         fn drop(&mut self) {
             // The `.nodes` array contains `MaybeUninit` wrappers, which need
@@ -727,8 +739,8 @@ mod inner {
     impl<M> Clone for BranchChildrenInternal<M>
     where
         M: Measurable,
-        [(); max_len::<M>()]: Sized,
-        [(); max_children::<M>()]: Sized,
+        [(); max_len::<M, M::Measure>()]: Sized,
+        [(); max_children::<M, M::Measure>()]: Sized,
     {
         fn clone(&self) -> Self {
             // Create an empty NodeChildrenInternal first, then fill it
@@ -796,7 +808,7 @@ mod tests {
     fn search_width_01() {
         let mut children = BranchChildren::new();
         children.push((
-            SliceInfo::new(),
+            SliceInfo::<usize>::new::<Width>(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[
                 Width(1),
                 Width(2),
@@ -804,11 +816,11 @@ mod tests {
             ]))),
         ));
         children.push((
-            SliceInfo::new(),
+            SliceInfo::<usize>::new::<Width>(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(0), Width(0)]))),
         ));
         children.push((
-            SliceInfo::new(),
+            SliceInfo::<usize>::new::<Width>(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(9), Width(1)]))),
         ));
 
@@ -842,7 +854,7 @@ mod tests {
     fn search_width_02() {
         let mut children = BranchChildren::new();
         children.push((
-            SliceInfo::new(),
+            SliceInfo::<usize>::new::<Width>(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[
                 Width(1),
                 Width(2),
@@ -850,11 +862,11 @@ mod tests {
             ]))),
         ));
         children.push((
-            SliceInfo::new(),
+            SliceInfo::<usize>::new::<Width>(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(0), Width(0)]))),
         ));
         children.push((
-            SliceInfo::new(),
+            SliceInfo::<usize>::new::<Width>(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(9), Width(1)]))),
         ));
 
@@ -869,7 +881,7 @@ mod tests {
     fn search_width_range_01() {
         let mut children = BranchChildren::new();
         children.push((
-            SliceInfo::new(),
+            SliceInfo::<usize>::new::<Width>(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[
                 Width(1),
                 Width(2),
@@ -877,11 +889,11 @@ mod tests {
             ]))),
         ));
         children.push((
-            SliceInfo::new(),
+            SliceInfo::<usize>::new::<Width>(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(0), Width(0)]))),
         ));
         children.push((
-            SliceInfo::new(),
+            SliceInfo::<usize>::new::<Width>(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(9), Width(1)]))),
         ));
 
@@ -940,7 +952,7 @@ mod tests {
     fn search_index_range_02() {
         let mut children = BranchChildren::new();
         children.push((
-            SliceInfo::new(),
+            SliceInfo::<usize>::new::<Width>(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[
                 Width(1),
                 Width(2),
@@ -948,11 +960,11 @@ mod tests {
             ]))),
         ));
         children.push((
-            SliceInfo::new(),
+            SliceInfo::<usize>::new::<Width>(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(0), Width(0)]))),
         ));
         children.push((
-            SliceInfo::new(),
+            SliceInfo::<usize>::new::<Width>(),
             Arc::new(Node::Leaf(LeafSlice::from_slice(&[Width(9), Width(1)]))),
         ));
 

@@ -13,8 +13,8 @@ use crate::{
 pub(crate) enum Node<M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     Leaf(LeafSlice<M>),
     Branch(BranchChildren<M>),
@@ -23,8 +23,8 @@ where
 impl<M> Node<M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     /// Creates an empty [`Node<M>`].
     #[inline(always)]
@@ -75,18 +75,25 @@ where
     pub fn edit_chunk_at_measure<F>(
         &mut self,
         measure: M::Measure,
-        node_info: SliceInfo<M>,
+        cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
+        info: SliceInfo<M::Measure>,
         mut edit: F,
-    ) -> (SliceInfo<M>, Option<(SliceInfo<M>, Arc<Node<M>>)>)
+    ) -> (
+        SliceInfo<M::Measure>,
+        Option<(SliceInfo<M::Measure>, Arc<Node<M>>)>,
+    )
     where
         F: FnMut(
             M::Measure,
-            SliceInfo<M>,
+            SliceInfo<M::Measure>,
             &mut LeafSlice<M>,
-        ) -> (SliceInfo<M>, Option<(SliceInfo<M>, Arc<Node<M>>)>),
+        ) -> (
+            SliceInfo<M::Measure>,
+            Option<(SliceInfo<M::Measure>, Arc<Node<M>>)>,
+        ),
     {
         match *self {
-            Node::Leaf(ref mut slice) => edit(measure, node_info, slice),
+            Node::Leaf(ref mut slice) => edit(measure, info, slice),
             Node::Branch(ref mut children) => {
                 // Compact leaf children if we're very close to maximum leaf
                 // fragmentation. This basically guards against excessive memory
@@ -94,7 +101,8 @@ where
                 // The constant here was arrived at experimentally, and is otherwise
                 // fairly arbitrary.
                 const fn frag_min_bytes<M: Measurable>() -> usize {
-                    (max_len::<M>() * min_children::<M>()) + (max_len::<M>() / 32)
+                    (max_len::<M, M::Measure>() * min_children::<M, M::Measure>())
+                        + (max_len::<M, M::Measure>() / 32)
                 }
                 if children.is_full()
                     && children.nodes()[0].is_leaf()
@@ -104,20 +112,20 @@ where
                 }
 
                 // Find the child we care about.
-                let (child_i, acc_width) = children.search_measure_only(measure);
-                let info = children.info()[child_i];
+                let (child_i, acc_width) = children.search_measure_only(measure, cmp);
+                let child_info = children.info()[child_i];
 
                 // Recurse into the child.
                 let (l_info, residual) = Arc::make_mut(&mut children.nodes_mut()[child_i])
-                    .edit_chunk_at_measure(measure - acc_width, info, edit);
+                    .edit_chunk_at_measure(measure - acc_width, cmp, info, edit);
 
                 children.info_mut()[child_i] = l_info;
 
                 // Handle the residual node if there is one and return.
                 if let Some((r_info, r_node)) = residual {
-                    if children.len() < max_children::<M>() {
+                    if children.len() < max_children::<M, M::Measure>() {
                         children.insert(child_i + 1, (r_info, r_node));
-                        (node_info - info + l_info + r_info, None)
+                        (info - child_info + l_info + r_info, None)
                     } else {
                         let r = children.insert_split(child_i + 1, (r_info, r_node));
                         let r_info = r.combined_info();
@@ -127,7 +135,7 @@ where
                         )
                     }
                 } else {
-                    (node_info - info + l_info, None)
+                    (info - child_info + l_info, None)
                 }
             }
         }
@@ -149,22 +157,16 @@ where
         &mut self,
         start: M::Measure,
         end: M::Measure,
-        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+        cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
         incl_left: bool,
         incl_right: bool,
-    ) -> (SliceInfo<M>, bool) {
+    ) -> (SliceInfo<M::Measure>, bool) {
         let info = self.info();
         match self {
             Node::Leaf(slice) => remove_from_slice(slice, start, end, cmp, incl_left, incl_right),
-            Node::Branch(children) => remove_from_children(
-                children,
-                start,
-                end,
-                cmp,
-                incl_left,
-                incl_right,
-                info,
-            ),
+            Node::Branch(children) => {
+                remove_from_children(children, start, end, cmp, incl_left, incl_right, info)
+            }
         }
     }
 
@@ -172,7 +174,7 @@ where
         if depth == 0 {
             if let Node::Branch(ref mut children_l) = *self {
                 if let Node::Branch(ref mut children_r) = *Arc::make_mut(&mut other) {
-                    if (children_l.len() + children_r.len()) <= max_children::<M>() {
+                    if (children_l.len() + children_r.len()) <= max_children::<M, M::Measure>() {
                         for _ in 0..children_r.len() {
                             children_l.push(children_r.remove(0));
                         }
@@ -195,7 +197,7 @@ where
                 Arc::make_mut(&mut children.nodes_mut()[last_i]).append_at_depth(other, depth - 1);
             children.update_child_info(last_i);
             if let Some(extra_node) = residual {
-                if children.len() < max_children::<M>() {
+                if children.len() < max_children::<M, M::Measure>() {
                     children.push((extra_node.info(), extra_node));
                     return None;
                 } else {
@@ -223,7 +225,8 @@ where
                 Node::Branch(ref mut children_r) => {
                     let mut other = other;
                     if let Node::Branch(ref mut children_l) = *Arc::make_mut(&mut other) {
-                        if (children_l.len() + children_r.len()) <= max_children::<M>() {
+                        if (children_l.len() + children_r.len()) <= max_children::<M, M::Measure>()
+                        {
                             for _ in 0..children_l.len() {
                                 children_r.insert(0, children_l.pop());
                             }
@@ -243,7 +246,7 @@ where
                 Arc::make_mut(&mut children.nodes_mut()[0]).prepend_at_depth(other, depth - 1);
             children.update_child_info(0);
             if let Some(extra_node) = residual {
-                if children.len() < max_children::<M>() {
+                if children.len() < max_children::<M, M::Measure>() {
                     children.insert(0, (extra_node.info(), extra_node));
                     return None;
                 } else {
@@ -264,17 +267,17 @@ where
     pub fn end_split(
         &mut self,
         measure: M::Measure,
-        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+        cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Self {
         debug_assert!(measure != M::Measure::default());
         debug_assert!(measure != (self.info().measure));
         match *self {
             Node::Leaf(ref mut slice) => {
-                let index = end_measure_to_index(slice, measure, &cmp);
+                let index = end_measure_to_index(slice, measure, cmp);
                 Node::Leaf(slice.split_off(index))
             }
             Node::Branch(ref mut children) => {
-                let (child_i, acc_info) = children.search_end_measure(measure);
+                let (child_i, acc_info) = children.search_end_measure(measure, cmp);
                 let child_info = children.info()[child_i];
 
                 if measure == acc_info.measure {
@@ -304,17 +307,17 @@ where
     pub fn start_split(
         &mut self,
         measure: M::Measure,
-        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+        cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Self {
         debug_assert!(measure != M::Measure::default());
         debug_assert!(measure != (self.info().measure));
         match *self {
             Node::Leaf(ref mut slice) => {
-                let index = start_measure_to_index(slice, measure, &cmp);
+                let index = start_measure_to_index(slice, measure, cmp);
                 Node::Leaf(slice.split_off(index))
             }
             Node::Branch(ref mut children) => {
-                let (child_i, acc_info) = children.search_start_measure(measure, &cmp);
+                let (child_i, acc_info) = children.search_start_measure(measure, cmp);
                 let child_info = children.info()[child_i];
 
                 if measure == acc_info.measure {
@@ -341,9 +344,9 @@ where
 
     /// Returns the chunk that contains the given index, and the [`SliceInfo`]
     /// corresponding to the start of the chunk.
-    pub fn get_chunk_at_index(&self, mut index: usize) -> (&[M], SliceInfo<M>) {
+    pub fn get_chunk_at_index(&self, mut index: usize) -> (&[M], SliceInfo<M::Measure>) {
         let mut node = self;
-        let mut info = SliceInfo::new();
+        let mut info = SliceInfo::<M::Measure>::new::<M>();
 
         loop {
             match *node {
@@ -365,10 +368,10 @@ where
     pub fn get_first_chunk_at_measure(
         &self,
         mut measure: M::Measure,
-        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
-    ) -> (&[M], SliceInfo<M>) {
+        cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> (&[M], SliceInfo<M::Measure>) {
         let mut node = self;
-        let mut info = SliceInfo::new();
+        let mut info = SliceInfo::<M::Measure>::new::<M>();
 
         loop {
             match *node {
@@ -376,7 +379,7 @@ where
                     return (slice, info);
                 }
                 Node::Branch(ref children) => {
-                    let (child_i, acc_info) = children.search_start_measure(measure, &cmp);
+                    let (child_i, acc_info) = children.search_start_measure(measure, cmp);
                     info += acc_info;
 
                     node = &*children.nodes()[child_i];
@@ -391,10 +394,10 @@ where
     pub fn get_last_chunk_at_measure(
         &self,
         mut measure: M::Measure,
-        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
-    ) -> (&[M], SliceInfo<M>) {
+        cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> (&[M], SliceInfo<M::Measure>) {
         let mut node = self;
-        let mut info = SliceInfo::new();
+        let mut info = SliceInfo::<M::Measure>::new::<M>();
 
         loop {
             match *node {
@@ -402,7 +405,7 @@ where
                     return (slice, info);
                 }
                 Node::Branch(ref children) => {
-                    let (child_i, acc_info) = children.search_end_measure(measure);
+                    let (child_i, acc_info) = children.search_end_measure(measure, cmp);
                     info += acc_info;
 
                     node = &*children.nodes()[child_i];
@@ -417,9 +420,9 @@ where
     pub fn start_measure_to_slice_info(
         &self,
         measure: M::Measure,
-        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
-    ) -> SliceInfo<M> {
-        let (chunk, info) = self.get_first_chunk_at_measure(measure, &cmp);
+        cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> SliceInfo<M::Measure> {
+        let (chunk, info) = self.get_first_chunk_at_measure(measure, cmp);
         let bi = start_measure_to_index(chunk, measure - info.measure, cmp);
         SliceInfo {
             len: info.len + bi as Count,
@@ -432,9 +435,9 @@ where
     pub fn end_measure_to_slice_info(
         &self,
         measure: M::Measure,
-        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
-    ) -> SliceInfo<M> {
-        let (chunk, info) = self.get_last_chunk_at_measure(measure, &cmp);
+        cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> SliceInfo<M::Measure> {
+        let (chunk, info) = self.get_last_chunk_at_measure(measure, cmp);
         let bi = end_measure_to_index(chunk, measure - info.measure, cmp);
         SliceInfo {
             len: info.len + bi as Count,
@@ -444,7 +447,7 @@ where
 
     /// Returns the [`SliceInfo`] at the given index.
     #[inline(always)]
-    pub fn index_to_slice_info(&self, index: usize) -> SliceInfo<M> {
+    pub fn index_to_slice_info(&self, index: usize) -> SliceInfo<M::Measure> {
         let (chunk, info) = self.get_chunk_at_index(index);
         let measure = index_to_measure(chunk, index - info.len as usize);
         SliceInfo {
@@ -453,9 +456,9 @@ where
         }
     }
 
-    pub fn info(&self) -> SliceInfo<M> {
+    pub fn info(&self) -> SliceInfo<M::Measure> {
         match *self {
-            Node::Leaf(ref slice) => SliceInfo::from_slice(slice),
+            Node::Leaf(ref slice) => SliceInfo::<M::Measure>::from_slice(slice),
             Node::Branch(ref children) => children.combined_info(),
         }
     }
@@ -507,8 +510,8 @@ where
 
     pub fn is_undersized(&self) -> bool {
         match *self {
-            Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
-            Node::Branch(ref children) => children.len() < min_children::<M>(),
+            Node::Leaf(ref slice) => slice.len() < min_len::<M, M::Measure>(),
+            Node::Branch(ref children) => children.len() < min_children::<M, M::Measure>(),
         }
     }
 
@@ -575,7 +578,7 @@ where
                 if is_root {
                     assert!(children.len() > 1);
                 } else {
-                    assert!(children.len() >= min_children::<M>());
+                    assert!(children.len() >= min_children::<M, M::Measure>());
                 }
 
                 for node in children.nodes() {
@@ -595,8 +598,10 @@ where
             loop {
                 let do_merge = (children.len() > 1)
                     && match *children.nodes()[0] {
-                        Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
-                        Node::Branch(ref children2) => children2.len() < min_children::<M>(),
+                        Node::Leaf(ref slice) => slice.len() < min_len::<M, M::Measure>(),
+                        Node::Branch(ref children2) => {
+                            children2.len() < min_children::<M, M::Measure>()
+                        }
                     };
 
                 if do_merge {
@@ -624,8 +629,10 @@ where
                 let last_i = children.len() - 1;
                 let do_merge = (children.len() > 1)
                     && match *children.nodes()[last_i] {
-                        Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
-                        Node::Branch(ref children2) => children2.len() < min_children::<M>(),
+                        Node::Leaf(ref slice) => slice.len() < min_len::<M, M::Measure>(),
+                        Node::Branch(ref children2) => {
+                            children2.len() < min_children::<M, M::Measure>()
+                        }
                     };
 
                 if do_merge {
@@ -660,8 +667,10 @@ where
                 if children.len() > 1 {
                     let (child_i, start_info) = children.search_start_measure(measure, cmp);
                     let mut do_merge = match *children.nodes()[child_i] {
-                        Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
-                        Node::Branch(ref children2) => children2.len() < min_children::<M>(),
+                        Node::Leaf(ref slice) => slice.len() < min_len::<M, M::Measure>(),
+                        Node::Branch(ref children2) => {
+                            children2.len() < min_children::<M, M::Measure>()
+                        }
                     };
 
                     if child_i == 0 {
@@ -672,9 +681,11 @@ where
                         do_merge |= {
                             start_info.measure == measure
                                 && match *children.nodes()[child_i - 1] {
-                                    Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
+                                    Node::Leaf(ref slice) => {
+                                        slice.len() < min_len::<M, M::Measure>()
+                                    }
                                     Node::Branch(ref children2) => {
-                                        children2.len() < min_children::<M>()
+                                        children2.len() < min_children::<M, M::Measure>()
                                     }
                                 }
                         };
@@ -715,19 +726,19 @@ fn remove_from_slice<M>(
     slice: &mut LeafSlice<M>,
     start: M::Measure,
     end: M::Measure,
-    cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
     incl_left: bool,
     incl_right: bool,
-) -> (SliceInfo<M>, bool)
+) -> (SliceInfo<M::Measure>, bool)
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     let start_index = if incl_left {
-        start_measure_to_index(slice, start, &cmp)
+        start_measure_to_index(slice, start, cmp)
     } else {
-        end_measure_to_index(slice, end, &cmp)
+        end_measure_to_index(slice, end, cmp)
     };
     // In this circumstance, nothing needs to be done, since we're removing
     // in the middle of an element.
@@ -737,35 +748,35 @@ where
         .unwrap_or(true);
 
     if start == end && non_zero_width {
-        return (SliceInfo::from_slice(slice), false);
+        return (SliceInfo::<M::Measure>::from_slice(slice), false);
     }
 
     let end_index = if incl_right {
-        end_measure_to_index(slice, end, &cmp)
+        end_measure_to_index(slice, end, cmp)
     } else {
         start_measure_to_index(slice, end, cmp)
     };
 
     slice.remove_range(start_index, end_index);
-    (SliceInfo::from_slice(slice), false)
+    (SliceInfo::<M::Measure>::from_slice(slice), false)
 }
 
 fn remove_from_children<M>(
     children: &mut BranchChildren<M>,
     start_bound: M::Measure,
     end_bound: M::Measure,
-    cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
     incl_left: bool,
     incl_right: bool,
-    info: SliceInfo<M>,
-) -> (SliceInfo<M>, bool)
+    info: SliceInfo<M::Measure>,
+) -> (SliceInfo<M::Measure>, bool)
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     let ((left_child, left_accum), (right_child, right_accum)) =
-        children.search_measure_range(start_bound, end_bound, &cmp);
+        children.search_measure_range(start_bound, end_bound, cmp);
 
     if left_child == right_child {
         let child_info = children.info()[left_child];
@@ -822,7 +833,7 @@ where
                 right_accum,
                 start_bound,
                 end_bound,
-                &cmp,
+                cmp,
                 incl_left || between_two_children,
                 incl_right,
             );
@@ -873,14 +884,14 @@ fn handle_measure_range<M>(
     accum: M::Measure,
     start_measure: M::Measure,
     end_measure: M::Measure,
-    cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    cmp: &impl Fn(&M::Measure, &M::Measure) -> Ordering,
     incl_left: bool,
     incl_right: bool,
-) -> (SliceInfo<M>, bool)
+) -> (SliceInfo<M::Measure>, bool)
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     // Recurse into child
     let child_measure = children.info()[child_i].measure;
@@ -906,8 +917,8 @@ where
 fn merge_child<M>(children: &mut BranchChildren<M>, child_i: usize)
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     if child_i < children.len() && children.len() > 1 && children.nodes()[child_i].is_undersized() {
         if child_i == 0 {

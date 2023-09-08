@@ -84,8 +84,8 @@ use crate::{
 pub struct Iter<'a, M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     chunks: Chunks<'a, M>,
     cur_chunk: &'a [M],
@@ -100,8 +100,8 @@ where
 impl<'a, M> Iter<'a, M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     pub(crate) fn new(node: &'a Arc<Node<M>>) -> Self {
         let mut chunk_iter = Chunks::new(node);
@@ -301,8 +301,8 @@ where
 impl<'a, M> Iterator for Iter<'a, M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     type Item = (M::Measure, M);
 
@@ -331,8 +331,8 @@ where
 impl<'a, M> ExactSizeIterator for Iter<'a, M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
 }
 
@@ -356,8 +356,8 @@ where
 pub struct Chunks<'a, M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     iter: ChunksEnum<'a, M>,
     is_reversed: bool,
@@ -367,8 +367,8 @@ where
 enum ChunksEnum<'a, M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     Full {
         /// (node ref, index of current child)
@@ -387,8 +387,8 @@ where
 impl<'a, M> Chunks<'a, M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     #[inline(always)]
     pub(crate) fn new(node: &'a Arc<Node<M>>) -> Self {
@@ -482,7 +482,7 @@ where
 
         // Create and populate the node stack, and determine the char index
         // within the first chunk, and byte index of the start of that chunk.
-        let mut info = SliceInfo::new();
+        let mut info = SliceInfo::<M::Measure>::new::<M>();
         let mut index = at_index as isize;
         let node_stack = {
             let mut node_stack: Vec<(&Arc<Node<M>>, usize)> = Vec::new();
@@ -739,8 +739,8 @@ where
 impl<'a, M> Iterator for Chunks<'a, M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     type Item = &'a [M];
 

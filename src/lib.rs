@@ -125,11 +125,8 @@ mod tree;
 pub mod iter;
 
 use std::{
-    cmp::Ordering,
     fmt::Debug,
-    ops::{
-        Add, AddAssign, Bound, Range, RangeBounds, RangeFrom, RangeFull, RangeTo, Sub, SubAssign,
-    },
+    ops::{Add, AddAssign, Bound, Range, RangeFrom, RangeFull, RangeTo, Sub, SubAssign},
 };
 
 pub use crate::{
@@ -326,7 +323,18 @@ fn end_bound_to_num(b: Bound<&usize>) -> Option<usize> {
     }
 }
 
-trait MeasureRange<M: Measurable> {
+mod hidden {
+    use std::ops::{Range, RangeFrom, RangeFull, RangeTo};
+
+    pub trait Internal {}
+
+    impl<T> Internal for Range<T> {}
+    impl<T> Internal for RangeFrom<T> {}
+    impl<T> Internal for RangeTo<T> {}
+    impl Internal for RangeFull {}
+}
+
+pub trait MeasureRange<M: Measurable>: hidden::Internal {
     fn start_bound(&self) -> Option<&M::Measure>;
 
     fn end_bound(&self) -> Option<&M::Measure>;

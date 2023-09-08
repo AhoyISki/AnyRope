@@ -14,7 +14,9 @@ pub(crate) type Count = u64;
 #[cfg(not(test))]
 mod constants {
     use std::{
+        fmt::Debug,
         mem::{align_of, size_of},
+        ops::{Add, Sub},
         sync::Arc,
     };
 
@@ -38,24 +40,33 @@ mod constants {
     const ARC_COUNTERS_SIZE: usize = size_of::<std::sync::atomic::AtomicUsize>() * 2;
 
     // Misc useful info that we need below.
-    const fn node_children_align<M: Measurable>() -> usize {
-        cmax(align_of::<Arc<u8>>(), align_of::<(SliceInfo<M>, bool)>())
+    const fn node_children_align<T>() -> usize
+    where
+        T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
+    {
+        cmax(align_of::<Arc<u8>>(), align_of::<(SliceInfo<T>, bool)>())
     }
 
     const fn node_align<M>() -> usize {
         align_of::<SmallVec<[M; 16]>>()
     }
 
-    const fn start_offset<M: Measurable>() -> usize {
-        let node_inner_align = cmax(node_children_align::<M>(), node_align::<M>());
+    const fn start_offset<M, T>() -> usize
+    where
+        T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
+    {
+        let node_inner_align = cmax(node_children_align::<T>(), node_align::<M>());
         // The `+ node_inner_align` is because of Node's enum discriminant.
         ARC_COUNTERS_SIZE + node_inner_align
     }
 
     // Node maximums.
-    pub const fn max_children<M: Measurable>() -> usize {
+    pub const fn max_children<M, T>() -> usize
+    where
+        T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
+    {
         let node_list_align = align_of::<Arc<u8>>();
-        let info_list_align = align_of::<SliceInfo<M>>();
+        let info_list_align = align_of::<SliceInfo<T>>();
         let field_gap = if node_list_align >= info_list_align {
             0
         } else {
@@ -67,24 +78,33 @@ mod constants {
 
         // The -NODE_CHILDREN_ALIGN is for the `len` field in `NodeChildrenInternal`.
         let target_size =
-            TARGET_TOTAL_SIZE - start_offset::<M>() - node_children_align::<M>() - field_gap;
+            TARGET_TOTAL_SIZE - start_offset::<M, T>() - node_children_align::<T>() - field_gap;
 
-        target_size / (size_of::<Arc<u8>>() + size_of::<SliceInfo<M>>())
+        target_size / (size_of::<Arc<u8>>() + size_of::<SliceInfo<T>>())
     }
-    pub const fn max_len<M: Measurable>() -> usize {
+    pub const fn max_len<M, T>() -> usize
+    where
+        T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
+    {
         let smallvec_overhead = size_of::<SmallVec<[M; 16]>>();
-        (TARGET_TOTAL_SIZE - start_offset::<M>() - smallvec_overhead) / size_of::<M>()
+        (TARGET_TOTAL_SIZE - start_offset::<M, T>() - smallvec_overhead) / size_of::<M>()
     }
 
     // Node minimums.
     // Note: min_len is intentionally a little smaller than half
     // max_len, to give a little wiggle room when on the edge of
     // merging/splitting.
-    pub const fn min_children<M: Measurable>() -> usize {
-        max_children::<M>() / 2
+    pub const fn min_children<M, T>() -> usize
+    where
+        T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
+    {
+        max_children::<M, T>() / 2
     }
-    pub const fn min_len<M: Measurable>() -> usize {
-        (max_len::<M>() / 2) - (max_len::<M>() / 32)
+    pub const fn min_len<M, T>() -> usize
+    where
+        T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
+    {
+        (max_len::<M, T>() / 2) - (max_len::<M, T>() / 32)
     }
 }
 
@@ -93,20 +113,35 @@ mod constants {
 // the tests.
 #[cfg(test)]
 mod test_constants {
-    use crate::Measurable;
+    use std::{
+        fmt::Debug,
+        ops::{Add, Sub},
+    };
 
-    pub const fn max_children<M: Measurable>() -> usize {
+    pub const fn max_children<M, T>() -> usize
+    where
+        T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
+    {
         5
     }
-    pub const fn min_children<M: Measurable>() -> usize {
-        max_children::<M>() / 2
+    pub const fn min_children<M, T>() -> usize
+    where
+        T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
+    {
+        max_children::<M, T>() / 2
     }
 
-    pub const fn max_len<M>() -> usize {
+    pub const fn max_len<M, T>() -> usize
+    where
+        T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
+    {
         9
     }
-    pub const fn min_len<M: Measurable>() -> usize {
-        (max_len::<M>() / 2) - (max_len::<M>() / 32)
+    pub const fn min_len<M, T>() -> usize
+    where
+        T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
+    {
+        (max_len::<M, T>() / 2) - (max_len::<M, T>() / 32)
     }
 }
 

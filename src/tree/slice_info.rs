@@ -1,40 +1,43 @@
-use std::ops::{Add, AddAssign, Sub, SubAssign};
+use std::{
+    fmt::Debug,
+    ops::{Add, AddAssign, Sub, SubAssign},
+};
 
 use crate::{slice_utils::measure_of, tree::Count, Measurable};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct SliceInfo<M>
+pub struct SliceInfo<T>
 where
-    M: Measurable,
+    T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
 {
     pub(crate) len: Count,
-    pub(crate) measure: M::Measure,
+    pub(crate) measure: T,
 }
 
-impl<M> SliceInfo<M>
+impl<T> SliceInfo<T>
 where
-    M: Measurable,
+    T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
 {
     #[inline]
-    pub fn new() -> Self {
-        Self {
+    pub fn new<M: Measurable>() -> SliceInfo<M::Measure> {
+        SliceInfo {
             len: 0,
             measure: M::Measure::default(),
         }
     }
 
     #[inline]
-    pub fn from_slice(slice: &[M]) -> Self {
-        Self {
+    pub fn from_slice<M: Measurable>(slice: &[M]) -> SliceInfo<M::Measure> {
+        SliceInfo {
             len: slice.len() as Count,
             measure: measure_of(slice),
         }
     }
 }
 
-impl<M> Add for SliceInfo<M>
+impl<T> Add for SliceInfo<T>
 where
-    M: Measurable,
+    T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
 {
     type Output = Self;
 
@@ -47,9 +50,9 @@ where
     }
 }
 
-impl<M> AddAssign for SliceInfo<M>
+impl<T> AddAssign for SliceInfo<T>
 where
-    M: Measurable,
+    T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
 {
     #[inline]
     fn add_assign(&mut self, other: Self) {
@@ -57,9 +60,9 @@ where
     }
 }
 
-impl<M> Sub for SliceInfo<M>
+impl<T> Sub for SliceInfo<T>
 where
-    M: Measurable,
+    T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
 {
     type Output = Self;
 
@@ -72,9 +75,9 @@ where
     }
 }
 
-impl<M> SubAssign for SliceInfo<M>
+impl<T> SubAssign for SliceInfo<T>
 where
-    M: Measurable,
+    T: Debug + Copy + Clone + PartialEq + Add<Output = T> + Sub<Output = T>,
 {
     #[inline]
     fn sub_assign(&mut self, other: Self) {

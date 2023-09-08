@@ -13,6 +13,8 @@ enum Lipsum {
 }
 
 impl Measurable for Lipsum {
+    type Measure = usize;
+
     fn measure(&self) -> usize {
         match self {
             Lipsum::Lorem => 1,
@@ -49,14 +51,15 @@ fn random_slice(rng: &mut ThreadRng) -> Vec<Lipsum> {
 #[cfg_attr(miri, ignore)]
 fn shrink_to_fit() {
     let mut rng = rand::thread_rng();
-    let mut rope = Rope::new();
+    let mut rope = Rope::<Lipsum>::new();
 
     // Do a bunch of random incoherent inserts
     for _ in 0..1000 {
-        let width = rope.measure().max(1);
+        let measure = rope.measure().max(1);
         rope.insert_slice(
-            rng.gen::<usize>() % width,
+            rng.gen::<usize>() % measure,
             random_slice(&mut rng).as_slice(),
+            usize::cmp,
         );
     }
 

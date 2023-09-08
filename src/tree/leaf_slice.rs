@@ -11,13 +11,14 @@ use crate::{max_children, Measurable};
 pub(crate) struct LeafSlice<M>(inner::LeafSmallVec<M>)
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized;
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized;
 
 impl<M> LeafSlice<M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
-    [(); max_children::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     /// Creates a new [`Leaf`] from a slice.
     pub fn from_slice(value: &[M]) -> Self {
@@ -92,7 +93,8 @@ where
 impl<M> std::cmp::PartialEq for LeafSlice<M>
 where
     M: Measurable + PartialEq,
-    [(); max_len::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     fn eq(&self, other: &Self) -> bool {
         let (s1, s2): (&[M], &[M]) = (self, other);
@@ -103,7 +105,8 @@ where
 impl<'a, M> PartialEq<LeafSlice<M>> for &'a [M]
 where
     M: Measurable + PartialEq,
-    [(); max_len::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     fn eq(&self, other: &LeafSlice<M>) -> bool {
         *self == (other as &[M])
@@ -113,7 +116,8 @@ where
 impl<'a, M> PartialEq<&'a [M]> for LeafSlice<M>
 where
     M: Measurable + PartialEq,
-    [(); max_len::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     fn eq(&self, other: &&'a [M]) -> bool {
         (self as &[M]) == *other
@@ -123,7 +127,8 @@ where
 impl<M> std::fmt::Display for LeafSlice<M>
 where
     M: Measurable + std::fmt::Display,
-    [(); max_len::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         let mut iter = self.iter();
@@ -144,7 +149,8 @@ where
 impl<M> std::fmt::Debug for LeafSlice<M>
 where
     M: Measurable + std::fmt::Debug,
-    [(); max_len::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         LeafSlice::deref(self).fmt(f)
@@ -154,7 +160,8 @@ where
 impl<M> Deref for LeafSlice<M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     type Target = [M];
 
@@ -166,7 +173,8 @@ where
 impl<M> AsRef<[M]> for LeafSlice<M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     fn as_ref(&self) -> &[M] {
         self.0.as_slice()
@@ -176,7 +184,8 @@ where
 impl<M> Borrow<[M]> for LeafSlice<M>
 where
     M: Measurable,
-    [(); max_len::<M>()]: Sized,
+    [(); max_len::<M, M::Measure>()]: Sized,
+    [(); max_children::<M, M::Measure>()]: Sized,
 {
     fn borrow(&self) -> &[M] {
         self.0.as_slice()
@@ -197,10 +206,10 @@ mod inner {
 
     /// The backing internal buffer type for [`LeafSlice`][super::LeafSlice].
     #[derive(Copy, Clone)]
-    struct BackingArray<M>([M; max_len::<M>()])
+    struct BackingArray<M>([M; max_len::<M, M::Measure>()])
     where
         M: Measurable,
-        [(); max_len::<M>()]: Sized;
+        [(); max_len::<M, M::Measure>()]: Sized;
 
     /// We need a very specific size of array, which is not necessarily
     /// supported directly by the impls in the smallvec crate.  We therefore
@@ -210,12 +219,12 @@ mod inner {
     unsafe impl<M> Array for BackingArray<M>
     where
         M: Measurable,
-        [(); max_len::<M>()]: Sized,
+        [(); max_len::<M, M::Measure>()]: Sized,
     {
         type Item = M;
 
         fn size() -> usize {
-            max_len::<M>()
+            max_len::<M, M::Measure>()
         }
     }
 
@@ -225,7 +234,7 @@ mod inner {
     pub struct LeafSmallVec<M>
     where
         M: Measurable,
-        [(); max_len::<M>()]: Sized,
+        [(); max_len::<M, M::Measure>()]: Sized,
     {
         buffer: SmallVec<BackingArray<M>>,
     }
@@ -233,7 +242,7 @@ mod inner {
     impl<M> LeafSmallVec<M>
     where
         M: Measurable,
-        [(); max_len::<M>()]: Sized,
+        [(); max_len::<M, M::Measure>()]: Sized,
     {
         #[inline(always)]
         pub fn with_capacity(capacity: usize) -> Self {
