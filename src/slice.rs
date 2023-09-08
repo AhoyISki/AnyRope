@@ -1,14 +1,14 @@
-use std::{ops::RangeBounds, sync::Arc};
+use std::{cmp::Ordering, ops::RangeBounds, sync::Arc};
 
 use crate::{
-    Measurable,
     end_bound_to_num,
     iter::{Chunks, Iter},
-    rope::{Rope},
-    slice_utils::{end_width_to_index, index_to_width, start_width_to_index, width_of},
+    measures_from_range,
+    rope::Rope,
+    slice_utils::{end_measure_to_index, index_to_measure, measure_of, start_measure_to_index},
     start_bound_to_num,
     tree::{max_children, max_len, Count, Node, SliceInfo},
-    Error, Result,
+    Error, Measurable, MeasureRange, Result,
 };
 
 /// An immutable view into part of a [`Rope<M>`].
@@ -37,8 +37,8 @@ where
 {
     Full {
         node: &'a Arc<Node<M>>,
-        start_info: SliceInfo,
-        end_info: SliceInfo,
+        start_info: SliceInfo<M>,
+        end_info: SliceInfo<M>,
     },
     Light {
         slice: &'a [M],
@@ -53,22 +53,27 @@ where
     [(); max_len::<M>()]: Sized,
     [(); max_children::<M>()]: Sized,
 {
-    pub(crate) fn new_with_range(node: &'a Arc<Node<M>>, start: usize, end: usize) -> Self {
-        assert!(start <= end);
-        assert!(end <= node.slice_info().width as usize);
-
+    pub(crate) fn new_with_range(
+        node: &'a Arc<Node<M>>,
+        start: M::Measure,
+        end: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Self {
         // Early-out shortcut for taking a slice of the full thing.
-        if start == 0 && end == node.width() {
+        if start == M::Measure::default() && end == node.measure() {
             if node.is_leaf() {
                 let slice = node.leaf_slice();
                 return RopeSlice(RSEnum::Light { slice });
             } else {
                 return RopeSlice(RSEnum::Full {
                     node,
-                    start_info: SliceInfo { len: 0, width: 0 },
+                    start_info: SliceInfo {
+                        len: 0,
+                        measure: M::Measure::default(),
+                    },
                     end_info: SliceInfo {
                         len: node.len() as Count,
-                        width: node.width() as Count,
+                        measure: node.measure(),
                     },
                 });
             }
@@ -83,23 +88,23 @@ where
                 // Early out if we reach a leaf, because we can do the
                 // simpler lightweight slice then.
                 Node::Leaf(ref slice) => {
-                    let start = start_width_to_index(slice, n_start);
-                    let end = start + end_width_to_index(&slice[start..], n_end - n_start);
+                    let start = start_measure_to_index(slice, n_start, &cmp);
+                    let end = start + end_measure_to_index(&slice[start..], n_end - n_start, &cmp);
                     return RopeSlice(RSEnum::Light {
                         slice: &slice[start..end],
                     });
                 }
 
                 Node::Branch(ref children) => {
-                    let mut start_width = 0;
+                    let mut start_measure = M::Measure::default();
                     for (i, info) in children.info().iter().enumerate() {
-                        if n_start > start_width && n_end < (start_width + info.width as usize) {
-                            n_start -= start_width;
-                            n_end -= start_width;
+                        if n_start > start_measure && n_end < (start_measure + info.measure) {
+                            n_start -= start_measure;
+                            n_end -= start_measure;
                             node = &children.nodes()[i];
                             continue 'outer;
                         }
-                        start_width += info.width as usize;
+                        start_measure += info.measure;
                     }
                     break;
                 }
@@ -109,8 +114,8 @@ where
         // Create the slice
         RopeSlice(RSEnum::Full {
             node,
-            start_info: node.start_width_to_slice_info(n_start),
-            end_info: node.end_width_to_slice_info(n_end),
+            start_info: node.start_measure_to_slice_info(n_start, &cmp),
+            end_info: node.end_measure_to_slice_info(n_end, &cmp),
         })
     }
 
@@ -118,9 +123,9 @@ where
         node: &'a Arc<Node<M>>,
         start: usize,
         end: usize,
-    ) -> Result<Self> {
+    ) -> Result<Self, M> {
         assert!(start <= end);
-        assert!(end <= node.slice_info().len as usize);
+        assert!(end <= node.info().len as usize);
 
         // Early-out shortcut for taking a slice of the full thing.
         if start == 0 && end == node.len() {
@@ -130,10 +135,13 @@ where
             } else {
                 return Ok(RopeSlice(RSEnum::Full {
                     node,
-                    start_info: SliceInfo { len: 0, width: 0 },
+                    start_info: SliceInfo {
+                        len: 0,
+                        measure: M::Measure::default(),
+                    },
                     end_info: SliceInfo {
                         len: node.len() as Count,
-                        width: node.len() as Count,
+                        measure: node.measure(),
                     },
                 }));
             }
@@ -209,14 +217,14 @@ where
     ///
     /// Runs in O(1) time.
     #[inline]
-    pub fn width(&self) -> usize {
+    pub fn measure(&self) -> M::Measure {
         match *self {
             RopeSlice(RSEnum::Full {
                 end_info,
                 start_info,
                 ..
-            }) => (end_info.width - start_info.width) as usize,
-            RopeSlice(RSEnum::Light { slice }) => width_of(slice),
+            }) => end_info.measure - start_info.measure,
+            RopeSlice(RSEnum::Light { slice }) => measure_of(slice),
         }
     }
 
@@ -233,8 +241,8 @@ where
     ///
     /// Panics if the `index` is out of bounds (i.e. `index > Rope::len()`).
     #[inline]
-    pub fn index_to_width(&self, index: usize) -> usize {
-        self.try_index_to_width(index).unwrap()
+    pub fn index_to_measure(&self, index: usize) -> M::Measure {
+        self.try_index_to_measure(index).unwrap()
     }
 
     /// Returns an index, given a starting width sum.
@@ -246,8 +254,12 @@ where
     /// Panics if the `width` is out of bounds (i.e. `width >
     /// RopeSlice::width()`).
     #[inline]
-    pub fn start_width_to_index(&self, width: usize) -> usize {
-        self.try_start_width_to_index(width).unwrap()
+    pub fn start_measure_to_index(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> usize {
+        self.try_start_measure_to_index(measure, cmp).unwrap()
     }
 
     /// Returns an index, given an ending width sum.
@@ -259,8 +271,12 @@ where
     /// Panics if the `width` is out of bounds (i.e. `width >
     /// RopeSlice::width()`).
     #[inline]
-    pub fn end_width_to_index(&self, width: usize) -> usize {
-        self.try_end_width_to_index(width).unwrap()
+    pub fn end_measure_to_index(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> usize {
+        self.try_end_measure_to_index(measure, cmp).unwrap()
     }
 
     //-----------------------------------------------------------------------
@@ -276,7 +292,7 @@ where
     /// Panics if the `index` is out of bounds (i.e. `index >
     /// RopeSlice::len()`).
     #[inline]
-    pub fn from_index(&self, index: usize) -> (usize, M) {
+    pub fn from_index(&self, index: usize) -> (M::Measure, M) {
         // Bounds check
         if let Some(out) = self.get_from_index(index) {
             out
@@ -299,14 +315,18 @@ where
     /// Panics if the `width` is out of bounds (i.e. `width >
     /// RopeSlice::width()`).
     #[inline]
-    pub fn from_width(&self, width: usize) -> (usize, M) {
-        if let Some(out) = self.get_from_width(width) {
+    pub fn from_measure(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> (M::Measure, M) {
+        if let Some(out) = self.get_from_measure(measure, cmp) {
             out
         } else {
             panic!(
-                "Attempt to index past end of slice: width {}, slice width {}",
-                width,
-                self.width()
+                "Attempt to index past end of slice: measure {:?}, slice measure {:?}",
+                measure,
+                self.measure()
             );
         }
     }
@@ -327,7 +347,7 @@ where
     /// Panics if the `index` is out of bounds (i.e. `index >
     /// RopeSlice::len()`).
     #[inline]
-    pub fn chunk_at_index(&self, index: usize) -> (&'a [M], usize, usize) {
+    pub fn chunk_at_index(&self, index: usize) -> (&'a [M], usize, M::Measure) {
         self.try_chunk_at_index(index).unwrap()
     }
 
@@ -346,14 +366,18 @@ where
     ///
     /// Panics if `width` is out of bounds (i.e. `width > RopeSlice::width()`).
     #[inline]
-    pub fn chunk_at_width(&self, width: usize) -> (&'a [M], usize, usize) {
-        if let Some(out) = self.get_chunk_at_width(width) {
+    pub fn chunk_at_measure(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> (&'a [M], usize, M::Measure) {
+        if let Some(out) = self.get_chunk_at_measure(measure, cmp) {
             out
         } else {
             panic!(
-                "Attempt to index past end of slice: width {}, slice width {}",
-                width,
-                self.width()
+                "Attempt to index past end of slice: measure {:?}, slice measure {:?}",
+                measure,
+                self.measure()
             );
         }
     }
@@ -412,39 +436,24 @@ where
     /// Panics if the start of the range is greater than the end, or if the
     /// end is out of bounds (i.e. `end > RopeSlice::width()`).
     #[inline]
-    pub fn width_slice<R>(&self, width_range: R) -> Self
-    where
-        R: RangeBounds<usize>,
-    {
-        let (start, end) = {
-            let start_range = start_bound_to_num(width_range.start_bound());
-            let end_range = end_bound_to_num(width_range.end_bound());
+    pub fn measure_slice(
+        &self,
+        range: impl MeasureRange<M>,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Self {
+        let (start, end) = measures_from_range(&range, self.measure()).unwrap();
 
-            // Early-out shortcut for taking a slice of the full thing.
-            if start_range.is_none() & end_range.is_none() {
-                return *self;
-            }
-
-            (
-                start_range.unwrap_or(0),
-                end_range.unwrap_or_else(|| self.width()),
-            )
-        };
-
-        // Bounds check
-        assert!(start <= end);
-        assert!(
-            end <= self.width(),
-            "Attempt to slice past end of RopeSlice: slice end {}, RopeSlice length {}",
-            end,
-            self.width()
-        );
+        if cmp(&start, &M::Measure::default()).is_eq() && cmp(&end, &self.measure()).is_eq() {
+            return *self;
+        }
 
         match *self {
-            RopeSlice(RSEnum::Full { node, .. }) => RopeSlice::new_with_range(node, start, end),
+            RopeSlice(RSEnum::Full { node, .. }) => {
+                RopeSlice::new_with_range(node, start, end, cmp)
+            }
             RopeSlice(RSEnum::Light { slice, .. }) => {
-                let start_index = start_width_to_index(slice, start);
-                let end_index = end_width_to_index(slice, end);
+                let start_index = start_measure_to_index(slice, start, &cmp);
+                let end_index = end_measure_to_index(slice, end, cmp);
                 let new_slice = &slice[start_index..end_index];
                 RopeSlice(RSEnum::Light { slice: new_slice })
             }
@@ -493,7 +502,8 @@ where
             }) => Iter::new_with_range(
                 node,
                 (start_info.len as usize, end_info.len as usize),
-                (start_info.width as usize, end_info.width as usize),
+                (start_info.measure, end_info.measure),
+                M::Measure::cmp,
             ),
             RopeSlice(RSEnum::Light { slice, .. }) => Iter::from_slice(slice),
         }
@@ -518,14 +528,18 @@ where
     /// Panics if the `width` is out of bounds (i.e. `width >
     /// RopeSlice::width()`).
     #[inline]
-    pub fn iter_at(&self, index: usize) -> Iter<'a, M> {
-        if let Some(out) = self.get_iter_at(index) {
+    pub fn iter_at(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Iter<'a, M> {
+        if let Some(out) = self.get_iter_at(measure, cmp) {
             out
         } else {
             panic!(
-                "Attempt to index past end of RopeSlice: index {}, RopeSlice length {}",
-                index,
-                self.len()
+                "Attempt to index past end of RopeSlice: measure {:?}, RopeSlice measure {:?}",
+                measure,
+                self.measure()
             );
         }
     }
@@ -543,7 +557,7 @@ where
             }) => Chunks::new_with_range(
                 node,
                 (start_info.len as usize, end_info.len as usize),
-                (start_info.width as usize, end_info.width as usize),
+                (start_info.measure, end_info.measure),
             ),
             RopeSlice(RSEnum::Light { slice, .. }) => Chunks::from_slice(slice, false),
         }
@@ -568,7 +582,7 @@ where
     /// Panics if the `index` is out of bounds (i.e. `index >
     /// RopeSlice::len()`).
     #[inline]
-    pub fn chunks_at_index(&self, index: usize) -> (Chunks<'a, M>, usize, usize) {
+    pub fn chunks_at_index(&self, index: usize) -> (Chunks<'a, M>, usize, M::Measure) {
         if let Some(out) = self.get_chunks_at_index(index) {
             out
         } else {
@@ -599,14 +613,18 @@ where
     /// Panics if the `width` is out of bounds (i.e. `width >
     /// RopeSlice::width()`).
     #[inline]
-    pub fn chunks_at_width(&self, width_index: usize) -> (Chunks<'a, M>, usize, usize) {
-        if let Some(out) = self.get_chunks_at_width(width_index) {
+    pub fn chunks_at_measure(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> (Chunks<'a, M>, usize, M::Measure) {
+        if let Some(out) = self.get_chunks_at_measure(measure, cmp) {
             out
         } else {
             panic!(
-                "Attempt to index past end of RopeSlice: width {}, RopeSlice width {}",
-                width_index,
-                self.width()
+                "Attempt to index past end of RopeSlice: measure {:?}, RopeSlice measure {:?}",
+                measure,
+                self.measure()
             );
         }
     }
@@ -628,11 +646,11 @@ where
     /// Non-panicking version of
     /// [`index_to_width()`][RopeSlice::index_to_width].
     #[inline]
-    pub fn try_index_to_width(&self, index: usize) -> Result<usize> {
+    pub fn try_index_to_measure(&self, index: usize) -> Result<M::Measure, M> {
         // Bounds check
         if index <= self.len() {
             let (chunk, b, c) = self.chunk_at_index(index);
-            Ok(c + index_to_width(chunk, index - b))
+            Ok(c + index_to_measure(chunk, index - b))
         } else {
             Err(Error::IndexOutOfBounds(index, self.len()))
         }
@@ -641,38 +659,46 @@ where
     /// Non-panicking version of
     /// [`start_width_to_index()`][RopeSlice::start_width_to_index].
     #[inline]
-    pub fn try_start_width_to_index(&self, width: usize) -> Result<usize> {
+    pub fn try_start_measure_to_index(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Result<usize, M> {
         // Bounds check
-        if width <= self.width() {
-            let (chunk, b, c) = self.chunk_at_width(width);
-            Ok(b + start_width_to_index(chunk, width - c))
+        if measure <= self.measure() {
+            let (chunk, b, c) = self.chunk_at_measure(measure, &cmp);
+            Ok(b + start_measure_to_index(chunk, measure - c, cmp))
         } else {
-            Err(Error::WidthOutOfBounds(width, self.width()))
+            Err(Error::MeasureOutOfBounds(measure, self.measure()))
         }
     }
 
     /// Non-panicking version of
     /// [`end_width_to_index()`][RopeSlice::end_width_to_index].
     #[inline]
-    pub fn try_end_width_to_index(&self, width: usize) -> Result<usize> {
+    pub fn try_end_measure_to_index(
+        &self,
+        width: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Result<usize, M> {
         // Bounds check
-        if width <= self.width() {
-            let (chunk, b, c) = self.chunk_at_width(width);
-            Ok(b + end_width_to_index(chunk, width - c))
+        if width <= self.measure() {
+            let (chunk, b, c) = self.chunk_at_measure(width, &cmp);
+            Ok(b + end_measure_to_index(chunk, width - c, cmp))
         } else {
-            Err(Error::WidthOutOfBounds(width, self.width()))
+            Err(Error::MeasureOutOfBounds(width, self.measure()))
         }
     }
 
     /// Non-panicking version of [`from_index()`][RopeSlice::from_index].
     #[inline]
-    pub fn get_from_index(&self, index: usize) -> Option<(usize, M)> {
+    pub fn get_from_index(&self, index: usize) -> Option<(M::Measure, M)> {
         // Bounds check
         if index < self.len() {
-            let (chunk, chunk_index, chunk_width) = self.chunk_at_index(index);
+            let (chunk, chunk_index, chunk_measure) = self.chunk_at_index(index);
             let chunk_rel_index = index - chunk_index;
-            let width = index_to_width(chunk, chunk_rel_index);
-            Some((width + chunk_width, chunk[chunk_rel_index]))
+            let measure = index_to_measure(chunk, chunk_rel_index);
+            Some((measure + chunk_measure, chunk[chunk_rel_index]))
         } else {
             None
         }
@@ -680,12 +706,16 @@ where
 
     /// Non-panicking version of [`from_width()`][RopeSlice::from_width].
     #[inline]
-    pub fn get_from_width(&self, width: usize) -> Option<(usize, M)> {
+    pub fn get_from_measure(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Option<(M::Measure, M)> {
         // Bounds check
-        if width < self.width() {
-            let (chunk, _, chunk_width) = self.chunk_at_width(width);
-            let index = start_width_to_index(chunk, width - chunk_width);
-            let width = index_to_width(chunk, index);
+        if measure < self.measure() {
+            let (chunk, _, chunk_width) = self.chunk_at_measure(measure, &cmp);
+            let index = start_measure_to_index(chunk, measure - chunk_width, cmp);
+            let width = index_to_measure(chunk, index);
             Some((width + chunk_width, chunk[index]))
         } else {
             None
@@ -695,7 +725,7 @@ where
     /// Non-panicking version of
     /// [`chunk_at_index()`][RopeSlice::chunk_at_index].
     #[inline]
-    pub fn try_chunk_at_index(&self, index: usize) -> Result<(&'a [M], usize, usize)> {
+    pub fn try_chunk_at_index(&self, index: usize) -> Result<(&'a [M], usize, M::Measure), M> {
         // Bounds check
         if index <= self.len() {
             match *self {
@@ -717,10 +747,10 @@ where
                     Ok((
                         &chunk[chunk_start_index as usize..chunk_end_index as usize],
                         chunk_start_info.len.saturating_sub(start_info.len) as usize,
-                        chunk_start_info.width.saturating_sub(start_info.width) as usize,
+                        chunk_start_info.measure - start_info.measure,
                     ))
                 }
-                RopeSlice(RSEnum::Light { slice, .. }) => Ok((slice, 0, 0)),
+                RopeSlice(RSEnum::Light { slice, .. }) => Ok((slice, 0, M::Measure::default())),
             }
         } else {
             Err(Error::IndexOutOfBounds(index, self.len()))
@@ -730,17 +760,22 @@ where
     /// Non-panicking version of
     /// [`chunk_at_width()`][RopeSlice::chunk_at_width].
     #[inline]
-    pub fn get_chunk_at_width(&self, width: usize) -> Option<(&'a [M], usize, usize)> {
+    pub fn get_chunk_at_measure(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Option<(&'a [M], usize, M::Measure)> {
         // Bounds check
-        if width <= self.width() {
+        if measure <= self.measure() {
             match *self {
                 RopeSlice(RSEnum::Full {
                     node,
                     start_info,
                     end_info,
                 }) => {
-                    let start_width = width + start_info.width as usize;
-                    let (chunk, chunk_start_info) = node.get_first_chunk_at_width(start_width);
+                    let start_width = measure + start_info.measure;
+                    let (chunk, chunk_start_info) =
+                        node.get_first_chunk_at_measure(start_width, cmp);
 
                     // Calculate clipped start/end indices within the chunk.
                     let chunk_start_index = start_info.len.saturating_sub(chunk_start_info.len);
@@ -751,10 +786,10 @@ where
                     Some((
                         &chunk[chunk_start_index as usize..chunk_end_index as usize],
                         chunk_start_info.len.saturating_sub(start_info.len) as usize,
-                        chunk_start_info.width.saturating_sub(start_info.width) as usize,
+                        chunk_start_info.measure - start_info.measure,
                     ))
                 }
-                RopeSlice(RSEnum::Light { slice, .. }) => Some((slice, 0, 0)),
+                RopeSlice(RSEnum::Light { slice, .. }) => Some((slice, 0, M::Measure::default())),
             }
         } else {
             None
@@ -763,38 +798,31 @@ where
 
     /// Non-panicking version of [`width_slice()`][RopeSlice::width_slice].
     #[inline]
-    pub fn get_width_slice<R>(&self, width_range: R) -> Option<RopeSlice<'a, M>>
-    where
-        R: RangeBounds<usize>,
-    {
-        let (start, end) = {
-            let start_range = start_bound_to_num(width_range.start_bound());
-            let end_range = end_bound_to_num(width_range.end_bound());
+    pub fn get_measure_slice(
+        &self,
+        range: impl MeasureRange<M>,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Option<RopeSlice<'a, M>> {
+        let (start, end) = measures_from_range(&range, self.measure()).unwrap();
 
-            // Early-out shortcut for taking a slice of the full thing.
-            if start_range.is_none() & end_range.is_none() {
-                return Some(*self);
-            }
-
-            (
-                start_range.unwrap_or(0),
-                end_range.unwrap_or_else(|| self.width()),
-            )
-        };
+        if cmp(&start, &M::Measure::default()).is_eq() && cmp(&end, &self.measure()).is_eq() {
+            return Some(*self);
+        }
 
         // Bounds check
-        if start <= end && end <= self.width() {
+        if start <= end && end <= self.measure() {
             match *self {
                 RopeSlice(RSEnum::Full {
                     node, start_info, ..
                 }) => Some(RopeSlice::new_with_range(
                     node,
-                    start_info.width as usize + start,
-                    start_info.width as usize + end,
+                    start_info.measure + start,
+                    start_info.measure + end,
+                    cmp,
                 )),
                 RopeSlice(RSEnum::Light { slice, .. }) => {
-                    let start_index = start_width_to_index(slice, start);
-                    let end_index = start_width_to_index(slice, end);
+                    let start_index = start_measure_to_index(slice, start, &cmp);
+                    let end_index = start_measure_to_index(slice, end, cmp);
                     let new_slice = &slice[start_index..end_index];
                     Some(RopeSlice(RSEnum::Light { slice: new_slice }))
                 }
@@ -813,7 +841,7 @@ where
         self.get_slice_impl(index_range).ok()
     }
 
-    pub(crate) fn get_slice_impl<R>(&self, index_range: R) -> Result<RopeSlice<'a, M>>
+    pub(crate) fn get_slice_impl<R>(&self, index_range: R) -> Result<RopeSlice<'a, M>, M>
     where
         R: RangeBounds<usize>,
     {
@@ -879,21 +907,28 @@ where
 
     /// Non-panicking version of [`iter_at()`][RopeSlice::iter_at].
     #[inline]
-    pub fn get_iter_at(&self, width: usize) -> Option<Iter<'a, M>> {
+    pub fn get_iter_at(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Option<Iter<'a, M>> {
         // Bounds check
-        if width <= self.width() {
+        if measure <= self.measure() {
             match *self {
                 RopeSlice(RSEnum::Full {
                     node,
                     start_info,
                     end_info,
-                }) => Some(Iter::new_with_range_at_width(
+                }) => Some(Iter::new_with_range_at_measure(
                     node,
-                    start_info.width as usize + width,
+                    start_info.measure + measure,
                     (start_info.len as usize, end_info.len as usize),
-                    (start_info.width as usize, end_info.width as usize),
+                    (start_info.measure, end_info.measure),
+                    cmp,
                 )),
-                RopeSlice(RSEnum::Light { slice, .. }) => Some(Iter::from_slice_at(slice, width)),
+                RopeSlice(RSEnum::Light { slice, .. }) => {
+                    Some(Iter::from_slice_at(slice, measure, &cmp))
+                }
             }
         } else {
             None
@@ -903,7 +938,7 @@ where
     /// Non-panicking version of
     /// [`chunks_at_index()`][RopeSlice::chunks_at_index].
     #[inline]
-    pub fn get_chunks_at_index(&self, index: usize) -> Option<(Chunks<'a, M>, usize, usize)> {
+    pub fn get_chunks_at_index(&self, index: usize) -> Option<(Chunks<'a, M>, usize, M::Measure)> {
         // Bounds check
         if index <= self.len() {
             match *self {
@@ -912,26 +947,26 @@ where
                     start_info,
                     end_info,
                 }) => {
-                    let (chunks, chunk_index, chunk_width) = Chunks::new_with_range_at_index(
+                    let (chunks, chunk_index, chunk_measure) = Chunks::new_with_range_at_index(
                         node,
                         index + start_info.len as usize,
                         (start_info.len as usize, end_info.len as usize),
-                        (start_info.width as usize, end_info.width as usize),
+                        (start_info.measure, end_info.measure),
                     );
 
                     Some((
                         chunks,
                         chunk_index.saturating_sub(start_info.len as usize),
-                        chunk_width.saturating_sub(start_info.width as usize),
+                        chunk_measure - start_info.measure,
                     ))
                 }
                 RopeSlice(RSEnum::Light { slice }) => {
                     let chunks = Chunks::from_slice(slice, index == slice.len());
 
                     if index == slice.len() {
-                        Some((chunks, slice.len(), width_of(slice)))
+                        Some((chunks, slice.len(), measure_of(slice)))
                     } else {
-                        Some((chunks, 0, 0))
+                        Some((chunks, 0, M::Measure::default()))
                     }
                 }
             }
@@ -943,36 +978,41 @@ where
     /// Non-panicking version of
     /// [`chunks_at_width()`][RopeSlice::chunks_at_width].
     #[inline]
-    pub fn get_chunks_at_width(&self, width: usize) -> Option<(Chunks<'a, M>, usize, usize)> {
+    pub fn get_chunks_at_measure(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Option<(Chunks<'a, M>, usize, M::Measure)> {
         // Bounds check
-        if width <= self.width() {
+        if measure <= self.measure() {
             match *self {
                 RopeSlice(RSEnum::Full {
                     node,
                     start_info,
                     end_info,
                 }) => {
-                    let (chunks, chunk_index, chunk_width) = Chunks::new_with_range_at_width(
+                    let (chunks, chunk_index, chunk_measure) = Chunks::new_with_range_at_measure(
                         node,
-                        width + start_info.width as usize,
+                        measure + start_info.measure,
                         (start_info.len as usize, end_info.len as usize),
-                        (start_info.width as usize, end_info.width as usize),
+                        (start_info.measure, end_info.measure),
+                        cmp,
                     );
 
                     Some((
                         chunks,
                         chunk_index.saturating_sub(start_info.len as usize),
-                        chunk_width.saturating_sub(start_info.width as usize),
+                        chunk_measure - start_info.measure,
                     ))
                 }
                 RopeSlice(RSEnum::Light { slice, .. }) => {
-                    let slice_width = width_of(slice);
-                    let chunks = Chunks::from_slice(slice, width == slice_width);
+                    let slice_width = measure_of(slice);
+                    let chunks = Chunks::from_slice(slice, measure == slice_width);
 
-                    if width == slice_width {
+                    if measure == slice_width {
                         Some((chunks, slice.len(), slice_width))
                     } else {
-                        Some((chunks, 0, 0))
+                        Some((chunks, 0, M::Measure::default()))
                     }
                 }
             }
@@ -1270,7 +1310,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        *self == other.width_slice(..)
+        *self == other.measure_slice(.., M::Measure::cmp)
     }
 }
 
@@ -1282,7 +1322,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &RopeSlice<'a, M>) -> bool {
-        self.width_slice(..) == *other
+        self.measure_slice(.., M::Measure::cmp) == *other
     }
 }
 
@@ -1356,7 +1396,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
-        slice_utils::{index_to_width, start_width_to_index},
+        slice_utils::{index_to_measure, start_measure_to_index},
         Rope, Width,
     };
 
@@ -1382,63 +1422,63 @@ mod tests {
     #[test]
     fn len_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(7..30);
+        let slice = rope.measure_slice(7..30, usize::cmp);
         assert_eq!(slice.len(), 13);
     }
 
     #[test]
     fn len_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(43..43);
+        let slice = rope.measure_slice(43..43, usize::cmp);
         assert_eq!(slice.len(), 0);
     }
 
     #[test]
     fn width_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(7..30);
-        assert_eq!(slice.width(), 23);
+        let slice = rope.measure_slice(7..30, usize::cmp);
+        assert_eq!(slice.measure(), 23);
     }
 
     #[test]
     fn width_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(43..43);
-        assert_eq!(slice.width(), 0);
+        let slice = rope.measure_slice(43..43, usize::cmp);
+        assert_eq!(slice.measure(), 0);
     }
 
     #[test]
     fn width_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(6..30);
-        assert_eq!(slice.width(), 24);
+        let slice = rope.measure_slice(6..30, usize::cmp);
+        assert_eq!(slice.measure(), 24);
     }
 
     #[test]
     fn index_to_width_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(88..);
+        let slice = rope.measure_slice(88.., usize::cmp);
 
-        assert_eq!(slice.index_to_width(0), 0); // Width(0): 0
-        assert_eq!(slice.index_to_width(1), 0); // Width(0): 0
-        assert_eq!(slice.index_to_width(2), 0); // Width("hello"): 5
-        assert_eq!(slice.index_to_width(3), 5); // Width(true): 1
-        assert_eq!(slice.index_to_width(4), 6); // Width(1): 1
-        assert_eq!(slice.index_to_width(5), 7); // Width(2): 2
-        assert_eq!(slice.index_to_width(6), 9); // Width(8): 8
-        assert_eq!(slice.index_to_width(7), 17); // Width(0): 0
-        assert_eq!(slice.index_to_width(8), 17); // Width(0): 0
-        assert_eq!(slice.index_to_width(9), 17); // Width("bye"): 3
-        assert_eq!(slice.index_to_width(10), 20); // Width(false): 0
-        assert_eq!(slice.index_to_width(11), 20); // Width(0): 1
-        assert_eq!(slice.index_to_width(12), 21); // Width(0): 2
-        assert_eq!(slice.index_to_width(13), 23); // Width(4): 4
+        assert_eq!(slice.index_to_measure(0), 0); // Width(0): 0
+        assert_eq!(slice.index_to_measure(1), 0); // Width(0): 0
+        assert_eq!(slice.index_to_measure(2), 0); // Width("hello"): 5
+        assert_eq!(slice.index_to_measure(3), 5); // Width(true): 1
+        assert_eq!(slice.index_to_measure(4), 6); // Width(1): 1
+        assert_eq!(slice.index_to_measure(5), 7); // Width(2): 2
+        assert_eq!(slice.index_to_measure(6), 9); // Width(8): 8
+        assert_eq!(slice.index_to_measure(7), 17); // Width(0): 0
+        assert_eq!(slice.index_to_measure(8), 17); // Width(0): 0
+        assert_eq!(slice.index_to_measure(9), 17); // Width("bye"): 3
+        assert_eq!(slice.index_to_measure(10), 20); // Width(false): 0
+        assert_eq!(slice.index_to_measure(11), 20); // Width(0): 1
+        assert_eq!(slice.index_to_measure(12), 21); // Width(0): 2
+        assert_eq!(slice.index_to_measure(13), 23); // Width(4): 4
     }
 
     #[test]
     fn width_to_index_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(88..135);
+        let slice = rope.measure_slice(88..135, usize::cmp);
 
         // NOTE: For some elements, it may seem like the amount of "widths"
         // that correspond to their index may not match their actual width.
@@ -1447,29 +1487,29 @@ mod tests {
         // This is because there are 0 width elements preceding it, and the
         // width in `width_to_index()` merely corresponds to the end of an
         // element, and has no relation to the referred element's width.
-        assert_eq!(slice.start_width_to_index(0), 0);
-        assert_eq!(slice.start_width_to_index(1), 2);
-        assert_eq!(slice.start_width_to_index(4), 2);
-        assert_eq!(slice.start_width_to_index(5), 3);
-        assert_eq!(slice.start_width_to_index(6), 4);
-        assert_eq!(slice.start_width_to_index(7), 5);
-        assert_eq!(slice.start_width_to_index(8), 5);
-        assert_eq!(slice.start_width_to_index(9), 6);
-        assert_eq!(slice.start_width_to_index(16), 6);
-        assert_eq!(slice.start_width_to_index(17), 7);
-        assert_eq!(slice.start_width_to_index(18), 9);
-        assert_eq!(slice.start_width_to_index(19), 9);
-        assert_eq!(slice.start_width_to_index(20), 10);
-        assert_eq!(slice.start_width_to_index(21), 12);
-        assert_eq!(slice.start_width_to_index(22), 12);
-        assert_eq!(slice.start_width_to_index(23), 13);
-        assert_eq!(slice.start_width_to_index(24), 13);
+        assert_eq!(slice.start_measure_to_index(0, usize::cmp), 0);
+        assert_eq!(slice.start_measure_to_index(1, usize::cmp), 2);
+        assert_eq!(slice.start_measure_to_index(4, usize::cmp), 2);
+        assert_eq!(slice.start_measure_to_index(5, usize::cmp), 3);
+        assert_eq!(slice.start_measure_to_index(6, usize::cmp), 4);
+        assert_eq!(slice.start_measure_to_index(7, usize::cmp), 5);
+        assert_eq!(slice.start_measure_to_index(8, usize::cmp), 5);
+        assert_eq!(slice.start_measure_to_index(9, usize::cmp), 6);
+        assert_eq!(slice.start_measure_to_index(16, usize::cmp), 6);
+        assert_eq!(slice.start_measure_to_index(17, usize::cmp), 7);
+        assert_eq!(slice.start_measure_to_index(18, usize::cmp), 9);
+        assert_eq!(slice.start_measure_to_index(19, usize::cmp), 9);
+        assert_eq!(slice.start_measure_to_index(20, usize::cmp), 10);
+        assert_eq!(slice.start_measure_to_index(21, usize::cmp), 12);
+        assert_eq!(slice.start_measure_to_index(22, usize::cmp), 12);
+        assert_eq!(slice.start_measure_to_index(23, usize::cmp), 13);
+        assert_eq!(slice.start_measure_to_index(24, usize::cmp), 13);
     }
 
     #[test]
     fn from_index_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(34..100);
+        let slice = rope.measure_slice(34..100, usize::cmp);
 
         assert_eq!(slice.from_index(0), (0, Width(0)));
         assert_eq!(slice.from_index(10), (20, Width(0)));
@@ -1483,7 +1523,7 @@ mod tests {
     #[should_panic]
     fn from_index_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(34..100);
+        let slice = rope.measure_slice(34..100, usize::cmp);
         slice.from_index(slice.len());
     }
 
@@ -1491,43 +1531,43 @@ mod tests {
     #[should_panic]
     fn from_index_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(42..42);
+        let slice = rope.measure_slice(42..42, usize::cmp);
         slice.from_index(0);
     }
 
     #[test]
     fn from_width_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(34..100);
+        let slice = rope.measure_slice(34..100, usize::cmp);
 
-        assert_eq!(slice.from_width(0), (0, Width(0))); // Width(0): 0
-        assert_eq!(slice.from_width(3), (0, Width(5))); // Width(0): 0; Width("hello"): 5
-        assert_eq!(slice.from_width(5), (5, Width(1))); // Width(true): 1
-        assert_eq!(slice.from_width(6), (6, Width(1))); // Width(1): 1
-        assert_eq!(slice.from_width(10), (9, Width(8))); // Width(2): 2; Width(8): 8
-        assert_eq!(slice.from_width(65), (63, Width(8))); // ...; Width(8): 8
+        assert_eq!(slice.from_measure(0, usize::cmp), (0, Width(0)));
+        assert_eq!(slice.from_measure(3, usize::cmp), (0, Width(5)));
+        assert_eq!(slice.from_measure(5, usize::cmp), (5, Width(1)));
+        assert_eq!(slice.from_measure(6, usize::cmp), (6, Width(1)));
+        assert_eq!(slice.from_measure(10, usize::cmp), (9, Width(8)));
+        assert_eq!(slice.from_measure(65, usize::cmp), (63, Width(8)));
     }
 
     #[test]
     #[should_panic]
     fn from_width_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(34..100);
-        slice.from_width(66);
+        let slice = rope.measure_slice(34..100, usize::cmp);
+        slice.from_measure(66, usize::cmp);
     }
 
     #[test]
     #[should_panic]
     fn from_width_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(43..43);
-        slice.from_width(0);
+        let slice = rope.measure_slice(43..43, usize::cmp);
+        slice.from_measure(0, usize::cmp);
     }
 
     #[test]
     fn chunk_at_index_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice_1 = rope.width_slice(34..135);
+        let slice_1 = rope.measure_slice(34..135, usize::cmp);
         let slice_2 = &pseudo_random()[17..70];
         // "'slice a fine day, isn't it?\nAren't you glad \
         //  we're alive?\nこんにちは、みん"
@@ -1536,7 +1576,7 @@ mod tests {
         let mut prev_chunk = [].as_slice();
         for i in 0..slice_1.len() {
             let (chunk, index, width) = slice_1.chunk_at_index(i);
-            assert_eq!(width, index_to_width(slice_2, index));
+            assert_eq!(width, index_to_measure(slice_2, index));
             if chunk != prev_chunk {
                 assert_eq!(chunk, &total[..chunk.len()]);
                 total = &total[chunk.len()..];
@@ -1557,14 +1597,14 @@ mod tests {
     #[test]
     fn chunk_at_width_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice_1 = rope.width_slice(34..96);
+        let slice_1 = rope.measure_slice(34..96, usize::cmp);
         let slice_2 = &pseudo_random()[17..51];
 
         let mut remainder = slice_2;
         let mut prev_chunk = [].as_slice();
 
-        for i in 0..slice_1.width() {
-            let (chunk, _, width) = slice_1.chunk_at_width(i);
+        for i in 0..slice_1.measure() {
+            let (chunk, _, width) = slice_1.chunk_at_measure(i, usize::cmp);
             if chunk != prev_chunk {
                 assert_eq!(chunk, &remainder[..chunk.len()]);
                 remainder = &remainder[chunk.len()..];
@@ -1572,11 +1612,11 @@ mod tests {
             }
 
             let width_1 = {
-                let index_1 = start_width_to_index(slice_2, i);
+                let index_1 = start_measure_to_index(slice_2, i, usize::cmp);
                 slice_2.get(index_1).unwrap()
             };
             let width_2 = {
-                let index_2 = start_width_to_index(chunk, i - width);
+                let index_2 = start_measure_to_index(chunk, i - width, usize::cmp);
                 chunk.get(index_2)
             };
             if let Some(width_2) = width_2 {
@@ -1589,9 +1629,9 @@ mod tests {
     #[test]
     fn slice_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice_1 = rope.width_slice(..);
+        let slice_1 = rope.measure_slice(.., usize::cmp);
 
-        let slice_2 = slice_1.width_slice(..);
+        let slice_2 = slice_1.measure_slice(.., usize::cmp);
 
         assert_eq!(pseudo_random(), slice_2);
     }
@@ -1599,9 +1639,9 @@ mod tests {
     #[test]
     fn slice_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice_1 = rope.width_slice(5..43);
+        let slice_1 = rope.measure_slice(5..43, usize::cmp);
 
-        let slice_2 = slice_1.width_slice(3..25);
+        let slice_2 = slice_1.measure_slice(3..25, usize::cmp);
 
         assert_eq!(&pseudo_random()[2..13], slice_2);
     }
@@ -1609,9 +1649,9 @@ mod tests {
     #[test]
     fn slice_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice_1 = rope.width_slice(31..97);
+        let slice_1 = rope.measure_slice(31..97, usize::cmp);
 
-        let slice_2 = slice_1.width_slice(7..64);
+        let slice_2 = slice_1.measure_slice(7..64, usize::cmp);
 
         assert_eq!(&pseudo_random()[17..48], slice_2);
     }
@@ -1619,11 +1659,11 @@ mod tests {
     #[test]
     fn slice_04() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice_1 = rope.width_slice(5..43);
+        let slice_1 = rope.measure_slice(5..43, usize::cmp);
 
         // A range in the middle of a list of 0 width elements should capture all of
         // them.
-        let slice_2 = slice_1.width_slice(24..24);
+        let slice_2 = slice_1.measure_slice(24..24, usize::cmp);
 
         assert_eq!(slice_2, [Width(0), Width(0)].as_slice());
     }
@@ -1632,25 +1672,25 @@ mod tests {
     #[should_panic]
     fn slice_05() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(5..43);
+        let slice = rope.measure_slice(5..43, usize::cmp);
 
         #[allow(clippy::reversed_empty_ranges)]
-        slice.width_slice(21..20); // Wrong ordering on purpose.
+        slice.measure_slice(21..20, usize::cmp); // Wrong ordering on purpose.
     }
 
     #[test]
     #[should_panic]
     fn slice_07() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(5..43);
+        let slice = rope.measure_slice(5..43, usize::cmp);
 
-        slice.width_slice(37..39);
+        slice.measure_slice(37..39, usize::cmp);
     }
 
     #[test]
     fn eq_slice_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(..);
+        let slice = rope.measure_slice(.., usize::cmp);
 
         assert_eq!(slice, pseudo_random());
         assert_eq!(pseudo_random(), slice);
@@ -1659,7 +1699,7 @@ mod tests {
     #[test]
     fn eq_slice_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(0..20);
+        let slice = rope.measure_slice(0..20, usize::cmp);
 
         assert_ne!(slice, pseudo_random());
         assert_ne!(pseudo_random(), slice);
@@ -1668,9 +1708,9 @@ mod tests {
     #[test]
     fn eq_slice_03() {
         let mut rope = Rope::from_slice(pseudo_random().as_slice());
-        rope.remove_inclusive(20..20);
-        rope.insert_slice(20, &[Width(5)]);
-        let slice = rope.width_slice(..);
+        rope.remove_inclusive(20..20, usize::cmp);
+        rope.insert_slice(20, &[Width(5)], usize::cmp);
+        let slice = rope.measure_slice(.., usize::cmp);
 
         assert_ne!(slice, pseudo_random());
         assert_ne!(pseudo_random(), slice);
@@ -1679,7 +1719,7 @@ mod tests {
     #[test]
     fn eq_slice_04() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(..);
+        let slice = rope.measure_slice(.., usize::cmp);
         let vec: Vec<Width> = rope.clone().into();
 
         assert_eq!(slice, vec);
@@ -1689,7 +1729,7 @@ mod tests {
     #[test]
     fn eq_rope_slice_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(43..43);
+        let slice = rope.measure_slice(43..43, usize::cmp);
 
         assert_eq!(slice, slice);
     }
@@ -1697,8 +1737,8 @@ mod tests {
     #[test]
     fn eq_rope_slice_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice_1 = rope.width_slice(43..97);
-        let slice_2 = rope.width_slice(43..97);
+        let slice_1 = rope.measure_slice(43..97, usize::cmp);
+        let slice_2 = rope.measure_slice(43..97, usize::cmp);
 
         assert_eq!(slice_1, slice_2);
     }
@@ -1706,8 +1746,8 @@ mod tests {
     #[test]
     fn eq_rope_slice_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice_1 = rope.width_slice(43..43);
-        let slice_2 = rope.width_slice(43..45);
+        let slice_1 = rope.measure_slice(43..43, usize::cmp);
+        let slice_2 = rope.measure_slice(43..45, usize::cmp);
 
         assert_ne!(slice_1, slice_2);
     }
@@ -1715,8 +1755,8 @@ mod tests {
     #[test]
     fn eq_rope_slice_04() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice_1 = rope.width_slice(43..45);
-        let slice_2 = rope.width_slice(43..43);
+        let slice_1 = rope.measure_slice(43..45, usize::cmp);
+        let slice_2 = rope.measure_slice(43..43, usize::cmp);
 
         assert_ne!(slice_1, slice_2);
     }
@@ -1724,7 +1764,7 @@ mod tests {
     #[test]
     fn eq_rope_slice_05() {
         let rope: Rope<Width> = Rope::from_slice([].as_slice());
-        let slice = rope.width_slice(0..0);
+        let slice = rope.measure_slice(0..0, usize::cmp);
 
         assert_eq!(slice, slice);
     }
@@ -1733,16 +1773,16 @@ mod tests {
     fn cmp_rope_slice_01() {
         let rope_1 = Rope::from_slice(pseudo_random().as_slice());
         let rope_2 = Rope::from_slice(pseudo_random().as_slice());
-        let slice_1 = rope_1.width_slice(..);
-        let slice_2 = rope_2.width_slice(..);
+        let slice_1 = rope_1.measure_slice(.., usize::cmp);
+        let slice_2 = rope_2.measure_slice(.., usize::cmp);
 
         assert_eq!(slice_1.cmp(&slice_2), std::cmp::Ordering::Equal);
         assert_eq!(
-            slice_1.width_slice(..24).cmp(&slice_2),
+            slice_1.measure_slice(..24, usize::cmp).cmp(&slice_2),
             std::cmp::Ordering::Less
         );
         assert_eq!(
-            slice_1.cmp(&slice_2.width_slice(..24)),
+            slice_1.cmp(&slice_2.measure_slice(..24, usize::cmp)),
             std::cmp::Ordering::Greater
         );
     }
@@ -1751,8 +1791,8 @@ mod tests {
     fn cmp_rope_slice_02() {
         let rope_1 = Rope::from_slice(&[Width(3), Width(1), Width(2), Width(1)]);
         let rope_2 = Rope::from_slice(&[Width(3), Width(0), Width(2), Width(1)]);
-        let slice_1 = rope_1.width_slice(..);
-        let slice_2 = rope_2.width_slice(..);
+        let slice_1 = rope_1.measure_slice(.., usize::cmp);
+        let slice_2 = rope_2.measure_slice(.., usize::cmp);
 
         assert_eq!(slice_1.cmp(&slice_2), std::cmp::Ordering::Greater);
         assert_eq!(slice_2.cmp(&slice_1), std::cmp::Ordering::Less);
@@ -1761,7 +1801,7 @@ mod tests {
     #[test]
     fn to_vec_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(..);
+        let slice = rope.measure_slice(.., usize::cmp);
         let vec: Vec<Width> = slice.into();
 
         assert_eq!(rope, vec);
@@ -1771,7 +1811,7 @@ mod tests {
     #[test]
     fn to_vec_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(0..24);
+        let slice = rope.measure_slice(0..24, usize::cmp);
         let vec: Vec<Width> = slice.into();
 
         assert_eq!(slice, vec);
@@ -1780,7 +1820,7 @@ mod tests {
     #[test]
     fn to_vec_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(13..89);
+        let slice = rope.measure_slice(13..89, usize::cmp);
         let vec: Vec<Width> = slice.into();
 
         assert_eq!(slice, vec);
@@ -1789,7 +1829,7 @@ mod tests {
     #[test]
     fn to_vec_04() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(13..41);
+        let slice = rope.measure_slice(13..41, usize::cmp);
         let vec: Vec<Width> = slice.into();
 
         assert_eq!(slice, vec);
@@ -1799,7 +1839,7 @@ mod tests {
     fn to_cow_01() {
         use std::borrow::Cow;
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(13..83);
+        let slice = rope.measure_slice(13..83, usize::cmp);
         let cow: Cow<[Width]> = slice.into();
 
         assert_eq!(slice, cow);
@@ -1809,8 +1849,8 @@ mod tests {
     fn to_cow_02() {
         use std::borrow::Cow;
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(13..14);
-        let cow: Cow<[Width]> = rope.width_slice(13..14).into();
+        let slice = rope.measure_slice(13..14, usize::cmp);
+        let cow: Cow<[Width]> = rope.measure_slice(13..14, usize::cmp).into();
 
         // Make sure it's borrowed.
         if let Cow::Owned(_) = cow {

@@ -21,6 +21,7 @@ mod constants {
     use smallvec::SmallVec;
 
     use super::SliceInfo;
+    use crate::Measurable;
 
     // Because stdlib's max is not const for some reason.
     // TODO: replace with stdlib max once it's const.
@@ -37,20 +38,24 @@ mod constants {
     const ARC_COUNTERS_SIZE: usize = size_of::<std::sync::atomic::AtomicUsize>() * 2;
 
     // Misc useful info that we need below.
-    const NODE_CHILDREN_ALIGN: usize = cmax(align_of::<Arc<u8>>(), align_of::<(SliceInfo, bool)>());
-    const fn node_align<T>() -> usize {
-        align_of::<SmallVec<[T; 16]>>()
+    const fn node_children_align<M: Measurable>() -> usize {
+        cmax(align_of::<Arc<u8>>(), align_of::<(SliceInfo<M>, bool)>())
     }
-    const fn start_offset<T>() -> usize {
-        let node_inner_align = cmax(NODE_CHILDREN_ALIGN, node_align::<T>());
+
+    const fn node_align<M>() -> usize {
+        align_of::<SmallVec<[M; 16]>>()
+    }
+
+    const fn start_offset<M: Measurable>() -> usize {
+        let node_inner_align = cmax(node_children_align::<M>(), node_align::<M>());
         // The `+ node_inner_align` is because of Node's enum discriminant.
         ARC_COUNTERS_SIZE + node_inner_align
     }
 
     // Node maximums.
-    pub const fn max_children<T>() -> usize {
+    pub const fn max_children<M: Measurable>() -> usize {
         let node_list_align = align_of::<Arc<u8>>();
-        let info_list_align = align_of::<(SliceInfo, bool)>();
+        let info_list_align = align_of::<SliceInfo<M>>();
         let field_gap = if node_list_align >= info_list_align {
             0
         } else {
@@ -61,24 +66,25 @@ mod constants {
         };
 
         // The -NODE_CHILDREN_ALIGN is for the `len` field in `NodeChildrenInternal`.
-        let target_size = TARGET_TOTAL_SIZE - start_offset::<T>() - NODE_CHILDREN_ALIGN - field_gap;
+        let target_size =
+            TARGET_TOTAL_SIZE - start_offset::<M>() - node_children_align::<M>() - field_gap;
 
-        target_size / (size_of::<Arc<u8>>() + size_of::<(SliceInfo, bool)>())
+        target_size / (size_of::<Arc<u8>>() + size_of::<SliceInfo<M>>())
     }
-    pub const fn max_len<T>() -> usize {
-        let smallvec_overhead = size_of::<SmallVec<[T; 16]>>();
-        (TARGET_TOTAL_SIZE - start_offset::<T>() - smallvec_overhead) / size_of::<T>()
+    pub const fn max_len<M: Measurable>() -> usize {
+        let smallvec_overhead = size_of::<SmallVec<[M; 16]>>();
+        (TARGET_TOTAL_SIZE - start_offset::<M>() - smallvec_overhead) / size_of::<M>()
     }
 
     // Node minimums.
     // Note: min_len is intentionally a little smaller than half
     // max_len, to give a little wiggle room when on the edge of
     // merging/splitting.
-    pub const fn min_children<T>() -> usize {
-        max_children::<T>() / 2
+    pub const fn min_children<M: Measurable>() -> usize {
+        max_children::<M>() / 2
     }
-    pub const fn min_len<T>() -> usize {
-        (max_len::<T>() / 2) - (max_len::<T>() / 32)
+    pub const fn min_len<M: Measurable>() -> usize {
+        (max_len::<M>() / 2) - (max_len::<M>() / 32)
     }
 }
 

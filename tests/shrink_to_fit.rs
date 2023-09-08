@@ -13,7 +13,7 @@ enum Lipsum {
 }
 
 impl Measurable for Lipsum {
-    fn width(&self) -> usize {
+    fn measure(&self) -> usize {
         match self {
             Lipsum::Lorem => 1,
             Lipsum::Ipsum => 2,
@@ -53,7 +53,7 @@ fn shrink_to_fit() {
 
     // Do a bunch of random incoherent inserts
     for _ in 0..1000 {
-        let width = rope.width().max(1);
+        let width = rope.measure().max(1);
         rope.insert_slice(
             rng.gen::<usize>() % width,
             random_slice(&mut rng).as_slice(),

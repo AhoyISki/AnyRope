@@ -3,9 +3,9 @@ use std::sync::Arc;
 use smallvec::SmallVec;
 
 use crate::{
-    Measurable,
-    rope::{Rope},
+    rope::Rope,
     tree::{max_children, max_len, min_len, BranchChildren, LeafSlice, Node},
+    Measurable,
 };
 
 /// An efficient incremental [`Rope<M>`] builder.
@@ -175,7 +175,7 @@ where
             let node = self.stack.pop().unwrap();
             if let Node::Branch(ref mut children) = *Arc::make_mut(&mut self.stack[stack_index - 1])
             {
-                children.push((node.slice_info(), node));
+                children.push((node.info(), node));
             } else {
                 unreachable!();
             }
@@ -192,8 +192,9 @@ where
             Arc::make_mut(&mut rope.root).zip_fix_right();
             if self.last_chunk_len < min_len::<M>() && self.last_chunk_len != rope.len() {
                 // Merge the last chunk if it was too small.
-                let index = rope.width() - rope.index_to_width(rope.len() - self.last_chunk_len);
-                Arc::make_mut(&mut rope.root).fix_tree_seam(index);
+                let index =
+                    rope.measure() - rope.index_to_measure(rope.len() - self.last_chunk_len);
+                Arc::make_mut(&mut rope.root).fix_tree_seam(index, M::Measure::cmp);
             }
             rope.pull_up_singular_nodes();
         }
@@ -260,8 +261,8 @@ where
                     self.stack.push(leaf);
                 } else {
                     let mut children = BranchChildren::new();
-                    children.push((last.slice_info(), last));
-                    children.push((leaf.slice_info(), leaf));
+                    children.push((last.info(), last));
+                    children.push((leaf.info(), leaf));
                     self.stack.push(Arc::new(Node::Branch(children)));
                 }
             }
@@ -274,7 +275,7 @@ where
                     if stack_index < 0 {
                         // We're above the root, so do a root split.
                         let mut children = BranchChildren::new();
-                        children.push((left.slice_info(), left));
+                        children.push((left.info(), left));
                         self.stack.insert(0, Arc::new(Node::Branch(children)));
                         break;
                     } else if self.stack[stack_index as usize].child_count()
@@ -283,14 +284,14 @@ where
                         // There's room to add a child, so do that.
                         Arc::make_mut(&mut self.stack[stack_index as usize])
                             .children_mut()
-                            .push((left.slice_info(), left));
+                            .push((left.info(), left));
                         break;
                     } else {
                         // Not enough room to fit a child, so split.
                         left = Arc::new(Node::Branch(
                             Arc::make_mut(&mut self.stack[stack_index as usize])
                                 .children_mut()
-                                .push_split((left.slice_info(), left)),
+                                .push_split((left.info(), left)),
                         ));
                         std::mem::swap(&mut left, &mut self.stack[stack_index as usize]);
                         stack_index -= 1;

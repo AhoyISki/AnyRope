@@ -21,7 +21,7 @@ enum Lipsum {
 }
 
 impl Measurable for Lipsum {
-    fn width(&self) -> usize {
+    fn measure(&self) -> usize {
         match self {
             Lipsum::Lorem => 1,
             Lipsum::Ipsum => 2,
@@ -103,8 +103,8 @@ where
         // `Iterator::collect()` to collect the batch because we want to
         // re-use the same Vec to avoid unnecessary allocations.
         matches.clear();
-        for m in
-            SearchIter::from_rope_slice(&rope.width_slice(head..), search_pattern).take(BATCH_SIZE)
+        for m in SearchIter::from_rope_slice(&rope.measure_slice(head..), search_pattern)
+            .take(BATCH_SIZE)
         {
             matches.push(m);
         }
@@ -156,7 +156,7 @@ where
     search_pattern_char_len: usize,
     cur_index: usize, // The current char index of the search head.
     possible_matches: Vec<std::slice::Iter<'a, M>>, /* Tracks where we are in the search pattern
-                                                     * for the current possible matches. */
+                       * for the current possible matches. */
 }
 
 impl<'a, M> SearchIter<'a, M>

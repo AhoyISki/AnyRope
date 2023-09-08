@@ -1,11 +1,11 @@
-use std::sync::Arc;
+use std::{cmp::Ordering, sync::Arc};
 
 use crate::{
-    Measurable,
-    slice_utils::{end_width_to_index, index_to_width, start_width_to_index},
+    slice_utils::{end_measure_to_index, index_to_measure, start_measure_to_index},
     tree::{
         max_children, max_len, min_children, min_len, BranchChildren, Count, LeafSlice, SliceInfo,
     },
+    Measurable,
 };
 
 #[derive(Debug, Clone)]
@@ -35,13 +35,15 @@ where
     /// Total number of items in the [`Node<M>`].
     #[inline(always)]
     pub fn len(&self) -> usize {
-        self.slice_info().len as usize
+        self.info().len as usize
     }
 
-    /// Total number of items in the [`Node<M>`].
+    /// Total [`M::Measure`] in the [`Node<M>`]
+    ///
+    /// [`M::Measure`]: Measurable::Measure
     #[inline(always)]
-    pub fn width(&self) -> usize {
-        self.slice_info().width as usize
+    pub fn measure(&self) -> M::Measure {
+        self.info().measure
     }
 
     /// Fetches a chunk mutably, and allows it to be edited via a closure.
@@ -70,29 +72,29 @@ where
     /// to be split. It is up to the caller to check for that new
     /// [`Node<M>`], and handle it by creating a new root with both the
     /// original [`Node<M>`] and the new node as children.
-    pub fn edit_chunk_at_width<F>(
+    pub fn edit_chunk_at_measure<F>(
         &mut self,
-        width: usize,
-        node_info: SliceInfo,
+        measure: M::Measure,
+        node_info: SliceInfo<M>,
         mut edit: F,
-    ) -> (SliceInfo, Option<(SliceInfo, Arc<Node<M>>)>)
+    ) -> (SliceInfo<M>, Option<(SliceInfo<M>, Arc<Node<M>>)>)
     where
         F: FnMut(
-            usize,
-            SliceInfo,
+            M::Measure,
+            SliceInfo<M>,
             &mut LeafSlice<M>,
-        ) -> (SliceInfo, Option<(SliceInfo, Arc<Node<M>>)>),
+        ) -> (SliceInfo<M>, Option<(SliceInfo<M>, Arc<Node<M>>)>),
     {
         match *self {
-            Node::Leaf(ref mut slice) => edit(width, node_info, slice),
+            Node::Leaf(ref mut slice) => edit(measure, node_info, slice),
             Node::Branch(ref mut children) => {
                 // Compact leaf children if we're very close to maximum leaf
                 // fragmentation. This basically guards against excessive memory
                 // ballooning when repeatedly appending to the end of a rope.
                 // The constant here was arrived at experimentally, and is otherwise
                 // fairly arbitrary.
-                const fn frag_min_bytes<T>() -> usize {
-                    (max_len::<T>() * min_children::<T>()) + (max_len::<T>() / 32)
+                const fn frag_min_bytes<M: Measurable>() -> usize {
+                    (max_len::<M>() * min_children::<M>()) + (max_len::<M>() / 32)
                 }
                 if children.is_full()
                     && children.nodes()[0].is_leaf()
@@ -102,12 +104,12 @@ where
                 }
 
                 // Find the child we care about.
-                let (child_i, acc_width) = children.search_width_only(width);
+                let (child_i, acc_width) = children.search_measure_only(measure);
                 let info = children.info()[child_i];
 
                 // Recurse into the child.
                 let (l_info, residual) = Arc::make_mut(&mut children.nodes_mut()[child_i])
-                    .edit_chunk_at_width(width - acc_width, info, edit);
+                    .edit_chunk_at_measure(measure - acc_width, info, edit);
 
                 children.info_mut()[child_i] = l_info;
 
@@ -145,20 +147,24 @@ where
     /// should be special-cased in calling code.
     pub fn remove_range(
         &mut self,
-        s_width: usize,
-        e_width: usize,
-        node_info: SliceInfo,
-        include_l: bool,
-        include_r: bool,
-    ) -> (SliceInfo, bool) {
-        match *self {
-            Node::Leaf(ref mut slice) => {
-                remove_from_slice(slice, s_width, e_width, include_l, include_r)
-            }
-
-            Node::Branch(ref mut children) => {
-                remove_from_children(children, s_width, e_width, include_l, include_r, node_info)
-            }
+        start: M::Measure,
+        end: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+        incl_left: bool,
+        incl_right: bool,
+    ) -> (SliceInfo<M>, bool) {
+        let info = self.info();
+        match self {
+            Node::Leaf(slice) => remove_from_slice(slice, start, end, cmp, incl_left, incl_right),
+            Node::Branch(children) => remove_from_children(
+                children,
+                start,
+                end,
+                cmp,
+                incl_left,
+                incl_right,
+                info,
+            ),
         }
     }
 
@@ -190,10 +196,10 @@ where
             children.update_child_info(last_i);
             if let Some(extra_node) = residual {
                 if children.len() < max_children::<M>() {
-                    children.push((extra_node.slice_info(), extra_node));
+                    children.push((extra_node.info(), extra_node));
                     return None;
                 } else {
-                    let r_children = children.push_split((extra_node.slice_info(), extra_node));
+                    let r_children = children.push_split((extra_node.info(), extra_node));
                     return Some(Arc::new(Node::Branch(r_children)));
                 }
             } else {
@@ -238,11 +244,10 @@ where
             children.update_child_info(0);
             if let Some(extra_node) = residual {
                 if children.len() < max_children::<M>() {
-                    children.insert(0, (extra_node.slice_info(), extra_node));
+                    children.insert(0, (extra_node.info(), extra_node));
                     return None;
                 } else {
-                    let mut r_children =
-                        children.insert_split(0, (extra_node.slice_info(), extra_node));
+                    let mut r_children = children.insert_split(0, (extra_node.info(), extra_node));
                     std::mem::swap(children, &mut r_children);
                     return Some(Arc::new(Node::Branch(r_children)));
                 }
@@ -254,32 +259,36 @@ where
         }
     }
 
-    /// Splits the [`Node<M>`] at `width`, returning the right side of the
+    /// Splits the [`Node<M>`] at `measure`, returning the right side of the
     /// split.
-    pub fn end_split(&mut self, width: usize) -> Self {
-        debug_assert!(width != 0);
-        debug_assert!(width != (self.slice_info().width as usize));
+    pub fn end_split(
+        &mut self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Self {
+        debug_assert!(measure != M::Measure::default());
+        debug_assert!(measure != (self.info().measure));
         match *self {
             Node::Leaf(ref mut slice) => {
-                let index = end_width_to_index(slice, width);
+                let index = end_measure_to_index(slice, measure, &cmp);
                 Node::Leaf(slice.split_off(index))
             }
             Node::Branch(ref mut children) => {
-                let (child_i, acc_info) = children.search_end_width(width);
+                let (child_i, acc_info) = children.search_end_measure(measure);
                 let child_info = children.info()[child_i];
 
-                if width == acc_info.width as usize {
+                if measure == acc_info.measure {
                     Node::Branch(children.split_off(child_i))
-                } else if width == (acc_info.width as usize + child_info.width as usize) {
+                } else if measure == (acc_info.measure + child_info.measure) {
                     Node::Branch(children.split_off(child_i + 1))
                 } else {
                     let mut r_children = children.split_off(child_i + 1);
 
                     // Recurse
                     let r_node = Arc::make_mut(&mut children.nodes_mut()[child_i])
-                        .end_split(width - acc_info.width as usize);
+                        .end_split(measure - acc_info.measure, cmp);
 
-                    r_children.insert(0, (r_node.slice_info(), Arc::new(r_node)));
+                    r_children.insert(0, (r_node.info(), Arc::new(r_node)));
 
                     children.update_child_info(child_i);
                     r_children.update_child_info(0);
@@ -292,30 +301,34 @@ where
 
     /// Splits the [`Node<M>`] index `width`, returning the right side of the
     /// split.
-    pub fn start_split(&mut self, width: usize) -> Self {
-        debug_assert!(width != 0);
-        debug_assert!(width != (self.slice_info().width as usize));
+    pub fn start_split(
+        &mut self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Self {
+        debug_assert!(measure != M::Measure::default());
+        debug_assert!(measure != (self.info().measure));
         match *self {
             Node::Leaf(ref mut slice) => {
-                let index = start_width_to_index(slice, width);
+                let index = start_measure_to_index(slice, measure, &cmp);
                 Node::Leaf(slice.split_off(index))
             }
             Node::Branch(ref mut children) => {
-                let (child_i, acc_info) = children.search_start_width(width);
+                let (child_i, acc_info) = children.search_start_measure(measure, &cmp);
                 let child_info = children.info()[child_i];
 
-                if width == acc_info.width as usize {
+                if measure == acc_info.measure {
                     Node::Branch(children.split_off(child_i))
-                } else if width == (acc_info.width as usize + child_info.width as usize) {
+                } else if measure == (acc_info.measure + child_info.measure) {
                     Node::Branch(children.split_off(child_i + 1))
                 } else {
                     let mut r_children = children.split_off(child_i + 1);
 
                     // Recurse
                     let r_node = Arc::make_mut(&mut children.nodes_mut()[child_i])
-                        .end_split(width - acc_info.width as usize);
+                        .end_split(measure - acc_info.measure, cmp);
 
-                    r_children.insert(0, (r_node.slice_info(), Arc::new(r_node)));
+                    r_children.insert(0, (r_node.info(), Arc::new(r_node)));
 
                     children.update_child_info(child_i);
                     r_children.update_child_info(0);
@@ -328,7 +341,7 @@ where
 
     /// Returns the chunk that contains the given index, and the [`SliceInfo`]
     /// corresponding to the start of the chunk.
-    pub fn get_chunk_at_index(&self, mut index: usize) -> (&[M], SliceInfo) {
+    pub fn get_chunk_at_index(&self, mut index: usize) -> (&[M], SliceInfo<M>) {
         let mut node = self;
         let mut info = SliceInfo::new();
 
@@ -349,7 +362,11 @@ where
 
     /// Returns the chunk that contains the given width, and the [`SliceInfo`]
     /// corresponding to the start of the chunk.
-    pub fn get_first_chunk_at_width(&self, mut width: usize) -> (&[M], SliceInfo) {
+    pub fn get_first_chunk_at_measure(
+        &self,
+        mut measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> (&[M], SliceInfo<M>) {
         let mut node = self;
         let mut info = SliceInfo::new();
 
@@ -359,11 +376,11 @@ where
                     return (slice, info);
                 }
                 Node::Branch(ref children) => {
-                    let (child_i, acc_info) = children.search_start_width(width);
+                    let (child_i, acc_info) = children.search_start_measure(measure, &cmp);
                     info += acc_info;
 
                     node = &*children.nodes()[child_i];
-                    width -= acc_info.width as usize;
+                    measure -= acc_info.measure;
                 }
             }
         }
@@ -371,7 +388,11 @@ where
 
     /// Returns the chunk that contains the given width, and the [`SliceInfo`]
     /// corresponding to the start of the chunk.
-    pub fn get_last_chunk_at_width(&self, mut width: usize) -> (&[M], SliceInfo) {
+    pub fn get_last_chunk_at_measure(
+        &self,
+        mut measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> (&[M], SliceInfo<M>) {
         let mut node = self;
         let mut info = SliceInfo::new();
 
@@ -381,11 +402,11 @@ where
                     return (slice, info);
                 }
                 Node::Branch(ref children) => {
-                    let (child_i, acc_info) = children.search_end_width(width);
+                    let (child_i, acc_info) = children.search_end_measure(measure);
                     info += acc_info;
 
                     node = &*children.nodes()[child_i];
-                    width -= acc_info.width as usize;
+                    measure -= acc_info.measure;
                 }
             }
         }
@@ -393,38 +414,46 @@ where
 
     /// Returns the [`SliceInfo`] at the given starting width sum.
     #[inline(always)]
-    pub fn start_width_to_slice_info(&self, width: usize) -> SliceInfo {
-        let (chunk, info) = self.get_first_chunk_at_width(width);
-        let bi = start_width_to_index(chunk, width - info.width as usize);
+    pub fn start_measure_to_slice_info(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> SliceInfo<M> {
+        let (chunk, info) = self.get_first_chunk_at_measure(measure, &cmp);
+        let bi = start_measure_to_index(chunk, measure - info.measure, cmp);
         SliceInfo {
             len: info.len + bi as Count,
-            width: width as Count,
+            measure,
         }
     }
 
     /// Returns the [`SliceInfo`] at the given ending width sum.
     #[inline(always)]
-    pub fn end_width_to_slice_info(&self, width: usize) -> SliceInfo {
-        let (chunk, info) = self.get_last_chunk_at_width(width);
-        let bi = end_width_to_index(chunk, width - info.width as usize);
+    pub fn end_measure_to_slice_info(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> SliceInfo<M> {
+        let (chunk, info) = self.get_last_chunk_at_measure(measure, &cmp);
+        let bi = end_measure_to_index(chunk, measure - info.measure, cmp);
         SliceInfo {
             len: info.len + bi as Count,
-            width: width as Count,
+            measure,
         }
     }
 
     /// Returns the [`SliceInfo`] at the given index.
     #[inline(always)]
-    pub fn index_to_slice_info(&self, index: usize) -> SliceInfo {
+    pub fn index_to_slice_info(&self, index: usize) -> SliceInfo<M> {
         let (chunk, info) = self.get_chunk_at_index(index);
-        let width = index_to_width(chunk, index - info.len as usize);
+        let measure = index_to_measure(chunk, index - info.len as usize);
         SliceInfo {
             len: index as Count,
-            width: info.width + width as Count,
+            measure: info.measure + measure,
         }
     }
 
-    pub fn slice_info(&self) -> SliceInfo {
+    pub fn info(&self) -> SliceInfo<M> {
         match *self {
             Node::Leaf(ref slice) => SliceInfo::from_slice(slice),
             Node::Branch(ref children) => children.combined_info(),
@@ -509,7 +538,7 @@ where
             Node::Leaf(_) => {}
             Node::Branch(ref children) => {
                 for (info, node) in children.iter() {
-                    assert_eq!(*info, node.slice_info());
+                    assert_eq!(info.len, node.info().len);
                     node.assert_integrity();
                 }
             }
@@ -619,13 +648,17 @@ where
     ///
     /// Returns whether it did anything or not that would affect the
     /// parent. True: did stuff, false: didn't do stuff
-    pub fn fix_tree_seam(&mut self, width: usize) -> bool {
+    pub fn fix_tree_seam(
+        &mut self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> bool {
         if let Node::Branch(ref mut children) = *self {
             let mut did_stuff = false;
             loop {
                 // Do merging
                 if children.len() > 1 {
-                    let (child_i, start_info) = children.search_start_width(width);
+                    let (child_i, start_info) = children.search_start_measure(measure, &cmp);
                     let mut do_merge = match *children.nodes()[child_i] {
                         Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
                         Node::Branch(ref children2) => children2.len() < min_children::<M>(),
@@ -637,7 +670,7 @@ where
                         }
                     } else {
                         do_merge |= {
-                            start_info.width as usize == width
+                            start_info.measure == measure
                                 && match *children.nodes()[child_i - 1] {
                                     Node::Leaf(ref slice) => slice.len() < min_len::<M>(),
                                     Node::Branch(ref children2) => {
@@ -653,19 +686,19 @@ where
                 }
 
                 // Do recursion
-                let (child_i, start_info) = children.search_start_width(width);
+                let (child_i, start_info) = children.search_start_measure(measure, &cmp);
 
-                if start_info.width as usize == width && child_i != 0 {
-                    let tmp = children.info()[child_i - 1].width as usize;
-                    let effect_1 =
-                        Arc::make_mut(&mut children.nodes_mut()[child_i - 1]).fix_tree_seam(tmp);
-                    let effect_2 =
-                        Arc::make_mut(&mut children.nodes_mut()[child_i]).fix_tree_seam(0);
+                if start_info.measure == measure && child_i != 0 {
+                    let tmp = children.info()[child_i - 1].measure;
+                    let effect_1 = Arc::make_mut(&mut children.nodes_mut()[child_i - 1])
+                        .fix_tree_seam(tmp, &cmp);
+                    let effect_2 = Arc::make_mut(&mut children.nodes_mut()[child_i])
+                        .fix_tree_seam(M::Measure::default(), &cmp);
                     if (!effect_1) && (!effect_2) {
                         break;
                     }
                 } else if !Arc::make_mut(&mut children.nodes_mut()[child_i])
-                    .fix_tree_seam(width - start_info.width as usize)
+                    .fix_tree_seam(measure - start_info.measure, &cmp)
                 {
                     break;
                 }
@@ -680,87 +713,96 @@ where
 
 fn remove_from_slice<M>(
     slice: &mut LeafSlice<M>,
-    s_width: usize,
-    e_width: usize,
-    include_l: bool,
-    include_r: bool,
-) -> (SliceInfo, bool)
+    start: M::Measure,
+    end: M::Measure,
+    cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    incl_left: bool,
+    incl_right: bool,
+) -> (SliceInfo<M>, bool)
 where
     M: Measurable,
     [(); max_len::<M>()]: Sized,
     [(); max_children::<M>()]: Sized,
 {
-    let s_index = if include_l {
-        start_width_to_index(slice, s_width)
+    let start_index = if incl_left {
+        start_measure_to_index(slice, start, &cmp)
     } else {
-        end_width_to_index(slice, s_width)
+        end_measure_to_index(slice, end, &cmp)
     };
     // In this circumstance, nothing needs to be done, since we're removing
     // in the middle of an element.
-    let zero_width = slice.get(s_index).map(|m| m.width() > 0).unwrap_or(true);
-    if s_width == e_width && zero_width {
+    let non_zero_width = slice
+        .get(start_index)
+        .map(|m| cmp(&m.measure(), &M::Measure::default()).is_ge())
+        .unwrap_or(true);
+
+    if start == end && non_zero_width {
         return (SliceInfo::from_slice(slice), false);
     }
-    let e_index = if include_r {
-        end_width_to_index(slice, e_width)
+
+    let end_index = if incl_right {
+        end_measure_to_index(slice, end, &cmp)
     } else {
-        start_width_to_index(slice, e_width)
+        start_measure_to_index(slice, end, cmp)
     };
-    slice.remove_range(s_index, e_index);
+
+    slice.remove_range(start_index, end_index);
     (SliceInfo::from_slice(slice), false)
 }
 
 fn remove_from_children<M>(
     children: &mut BranchChildren<M>,
-    s_width: usize,
-    e_width: usize,
-    include_l: bool,
-    include_r: bool,
-    node_info: SliceInfo,
-) -> (SliceInfo, bool)
+    start_bound: M::Measure,
+    end_bound: M::Measure,
+    cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    incl_left: bool,
+    incl_right: bool,
+    info: SliceInfo<M>,
+) -> (SliceInfo<M>, bool)
 where
     M: Measurable,
     [(); max_len::<M>()]: Sized,
     [(); max_children::<M>()]: Sized,
 {
-    let ((l_child, l_width_acc), (r_child, r_width_acc)) =
-        children.search_width_range(s_width, e_width);
+    let ((left_child, left_accum), (right_child, right_accum)) =
+        children.search_measure_range(start_bound, end_bound, &cmp);
 
-    if l_child == r_child {
-        let info = children.info()[l_child];
-        let (new_info, mut needs_fix) = handle_width_range(
+    if left_child == right_child {
+        let child_info = children.info()[left_child];
+        let (new_info, mut needs_fix) = handle_measure_range(
             children,
-            l_child,
-            l_width_acc,
-            s_width,
-            e_width,
-            include_l,
-            include_r,
+            left_child,
+            left_accum,
+            start_bound,
+            end_bound,
+            cmp,
+            incl_left,
+            incl_right,
         );
 
         if children.len() > 0 {
-            merge_child(children, l_child);
+            merge_child(children, left_child);
 
             // If we couldn't get all children >= minimum size, then
             // we'll need to fix that later.
-            if children.nodes()[l_child.min(children.len() - 1)].is_undersized() {
+            if children.nodes()[left_child.min(children.len() - 1)].is_undersized() {
                 needs_fix = true;
             }
         }
 
-        (node_info - info + new_info, needs_fix)
+        (info - child_info + new_info, needs_fix)
     // We're dealing with more than one child.
     } else {
         let mut needs_fix = false;
 
         // Calculate the start..end range of nodes to be removed.
-        let first = l_child + 1;
-        let (last, r_child_exists) = {
-            let r_child_width = children.info()[r_child].width as usize;
-            if r_width_acc + r_child_width == e_width {
-                (r_child + 1, false)
+        let first = left_child + 1;
+        let (last, right_child_exists) = {
+            let right_measure = children.info()[right_child].measure;
+            if right_accum + right_measure == end_bound {
+                (right_child + 1, false)
             } else {
-                (r_child, true)
+                (right_child, true)
             }
         };
 
@@ -769,46 +811,49 @@ where
             children.remove(first);
         }
 
+        // POINT OF CONTENTION, MAY FAIL LOL.
+        let between_two_children = start_bound < right_accum && right_accum < end_bound;
+
         // Handle right child
-        if r_child_exists {
-            let include_l = include_l || (s_width < r_width_acc && r_width_acc + 1 < e_width);
-            let (_, fix) = handle_width_range(
+        if right_child_exists {
+            let (_, fix) = handle_measure_range(
                 children,
                 first,
-                r_width_acc,
-                s_width,
-                e_width,
-                include_l,
-                include_r,
+                right_accum,
+                start_bound,
+                end_bound,
+                &cmp,
+                incl_left || between_two_children,
+                incl_right,
             );
             needs_fix |= fix;
         }
 
         // Handle left child
         let (_, fix) = {
-            let include_r = include_r || (s_width < r_width_acc && r_width_acc + 1 < e_width);
-            handle_width_range(
+            handle_measure_range(
                 children,
-                l_child,
-                l_width_acc,
-                s_width,
-                e_width,
-                include_l,
-                include_r,
+                left_child,
+                left_accum,
+                start_bound,
+                end_bound,
+                cmp,
+                incl_left,
+                incl_right || between_two_children,
             )
         };
         needs_fix |= fix;
 
         if children.len() > 0 {
             // Handle merging
-            let merge_extent = 1 + if r_child_exists { 1 } else { 0 };
-            for i in (l_child..(l_child + merge_extent)).rev() {
+            let merge_extent = 1 + if right_child_exists { 1 } else { 0 };
+            for i in (left_child..(left_child + merge_extent)).rev() {
                 merge_child(children, i);
             }
 
             // If we couldn't get all children >= minimum size, then
             // we'll need to fix that later.
-            if children.nodes()[l_child.min(children.len() - 1)].is_undersized() {
+            if children.nodes()[left_child.min(children.len() - 1)].is_undersized() {
                 needs_fix = true;
             }
         }
@@ -822,29 +867,29 @@ where
 ///
 /// - Whether the tree may need invariant fixing.
 /// - Updated SliceInfo of the node.
-fn handle_width_range<M>(
+fn handle_measure_range<M>(
     children: &mut BranchChildren<M>,
     child_i: usize,
-    accum: usize,
-    start: usize,
-    end: usize,
-    include_left: bool,
-    include_right: bool,
-) -> (SliceInfo, bool)
+    accum: M::Measure,
+    start_measure: M::Measure,
+    end_measure: M::Measure,
+    cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    incl_left: bool,
+    incl_right: bool,
+) -> (SliceInfo<M>, bool)
 where
     M: Measurable,
     [(); max_len::<M>()]: Sized,
     [(); max_children::<M>()]: Sized,
 {
     // Recurse into child
-    let child_info = children.info()[child_i];
-    let child_width = children.info()[child_i].width as usize;
+    let child_measure = children.info()[child_i].measure;
     let (new_info, needs_fix) = Arc::make_mut(&mut children.nodes_mut()[child_i]).remove_range(
-        start - accum.min(start),
-        (end - accum).min(child_width),
-        child_info,
-        include_left,
-        include_right,
+        start_measure - accum.min(start_measure),
+        (end_measure - accum).min(child_measure),
+        cmp,
+        incl_left,
+        incl_right,
     );
 
     // Handle result

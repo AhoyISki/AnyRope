@@ -127,7 +127,9 @@ pub mod iter;
 use std::{
     cmp::Ordering,
     fmt::Debug,
-    ops::{Add, AddAssign, Bound, RangeBounds, Sub, SubAssign},
+    ops::{
+        Add, AddAssign, Bound, Range, RangeBounds, RangeFrom, RangeFull, RangeTo, Sub, SubAssign,
+    },
 };
 
 pub use crate::{
@@ -188,7 +190,7 @@ impl Measurable for Width {
 // Error reporting types.
 
 /// AnyRope's result type.
-pub type Result<T, M: Measurable> = std::result::Result<T, Error<M>>;
+pub type Result<T, M> = std::result::Result<T, Error<M>>;
 
 /// AnyRope's error type.
 #[derive(Clone, Copy)]
@@ -234,16 +236,6 @@ pub enum Error<M: Measurable> {
     /// When either the start or end are [`None`], that indicates a half-open
     /// range.
     MeasureRangeOutOfBounds(Option<M::Measure>, Option<M::Measure>, M::Measure),
-
-    /// Indicates that a range was passed whoose start is an exclusive bound.
-    ///
-    /// Contains the (start, end) measures of the range.
-    MeasureRangeWithExclusiveStart(M::Measure, Bound<M::Measure>),
-
-    /// Indicates that a range was passed whoose end is an inclusive bound.
-    ///
-    /// Contains the [start, end] measures of the range.
-    MeasureRangeWithInclusiveEnd(Bound<M::Measure>, M::Measure),
 }
 
 impl<M: Measurable> std::fmt::Debug for Error<M> {
@@ -286,22 +278,6 @@ impl<M: Measurable> std::fmt::Debug for Error<M> {
                 write!(f, "Measure range out of bounds: measure range ")?;
                 write_range(f, start, end)?;
                 write!(f, ", Rope/RopeSlice measure {:?}", measure)
-            }
-            Error::MeasureRangeWithExclusiveStart(start, end) => {
-                write!(f, "Measure range with exclusive start: {:?}!..", start)?;
-                match end {
-                    Bound::Included(end) => write!(f, "={:?}", end),
-                    Bound::Excluded(end) => write!(f, "{:?}", end),
-                    Bound::Unbounded => Ok(()),
-                }
-            }
-            Error::MeasureRangeWithInclusiveEnd(start, end) => {
-                write!(f, "Measure range with inclusive end: ")?;
-                match start {
-                    Bound::Included(start) => write!(f, "{:?}..={:?}", start, end),
-                    Bound::Excluded(start) => write!(f, "{:?}!..={:?}", start, end),
-                    Bound::Unbounded => write!(f, "..={:?}", end),
-                }
             }
         }
     }
@@ -350,31 +326,86 @@ fn end_bound_to_num(b: Bound<&usize>) -> Option<usize> {
     }
 }
 
+trait MeasureRange<M: Measurable> {
+    fn start_bound(&self) -> Option<&M::Measure>;
+
+    fn end_bound(&self) -> Option<&M::Measure>;
+}
+
+impl<M: Measurable> MeasureRange<M> for Range<M::Measure> {
+    fn start_bound(&self) -> Option<&M::Measure> {
+        Some(&self.start)
+    }
+
+    fn end_bound(&self) -> Option<&M::Measure> {
+        Some(&self.end)
+    }
+}
+
+impl<M: Measurable> MeasureRange<M> for RangeFrom<M::Measure> {
+    fn start_bound(&self) -> Option<&M::Measure> {
+        Some(&self.start)
+    }
+
+    fn end_bound(&self) -> Option<&M::Measure> {
+        None
+    }
+}
+
+impl<M: Measurable> MeasureRange<M> for RangeTo<M::Measure> {
+    fn start_bound(&self) -> Option<&M::Measure> {
+        None
+    }
+
+    fn end_bound(&self) -> Option<&M::Measure> {
+        Some(&self.end)
+    }
+}
+
+impl<M: Measurable> MeasureRange<M> for RangeFull {
+    fn start_bound(&self) -> Option<&M::Measure> {
+        None
+    }
+
+    fn end_bound(&self) -> Option<&M::Measure> {
+        None
+    }
+}
+
 #[inline(always)]
-fn form_measure_range<M: Measurable>(
-    range: &impl RangeBounds<M::Measure>,
+fn measures_from_range<M: Measurable>(
+    range: &impl MeasureRange<M>,
     limit: M::Measure,
 ) -> Result<(M::Measure, M::Measure), M> {
+    #[cfg(debug_assertions)]
+    {
+        if let Some(start) = range.start_bound() {
+            assert_default_is_lowest::<M>(start);
+        }
+        if let Some(end) = range.end_bound() {
+            assert_default_is_lowest::<M>(end);
+        }
+    }
+
     match (range.start_bound(), range.end_bound()) {
-        (Bound::Included(start), Bound::Included(end)) => {
-            assert_default_is_min::<M>(start);
-            assert_default_is_min::<M>(end);
-            Err(Error::MeasureRangeWithInclusiveEnd(
-                range.start_bound().cloned(),
-                *end,
-            ))
+        (None, None) => Ok((M::Measure::default(), limit)),
+        (None, Some(end)) => {
+            if *end > limit {
+                Err(Error::MeasureRangeOutOfBounds(None, Some(*end), limit))
+            } else {
+                Ok((M::Measure::default(), *end))
+            }
         }
-        (Bound::Unbounded, Bound::Included(end)) => {
-            assert_default_is_min::<M>(end);
-            Err(Error::MeasureRangeWithInclusiveEnd(
-                range.start_bound().cloned(),
-                *end,
-            ))
+        (Some(start), None) => {
+            if *start > limit {
+                Err(Error::MeasureRangeOutOfBounds(Some(*start), None, limit))
+            } else {
+                Ok((*start, limit))
+            }
         }
-        (Bound::Included(start), Bound::Excluded(end)) => {
-            assert_default_is_min::<M>(start);
+
+        (Some(start), Some(end)) => {
             if start > end {
-                assert_default_is_min::<M>(end);
                 Err(Error::MeasureRangeInvalid(Some(*start), Some(*end)))
             } else if *end > limit || *start > limit {
                 Err(Error::MeasureRangeOutOfBounds(
@@ -386,44 +417,11 @@ fn form_measure_range<M: Measurable>(
                 Ok((*start, *end))
             }
         }
-        (Bound::Excluded(start), Bound::Included(end))
-        | (Bound::Excluded(start), Bound::Excluded(end)) => {
-            assert_default_is_min::<M>(start);
-            assert_default_is_min::<M>(end);
-            Err(Error::MeasureRangeWithExclusiveStart(
-                *start,
-                range.end_bound().cloned(),
-            ))
-        }
-        (Bound::Excluded(start), Bound::Unbounded) => {
-            assert_default_is_min::<M>(start);
-            Err(Error::MeasureRangeWithExclusiveStart(
-                *start,
-                range.end_bound().cloned(),
-            ))
-        }
-        (Bound::Included(start), Bound::Unbounded) => {
-            assert_default_is_min::<M>(start);
-            if *start > limit {
-                Err(Error::MeasureRangeOutOfBounds(Some(*start), None, limit))
-            } else {
-                Ok((*start, limit))
-            }
-        }
-        (Bound::Unbounded, Bound::Excluded(end)) => {
-            assert_default_is_min::<M>(end);
-            if *end > limit {
-                Err(Error::MeasureRangeOutOfBounds(None, Some(*end), limit))
-            } else {
-                Ok((M::Measure::default(), *end))
-            }
-        }
-        (Bound::Unbounded, Bound::Unbounded) => Ok((M::Measure::default(), limit)),
     }
 }
 
-fn assert_default_is_min<M: Measurable>(cmp: &M::Measure) {
-    debug_assert!(
+fn assert_default_is_lowest<M: Measurable>(cmp: &M::Measure) {
+    assert!(
         M::Measure::default() <= *cmp,
         "{:?} (Measure::default()) is supposed to be the smallest possible value for \
          Measurable::Measure, and yet {:?} is smaller",

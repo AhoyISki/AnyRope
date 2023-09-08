@@ -1,65 +1,83 @@
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-use crate::{Measurable, slice_utils::width_of, tree::Count};
+use crate::{slice_utils::measure_of, tree::Count, Measurable};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct SliceInfo {
+pub struct SliceInfo<M>
+where
+    M: Measurable,
+{
     pub(crate) len: Count,
-    pub(crate) width: Count,
+    pub(crate) measure: M::Measure,
 }
 
-impl SliceInfo {
+impl<M> SliceInfo<M>
+where
+    M: Measurable,
+{
     #[inline]
-    pub fn new() -> SliceInfo {
-        SliceInfo { len: 0, width: 0 }
+    pub fn new() -> Self {
+        Self {
+            len: 0,
+            measure: M::Measure::default(),
+        }
     }
 
     #[inline]
-    pub fn from_slice<M>(slice: &[M]) -> SliceInfo
-    where
-        M: Measurable,
-    {
-        SliceInfo {
+    pub fn from_slice(slice: &[M]) -> Self {
+        Self {
             len: slice.len() as Count,
-            width: width_of(slice) as Count,
+            measure: measure_of(slice),
         }
     }
 }
 
-impl Add for SliceInfo {
+impl<M> Add for SliceInfo<M>
+where
+    M: Measurable,
+{
     type Output = Self;
 
     #[inline]
-    fn add(self, rhs: SliceInfo) -> SliceInfo {
-        SliceInfo {
+    fn add(self, rhs: Self) -> Self {
+        Self {
             len: self.len + rhs.len,
-            width: self.width + rhs.width,
+            measure: self.measure + rhs.measure,
         }
     }
 }
 
-impl AddAssign for SliceInfo {
+impl<M> AddAssign for SliceInfo<M>
+where
+    M: Measurable,
+{
     #[inline]
-    fn add_assign(&mut self, other: SliceInfo) {
+    fn add_assign(&mut self, other: Self) {
         *self = *self + other;
     }
 }
 
-impl Sub for SliceInfo {
+impl<M> Sub for SliceInfo<M>
+where
+    M: Measurable,
+{
     type Output = Self;
 
     #[inline]
-    fn sub(self, rhs: SliceInfo) -> SliceInfo {
-        SliceInfo {
+    fn sub(self, rhs: Self) -> Self {
+        Self {
             len: self.len - rhs.len,
-            width: self.width - rhs.width,
+            measure: self.measure - rhs.measure,
         }
     }
 }
 
-impl SubAssign for SliceInfo {
+impl<M> SubAssign for SliceInfo<M>
+where
+    M: Measurable,
+{
     #[inline]
-    fn sub_assign(&mut self, other: SliceInfo) {
+    fn sub_assign(&mut self, other: Self) {
         *self = *self - other;
     }
 }

@@ -1,40 +1,42 @@
+use std::cmp::Ordering;
+
 use crate::Measurable;
 
 #[inline(always)]
-pub fn width_of<M>(slice: &[M]) -> usize
-where
-    M: Measurable,
-{
-    slice.iter().map(|measurable| measurable.width()).sum()
+pub fn measure_of<M: Measurable>(slice: &[M]) -> M::Measure {
+    slice
+        .iter()
+        .map(|measurable| measurable.measure())
+        .fold(M::Measure::default(), |accum, measure| accum + measure)
 }
 
 /// Gets the width sum up to a given `index` in the `slice`.
 #[inline(always)]
-pub fn index_to_width<M>(slice: &[M], index: usize) -> usize
-where
-    M: Measurable,
-{
+pub fn index_to_measure<M: Measurable>(slice: &[M], index: usize) -> M::Measure {
     slice
         .iter()
         .take(index)
-        .map(|measurable| measurable.width())
-        .sum()
+        .map(|measurable| measurable.measure())
+        .fold(M::Measure::default(), |accum, measure| accum + measure)
 }
 
 /// Finds the index of the element whose starting width sum matches `width`.
 #[inline(always)]
-pub fn start_width_to_index<M>(slice: &[M], width: usize) -> usize
-where
-    M: Measurable,
-{
+pub fn start_measure_to_index<M: Measurable>(
+    slice: &[M],
+    start: M::Measure,
+    cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+) -> usize {
     let mut index = 0;
-    let mut accum = 0;
+    let mut accum = M::Measure::default();
 
     for measurable in slice {
-        let measurable_width = measurable.width();
-        let next_accum = accum + measurable_width;
+        let measure = measurable.measure();
+        let next_accum = accum + measure;
 
-        if next_accum > width || (measurable_width == 0 && next_accum == width) {
+        if cmp(&start, &next_accum).is_le()
+            || (measure == M::Measure::default() && cmp(&start, &next_accum).is_eq())
+        {
             break;
         }
         accum = next_accum;
@@ -46,21 +48,24 @@ where
 
 /// Finds the index of the element whose ending width sum matches `width`.
 #[inline(always)]
-pub fn end_width_to_index<M>(slice: &[M], width: usize) -> usize
-where
-    M: Measurable,
-{
+pub fn end_measure_to_index<M: Measurable>(
+    slice: &[M],
+    end: M::Measure,
+    cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+) -> usize {
     let mut index = 0;
-    let mut accum = 0;
+    let mut accum = M::Measure::default();
 
     for measurable in slice {
-        let measurable_width = measurable.width();
+        let measure = measurable.measure();
         // This makes it so that every 0 width node exactly at `width` is also captured.
-        if accum > width || (measurable_width != 0 && accum == width) {
+        if cmp(&end, &accum).is_le()
+            || (measure != M::Measure::default() && cmp(&end, &accum).is_eq())
+        {
             break;
         }
 
-        accum += measurable_width;
+        accum += measure;
         index += 1;
     }
 

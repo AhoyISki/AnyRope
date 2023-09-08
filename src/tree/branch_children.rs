@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     fmt,
     iter::{Iterator, Zip},
     slice,
@@ -6,13 +7,13 @@ use std::{
 };
 
 use crate::{
-    Measurable,
     tree::{max_children, max_len, Node, SliceInfo},
+    Measurable,
 };
 
 /// A fixed-capacity vec of child Arc-pointers and child metadata.
 ///
-/// The unsafe guts of this are implemented in BranchChildrenInternal
+/// The unsafe guts of this.is_le() are implemented in BranchChildrenInternal
 /// lower down in this file.
 #[derive(Clone)]
 #[repr(C)]
@@ -54,30 +55,30 @@ where
     }
 
     /// Access to the info array.
-    pub fn info(&self) -> &[SliceInfo] {
+    pub fn info(&self) -> &[SliceInfo<M>] {
         self.0.info()
     }
 
     /// Mutable access to the info array.
-    pub fn info_mut(&mut self) -> &mut [SliceInfo] {
+    pub fn info_mut(&mut self) -> &mut [SliceInfo<M>] {
         self.0.info_mut()
     }
 
     /// Mutable access to both the info and nodes arrays simultaneously.
-    pub fn data_mut(&mut self) -> (&mut [SliceInfo], &mut [Arc<Node<M>>]) {
+    pub fn data_mut(&mut self) -> (&mut [SliceInfo<M>], &mut [Arc<Node<M>>]) {
         self.0.data_mut()
     }
 
     /// Updates the [`SliceInfo`] of the child at `index`.
     pub fn update_child_info(&mut self, index: usize) {
         let (info, nodes) = self.0.data_mut();
-        info[index] = nodes[index].slice_info()
+        info[index] = nodes[index].info()
     }
 
     /// Pushes an item into the end of the array.
     ///
     /// Increases length by one. Panics if already full.
-    pub fn push(&mut self, item: (SliceInfo, Arc<Node<M>>)) {
+    pub fn push(&mut self, item: (SliceInfo<M>, Arc<Node<M>>)) {
         self.0.push(item)
     }
 
@@ -85,7 +86,7 @@ where
     /// returning the right half.
     ///
     /// This works even when the array is full.
-    pub fn push_split(&mut self, new_child: (SliceInfo, Arc<Node<M>>)) -> Self {
+    pub fn push_split(&mut self, new_child: (SliceInfo<M>, Arc<Node<M>>)) -> Self {
         let r_count = (self.len() + 1) / 2;
         let l_count = (self.len() + 1) - r_count;
 
@@ -209,7 +210,7 @@ where
     /// Pops an item off the end of the array and returns it.
     ///
     /// Decreases length by one. Panics if already empty.
-    pub fn pop(&mut self) -> (SliceInfo, Arc<Node<M>>) {
+    pub fn pop(&mut self) -> (SliceInfo<M>, Arc<Node<M>>) {
         self.0.pop()
     }
 
@@ -217,7 +218,7 @@ where
     ///
     /// Increases length by one. Panics if already full. Preserves ordering
     /// of the other items.
-    pub fn insert(&mut self, index: usize, item: (SliceInfo, Arc<Node<M>>)) {
+    pub fn insert(&mut self, index: usize, item: (SliceInfo<M>, Arc<Node<M>>)) {
         self.0.insert(index, item)
     }
 
@@ -225,7 +226,7 @@ where
     /// returning the right half.
     ///
     /// This works even when the array is full.
-    pub fn insert_split(&mut self, index: usize, item: (SliceInfo, Arc<Node<M>>)) -> Self {
+    pub fn insert_split(&mut self, index: usize, item: (SliceInfo<M>, Arc<Node<M>>)) -> Self {
         assert!(self.len() > 0);
         assert!(index <= self.len());
         let extra = if index < self.len() {
@@ -242,7 +243,7 @@ where
     /// Removes the item at the given index from the the array.
     ///
     /// Decreases length by one. Preserves ordering of the other items.
-    pub fn remove(&mut self, index: usize) -> (SliceInfo, Arc<Node<M>>) {
+    pub fn remove(&mut self, index: usize) -> (SliceInfo<M>, Arc<Node<M>>) {
         self.0.remove(index)
     }
 
@@ -271,8 +272,8 @@ where
         index1: usize,
         index2: usize,
     ) -> (
-        (&mut SliceInfo, &mut Arc<Node<M>>),
-        (&mut SliceInfo, &mut Arc<Node<M>>),
+        (&mut SliceInfo<M>, &mut Arc<Node<M>>),
+        (&mut SliceInfo<M>, &mut Arc<Node<M>>),
     ) {
         assert!(index1 < index2);
         assert!(index2 < self.len());
@@ -292,12 +293,12 @@ where
     }
 
     /// Creates an iterator over the array's items.
-    pub fn iter(&self) -> Zip<slice::Iter<SliceInfo>, slice::Iter<Arc<Node<M>>>> {
+    pub fn iter(&self) -> Zip<slice::Iter<SliceInfo<M>>, slice::Iter<Arc<Node<M>>>> {
         Iterator::zip(self.info().iter(), self.nodes().iter())
     }
 
     #[allow(clippy::needless_range_loop)]
-    pub fn combined_info(&self) -> SliceInfo {
+    pub fn combined_info(&self) -> SliceInfo<M> {
         let info = self.info();
         let mut acc = SliceInfo::new();
 
@@ -315,10 +316,10 @@ where
     ///
     /// If no child matches the predicate, the last child is returned.
     #[inline(always)]
-    pub fn search_by<F>(&self, pred: F) -> (usize, SliceInfo)
+    pub fn search_by<F>(&self, pred: F) -> (usize, SliceInfo<M>)
     where
         // (left-accumulated start info, left-accumulated end info)
-        F: Fn(SliceInfo) -> bool,
+        F: Fn(SliceInfo<M>) -> bool,
     {
         debug_assert!(self.len() > 0);
 
@@ -340,7 +341,7 @@ where
     /// child that contains the given index.
     ///
     /// One-past-the end is valid, and will return the last child.
-    pub fn search_index(&self, index: usize) -> (usize, SliceInfo) {
+    pub fn search_index(&self, index: usize) -> (usize, SliceInfo<M>) {
         let (index, accum) = self.search_by(|end| index < end.len as usize);
 
         debug_assert!(
@@ -355,7 +356,11 @@ where
     /// child that contains the given width.
     ///
     /// One-past-the end is valid, and will return the last child.
-    pub fn search_start_width(&self, width: usize) -> (usize, SliceInfo) {
+    pub fn search_start_measure(
+        &self,
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> (usize, SliceInfo<M>) {
         debug_assert!(self.len() > 0);
 
         let mut accum = SliceInfo::new();
@@ -363,7 +368,7 @@ where
         for info in self.info()[..self.info().len() - 1].iter() {
             let new_accum = accum + *info;
 
-            if width <= new_accum.width as usize {
+            if measure <= new_accum.measure {
                 break;
             }
 
@@ -372,7 +377,7 @@ where
         }
 
         debug_assert!(
-            width <= (accum.width + self.info()[index].width) as usize,
+            measure <= (accum.measure + self.info()[index].measure),
             "Index out of bounds."
         );
 
@@ -383,13 +388,13 @@ where
     /// child that contains the given width.
     ///
     /// One-past-the end is valid, and will return the last child.
-    pub fn search_end_width(&self, width: usize) -> (usize, SliceInfo) {
+    pub fn search_end_measure(&self, measure: M::Measure) -> (usize, SliceInfo<M>) {
         // The search uses the `<=` comparison because any slice may end with 0 width
         // elements, and the use of the `<` comparison would leave those behind.
-        let (index, accum) = self.search_by(|end| width < end.width as usize);
+        let (index, accum) = self.search_by(|end| measure < end.measure);
 
         debug_assert!(
-            width <= (accum.width + self.info()[index].width) as usize,
+            measure <= (accum.measure + self.info()[index].measure),
             "Index out of bounds."
         );
 
@@ -397,38 +402,39 @@ where
     }
 
     /// Same as [`search_start_width()`][Self::search_start_width] above,
-    /// except that it only calulates the left-side-accumulated _width_,
+    /// except that it only calulates the left-side-accumulated _measure_,
     /// rather than the full [`SliceInfo`].
     ///
-    /// Return is (child_index, left_acc_width)
+    /// Return is (child_index, left_acc_measure)
     ///
     /// One-past-the end is valid, and will return the last child.
     #[inline(always)]
-    pub fn search_width_only(&self, width: usize) -> (usize, usize) {
+    pub fn search_measure_only(&self, measure: M::Measure) -> (usize, M::Measure) {
         debug_assert!(self.len() > 0);
 
-        let mut accum_width = 0;
+        let mut accum = M::Measure::default();
         let mut index = 0;
-        for info in self.info()[..self.info().len() - 1].iter() {
-            let new_accum_width = accum_width + info.width;
 
-            if width < new_accum_width as usize {
+        for info in self.info()[..self.info().len() - 1].iter() {
+            let new_accum = accum + info.measure;
+
+            if measure < new_accum {
                 break;
             }
-            accum_width = new_accum_width;
+            accum = new_accum;
             index += 1;
         }
 
         debug_assert!(
-            width <= (accum_width + self.info()[index].width) as usize,
+            measure <= (accum + self.info()[index].measure),
             "Index out of bounds."
         );
 
-        (index, accum_width as usize)
+        (index, accum)
     }
 
-    /// Returns the child indices at the start and end of the given width
-    /// range, and returns their left-side-accumulated widths as well.
+    /// Returns the child indices at the start and end of the given measure
+    /// range, and returns their left-side-accumulated measure as well.
     ///
     /// Return is:
     /// (
@@ -438,52 +444,52 @@ where
     ///
     /// One-past-the end is valid, and corresponds to the last child.
     #[inline(always)]
-    pub fn search_width_range(
+    pub fn search_measure_range(
         &self,
-        start_index: usize,
-        end_index: usize,
-    ) -> ((usize, usize), (usize, usize)) {
-        debug_assert!(start_index <= end_index);
+        start_bound: M::Measure,
+        end_bound: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> ((usize, M::Measure), (usize, M::Measure)) {
         debug_assert!(self.len() > 0);
 
-        let mut accum_width = 0;
+        let mut accum = M::Measure::default();
         let mut index = 0;
 
         // Find left child and info
         for info in self.info()[..(self.len() - 1)].iter() {
-            let next_accum = accum_width + info.width as usize;
-            if start_index <= next_accum {
+            let next_accum = accum + info.measure;
+            if cmp(&start_bound, &next_accum).is_le() {
                 break;
             }
-            accum_width = next_accum;
+            accum = next_accum;
             index += 1;
         }
         let l_child_i = index;
-        let l_acc_info = accum_width;
+        let l_acc_info = accum;
 
         // Find right child and info
         for info in self.info()[index..(self.len() - 1)].iter() {
-            let next_accum = accum_width + info.width as usize;
-            if end_index < next_accum {
+            let next_accum = accum + info.measure;
+            if cmp(&end_bound, &next_accum).is_lt() {
                 break;
             }
-            accum_width = next_accum;
+            accum = next_accum;
             index += 1;
         }
 
         #[cfg(any(test, debug_assertions))]
         assert!(
-            end_index <= accum_width + self.info()[index].width as usize,
+            cmp(&end_bound, &(accum + self.info()[index].measure)).is_le(),
             "Index out of bounds."
         );
 
-        ((l_child_i, l_acc_info), (index, accum_width))
+        ((l_child_i, l_acc_info), (index, accum))
     }
 
     // Debug function, to help verify tree integrity
     pub fn is_info_accurate(&self) -> bool {
         for (info, node) in self.info().iter().zip(self.nodes().iter()) {
-            if *info != node.slice_info() {
+            if *info != node.info() {
                 return false;
             }
         }
@@ -494,6 +500,7 @@ where
 impl<M> fmt::Debug for BranchChildren<M>
 where
     M: Measurable + fmt::Debug,
+    M::Measure: fmt::Debug,
     [(); max_len::<M>()]: Sized,
     [(); max_children::<M>()]: Sized,
 {
@@ -524,7 +531,7 @@ mod inner {
     use std::{mem, mem::MaybeUninit, ptr, sync::Arc};
 
     use super::{max_children, Node, SliceInfo};
-    use crate::{Measurable, tree::max_len};
+    use crate::{tree::max_len, Measurable};
 
     /// This is essentially a fixed-capacity, stack-allocated [Vec<(M,
     /// SliceInfo)>].
@@ -540,7 +547,7 @@ mod inner {
         nodes: [MaybeUninit<Arc<Node<M>>>; max_children::<M>()],
         /// An array of the child node [`SliceInfo`]s
         /// INVARIANT: The nodes from 0..len must be initialized
-        info: [MaybeUninit<SliceInfo>; max_children::<M>()],
+        info: [MaybeUninit<SliceInfo<M>>; max_children::<M>()],
         len: u8,
     }
 
@@ -586,7 +593,7 @@ mod inner {
 
         /// Access to the info array.
         #[inline(always)]
-        pub fn info(&self) -> &[SliceInfo] {
+        pub fn info(&self) -> &[SliceInfo<M>] {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the info from 0..len are guaranteed to be initialized
             unsafe { mem::transmute(&self.info[..(self.len())]) }
@@ -594,7 +601,7 @@ mod inner {
 
         /// Mutable access to the info array.
         #[inline(always)]
-        pub fn info_mut(&mut self) -> &mut [SliceInfo] {
+        pub fn info_mut(&mut self) -> &mut [SliceInfo<M>] {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the info from 0..len are guaranteed to be initialized
             unsafe { mem::transmute(&mut self.info[..(self.len as usize)]) }
@@ -602,7 +609,7 @@ mod inner {
 
         /// Mutable access to both the info and nodes arrays simultaneously.
         #[inline(always)]
-        pub fn data_mut(&mut self) -> (&mut [SliceInfo], &mut [Arc<Node<M>>]) {
+        pub fn data_mut(&mut self) -> (&mut [SliceInfo<M>], &mut [Arc<Node<M>>]) {
             // SAFETY: MaybeUninit<T> is layout compatible with T, and
             // the info from 0..len are guaranteed to be initialized
             (
@@ -615,7 +622,7 @@ mod inner {
         ///
         /// Increases length by one. Panics if already full.
         #[inline(always)]
-        pub fn push(&mut self, item: (SliceInfo, Arc<Node<M>>)) {
+        pub fn push(&mut self, item: (SliceInfo<M>, Arc<Node<M>>)) {
             assert!(self.len() < max_children::<M>());
             self.info[self.len()] = MaybeUninit::new(item.0);
             self.nodes[self.len as usize] = MaybeUninit::new(item.1);
@@ -628,7 +635,7 @@ mod inner {
         ///
         /// Decreases length by one. Panics if already empty.
         #[inline(always)]
-        pub fn pop(&mut self) -> (SliceInfo, Arc<Node<M>>) {
+        pub fn pop(&mut self) -> (SliceInfo<M>, Arc<Node<M>>) {
             assert!(self.len() > 0);
             self.len -= 1;
             // SAFETY: before this, len was long enough to guarantee that both must be init
@@ -644,7 +651,7 @@ mod inner {
         /// Increases length by one. Panics if already full. Preserves ordering
         /// of the other items.
         #[inline(always)]
-        pub fn insert(&mut self, index: usize, item: (SliceInfo, Arc<Node<M>>)) {
+        pub fn insert(&mut self, index: usize, item: (SliceInfo<M>, Arc<Node<M>>)) {
             assert!(index <= self.len());
             assert!(self.len() < max_children::<M>());
 
@@ -672,7 +679,7 @@ mod inner {
         ///
         /// Decreases length by one. Preserves ordering of the other items.
         #[inline(always)]
-        pub fn remove(&mut self, index: usize) -> (SliceInfo, Arc<Node<M>>) {
+        pub fn remove(&mut self, index: usize) -> (SliceInfo<M>, Arc<Node<M>>) {
             assert!(self.len() > 0);
             assert!(index < self.len());
 
@@ -753,7 +760,9 @@ mod inner {
                     clone_array.info[..clone_array.len()].iter(),
                     self.info[..self.len()].iter(),
                 ) {
-                    assert_eq!(unsafe { a.assume_init() }, unsafe { b.assume_init() },);
+                    assert_eq!(unsafe { a.assume_init().len }, unsafe {
+                        b.assume_init().len
+                    },);
                 }
 
                 for (a, b) in Iterator::zip(
@@ -807,25 +816,25 @@ mod tests {
         children.update_child_info(1);
         children.update_child_info(2);
 
-        assert_eq!(children.search_start_width(0).0, 0);
-        assert_eq!(children.search_start_width(1).0, 0);
-        assert_eq!(children.search_start_width(0).1.width, 0);
-        assert_eq!(children.search_start_width(1).1.width, 0);
+        assert_eq!(children.search_start_measure(0, usize::cmp).0, 0);
+        assert_eq!(children.search_start_measure(1, usize::cmp).0, 0);
+        assert_eq!(children.search_start_measure(0, usize::cmp).1.measure, 0);
+        assert_eq!(children.search_start_measure(1, usize::cmp).1.measure, 0);
 
-        assert_eq!(children.search_start_width(6).0, 0);
-        assert_eq!(children.search_start_width(7).0, 0);
-        assert_eq!(children.search_start_width(6).1.width, 0);
-        assert_eq!(children.search_start_width(7).1.width, 0);
+        assert_eq!(children.search_start_measure(6, usize::cmp).0, 0);
+        assert_eq!(children.search_start_measure(7, usize::cmp).0, 0);
+        assert_eq!(children.search_start_measure(6, usize::cmp).1.measure, 0);
+        assert_eq!(children.search_start_measure(7, usize::cmp).1.measure, 0);
 
-        assert_eq!(children.search_start_width(7).0, 0);
-        assert_eq!(children.search_start_width(8).0, 2);
-        assert_eq!(children.search_start_width(7).1.width, 0);
-        assert_eq!(children.search_start_width(8).1.width, 7);
+        assert_eq!(children.search_start_measure(7, usize::cmp).0, 0);
+        assert_eq!(children.search_start_measure(8, usize::cmp).0, 2);
+        assert_eq!(children.search_start_measure(7, usize::cmp).1.measure, 0);
+        assert_eq!(children.search_start_measure(8, usize::cmp).1.measure, 7);
 
-        assert_eq!(children.search_start_width(16).0, 2);
-        assert_eq!(children.search_start_width(17).0, 2);
-        assert_eq!(children.search_start_width(16).1.width, 7);
-        assert_eq!(children.search_start_width(17).1.width, 7);
+        assert_eq!(children.search_start_measure(16, usize::cmp).0, 2);
+        assert_eq!(children.search_start_measure(17, usize::cmp).0, 2);
+        assert_eq!(children.search_start_measure(16, usize::cmp).1.measure, 7);
+        assert_eq!(children.search_start_measure(17, usize::cmp).1.measure, 7);
     }
 
     #[test]
@@ -853,7 +862,7 @@ mod tests {
         children.update_child_info(1);
         children.update_child_info(2);
 
-        children.search_start_width(18);
+        children.search_start_measure(18, usize::cmp);
     }
 
     #[test]
@@ -880,10 +889,10 @@ mod tests {
         children.update_child_info(1);
         children.update_child_info(2);
 
-        let at_0_0 = children.search_width_range(0, 0);
-        let at_7_7 = children.search_width_range(7, 7);
-        let at_8_8 = children.search_width_range(8, 8);
-        let at_16_16 = children.search_width_range(16, 16);
+        let at_0_0 = children.search_measure_range(0, 0, usize::cmp);
+        let at_7_7 = children.search_measure_range(7, 7, usize::cmp);
+        let at_8_8 = children.search_measure_range(8, 8, usize::cmp);
+        let at_16_16 = children.search_measure_range(16, 16, usize::cmp);
 
         assert_eq!((at_0_0.0).0, 0);
         assert_eq!((at_0_0.1).0, 0);
@@ -905,8 +914,8 @@ mod tests {
         assert_eq!((at_16_16.0).1, 7);
         assert_eq!((at_16_16.1).1, 7);
 
-        let at_0_7 = children.search_width_range(0, 7);
-        let at_7_16 = children.search_width_range(7, 16);
+        let at_0_7 = children.search_measure_range(0, 7, usize::cmp);
+        let at_7_16 = children.search_measure_range(7, 16, usize::cmp);
 
         assert_eq!((at_0_7.0).0, 0);
         assert_eq!((at_0_7.1).0, 2);
@@ -918,7 +927,7 @@ mod tests {
         assert_eq!((at_7_16.0).1, 0);
         assert_eq!((at_7_16.1).1, 7);
 
-        let at_2_4 = children.search_width_range(6, 8);
+        let at_2_4 = children.search_measure_range(6, 8, usize::cmp);
 
         assert_eq!((at_2_4.0).0, 0);
         assert_eq!((at_2_4.1).0, 2);
@@ -951,6 +960,6 @@ mod tests {
         children.update_child_info(1);
         children.update_child_info(2);
 
-        children.search_width_range(17, 18);
+        children.search_measure_range(17, 18, usize::cmp);
     }
 }

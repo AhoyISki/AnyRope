@@ -69,18 +69,18 @@
 //! [`RopeSlice<M>`]: crate::slice::RopeSlice
 //! [`rev()`]: Iterator::rev
 
-use std::sync::Arc;
+use std::{cmp::Ordering, sync::Arc};
 
 use crate::{
-    Measurable,
-    slice_utils::{index_to_width, start_width_to_index, width_of},
+    slice_utils::{index_to_measure, measure_of, start_measure_to_index},
     tree::{max_children, max_len, Node, SliceInfo},
+    Measurable,
 };
 
 //==========================================================
 
 /// An iterator over a [`Rope<M>`][crate::rope::Rope]'s elements.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Iter<'a, M>
 where
     M: Measurable,
@@ -90,7 +90,7 @@ where
     chunks: Chunks<'a, M>,
     cur_chunk: &'a [M],
     index: usize,
-    width: usize,
+    measure: M::Measure,
     last_call_was_prev_impl: bool,
     total_len: usize,
     remaining_len: usize,
@@ -114,10 +114,10 @@ where
             chunks: chunk_iter,
             cur_chunk,
             index: 0,
-            width: 0,
+            measure: M::Measure::default(),
             last_call_was_prev_impl: false,
-            total_len: node.slice_info().len as usize,
-            remaining_len: node.slice_info().len as usize,
+            total_len: node.info().len as usize,
+            remaining_len: node.info().len as usize,
             is_reversed: false,
         }
     }
@@ -126,19 +126,21 @@ where
     pub(crate) fn new_with_range(
         node: &'a Arc<Node<M>>,
         index_range: (usize, usize),
-        width_range: (usize, usize),
+        measure_range: (M::Measure, M::Measure),
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Self {
-        Iter::new_with_range_at_width(node, width_range.0, index_range, width_range)
+        Iter::new_with_range_at_measure(node, measure_range.0, index_range, measure_range, cmp)
     }
 
-    pub(crate) fn new_with_range_at_width(
+    pub(crate) fn new_with_range_at_measure(
         node: &'a Arc<Node<M>>,
-        at_width: usize,
+        at_measure: M::Measure,
         index_range: (usize, usize),
-        width_range: (usize, usize),
+        measure_range: (M::Measure, M::Measure),
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Self {
-        let (mut chunks, mut chunk_start_index, mut chunk_start_width) =
-            Chunks::new_with_range_at_width(node, at_width, index_range, width_range);
+        let (mut chunks, mut chunk_start_index, mut chunk_start_measure) =
+            Chunks::new_with_range_at_measure(node, at_measure, index_range, measure_range, &cmp);
 
         let cur_chunk = if index_range.0 == index_range.1 {
             &[]
@@ -148,18 +150,21 @@ where
             let chunk = chunks.prev().unwrap();
             chunks.next();
             chunk_start_index -= chunk.len();
-            chunk_start_width -= chunk.iter().map(|m| m.width()).sum::<usize>();
+            chunk_start_measure -= chunk
+                .iter()
+                .map(|m| m.measure())
+                .fold(M::Measure::default(), |accum, measure| accum + measure);
             chunk
         };
 
-        let index = start_width_to_index(cur_chunk, at_width - chunk_start_width);
-        let width = index_to_width(cur_chunk, index) + chunk_start_width;
+        let index = start_measure_to_index(cur_chunk, at_measure - chunk_start_measure, &cmp);
+        let width = index_to_measure(cur_chunk, index) + chunk_start_measure;
 
         Iter {
             chunks,
             cur_chunk,
             index,
-            width,
+            measure: width,
             last_call_was_prev_impl: false,
             total_len: index_range.1 - index_range.0,
             remaining_len: index_range.1 - (index + chunk_start_index),
@@ -169,10 +174,14 @@ where
 
     #[inline(always)]
     pub(crate) fn from_slice(slice: &'a [M]) -> Self {
-        Iter::from_slice_at(slice, 0)
+        Iter::from_slice_at(slice, M::Measure::default(), M::Measure::cmp)
     }
 
-    pub(crate) fn from_slice_at(slice: &'a [M], width: usize) -> Self {
+    pub(crate) fn from_slice_at(
+        slice: &'a [M],
+        measure: M::Measure,
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> Self {
         let mut chunks = Chunks::from_slice(slice, false);
         let cur_chunk = if let Some(chunk) = chunks.next() {
             chunk
@@ -180,14 +189,14 @@ where
             &[]
         };
 
-        let index = start_width_to_index(slice, width);
-        let width = index_to_width(slice, index);
+        let index = start_measure_to_index(slice, measure, cmp);
+        let width = index_to_measure(slice, index);
 
         Iter {
             chunks,
             cur_chunk,
             index,
-            width,
+            measure: width,
             last_call_was_prev_impl: false,
             total_len: slice.len(),
             remaining_len: slice.len() - index,
@@ -212,7 +221,7 @@ where
     /// # use any_rope::{Rope, Width};
     /// # let rope = Rope::from_slice(&[Width(1), Width(2), Width(5)]);
     /// // Print the rope's elements and their widths in reverse.
-    /// for (width, element) in rope.iter_at_width(rope.width()).reversed() {
+    /// for (width, element) in rope.iter_at_measure(rope.width(), usize::cmp).reversed() {
     ///     println!("{} {:?}", width, element);
     /// #   assert_eq!((width, element), rope.from_width(width));
     /// }
@@ -227,7 +236,7 @@ where
     ///
     /// Runs in amortized O(1) time and worst-case O(log N) time.
     #[inline(always)]
-    pub fn prev(&mut self) -> Option<(usize, M)> {
+    pub fn prev(&mut self) -> Option<(M::Measure, M)> {
         if !self.is_reversed {
             self.prev_impl()
         } else {
@@ -236,7 +245,7 @@ where
     }
 
     #[inline]
-    fn prev_impl(&mut self) -> Option<(usize, M)> {
+    fn prev_impl(&mut self) -> Option<(M::Measure, M)> {
         // Put us back into a "prev" progression.
         if !self.last_call_was_prev_impl {
             self.chunks.prev();
@@ -256,12 +265,12 @@ where
         // Progress the byte counts and return the previous element.
         self.index -= 1;
         self.remaining_len += 1;
-        self.width -= self.cur_chunk[self.index].width();
-        return Some((self.width, self.cur_chunk[self.index]));
+        self.measure -= self.cur_chunk[self.index].measure();
+        return Some((self.measure, self.cur_chunk[self.index]));
     }
 
     #[inline]
-    fn next_impl(&mut self) -> Option<(usize, M)> {
+    fn next_impl(&mut self) -> Option<(M::Measure, M)> {
         // Put us back into a "next" progression.
         if self.last_call_was_prev_impl {
             self.chunks.next();
@@ -283,8 +292,8 @@ where
         self.index += 1;
         self.remaining_len -= 1;
 
-        let old_width = self.width;
-        self.width += element.width();
+        let old_width = self.measure;
+        self.measure += element.measure();
         return Some((old_width, element));
     }
 }
@@ -295,13 +304,13 @@ where
     [(); max_len::<M>()]: Sized,
     [(); max_children::<M>()]: Sized,
 {
-    type Item = (usize, M);
+    type Item = (M::Measure, M);
 
     /// Advances the iterator forward and returns the next value.
     ///
     /// Runs in amortized O(1) time and worst-case O(log N) time.
     #[inline(always)]
-    fn next(&mut self) -> Option<(usize, M)> {
+    fn next(&mut self) -> Option<Self::Item> {
         if !self.is_reversed {
             self.next_impl()
         } else {
@@ -343,7 +352,7 @@ where
 ///
 /// [`M`]: Measurable
 /// [`Rope<M>`]: crate::rope::Rope
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Chunks<'a, M>
 where
     M: Measurable,
@@ -354,7 +363,7 @@ where
     is_reversed: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum ChunksEnum<'a, M>
 where
     M: Measurable,
@@ -383,17 +392,23 @@ where
 {
     #[inline(always)]
     pub(crate) fn new(node: &'a Arc<Node<M>>) -> Self {
-        let info = node.slice_info();
-        Chunks::new_with_range_at_index(node, 0, (0, info.len as usize), (0, info.width as usize)).0
+        let info = node.info();
+        Chunks::new_with_range_at_index(
+            node,
+            0,
+            (0, info.len as usize),
+            (M::Measure::default(), info.measure),
+        )
+        .0
     }
 
     #[inline(always)]
     pub(crate) fn new_with_range(
         node: &'a Arc<Node<M>>,
         index_range: (usize, usize),
-        width_range: (usize, usize),
+        measure_range: (M::Measure, M::Measure),
     ) -> Self {
-        Chunks::new_with_range_at_index(node, index_range.0, index_range, width_range).0
+        Chunks::new_with_range_at_index(node, index_range.0, index_range, measure_range).0
     }
 
     /// The main workhorse function for creating new [`Chunks`] iterators.
@@ -414,15 +429,11 @@ where
     pub(crate) fn new_with_range_at_index(
         node: &Arc<Node<M>>,
         at_index: usize,
-        index_range: (usize, usize),
-        width_range: (usize, usize),
-    ) -> (Chunks<M>, usize, usize) {
-        debug_assert!(at_index >= index_range.0);
-        debug_assert!(at_index <= index_range.1);
-
-        // For convenience/readability.
-        let start_index = index_range.0;
-        let end_index = index_range.1;
+        (start_index, end_index): (usize, usize),
+        measure_range: (M::Measure, M::Measure),
+    ) -> (Chunks<M>, usize, M::Measure) {
+        debug_assert!(at_index >= start_index);
+        debug_assert!(at_index <= end_index);
 
         // Special-case for empty slice contents.
         if start_index == end_index {
@@ -435,7 +446,7 @@ where
                     is_reversed: false,
                 },
                 0,
-                0,
+                M::Measure::default(),
             );
         }
 
@@ -452,7 +463,7 @@ where
                         is_reversed: false,
                     },
                     slice.len(),
-                    width_of(slice),
+                    measure_of(slice),
                 );
             } else {
                 return (
@@ -464,7 +475,7 @@ where
                         is_reversed: false,
                     },
                     0,
-                    0,
+                    M::Measure::default(),
                 );
             }
         }
@@ -485,8 +496,8 @@ where
                             index =
                                 (info.len as isize + slice.len() as isize) - start_index as isize;
                             info = SliceInfo {
-                                len: index_range.1 as u64,
-                                width: width_range.1 as u64,
+                                len: end_index as u64,
+                                measure: measure_range.1,
                             };
                             node_stack.last_mut().unwrap().1 += 1;
                         }
@@ -514,21 +525,23 @@ where
                 },
                 is_reversed: false,
             },
-            (info.len as usize).max(index_range.0),
-            (info.width as usize).max(width_range.0),
+            (info.len as usize).max(start_index),
+            (info.measure).max(measure_range.0),
         )
     }
 
     #[inline(always)]
-    pub(crate) fn new_with_range_at_width(
+    pub(crate) fn new_with_range_at_measure(
         node: &'a Arc<Node<M>>,
-        at_width: usize,
+        at_measure: M::Measure,
         index_range: (usize, usize),
-        width_range: (usize, usize),
-    ) -> (Self, usize, usize) {
-        let at_index = (node.get_first_chunk_at_width(at_width).1.len as usize).max(index_range.0);
+        measure_range: (M::Measure, M::Measure),
+        cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
+    ) -> (Self, usize, M::Measure) {
+        let at_index =
+            (node.get_first_chunk_at_measure(at_measure, &cmp).1.len as usize).max(index_range.0);
 
-        Chunks::new_with_range_at_index(node, at_index, index_range, width_range)
+        Chunks::new_with_range_at_index(node, at_index, index_range, measure_range)
     }
 
     pub(crate) fn from_slice(slice: &'a [M], is_end: bool) -> Self {
@@ -881,8 +894,8 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn iter_at_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(..79);
-        let mut iter = slice.iter_at(56);
+        let slice = rope.measure_slice(..79, usize::cmp);
+        let mut iter = slice.iter_at(56, usize::cmp);
 
         assert_eq!(iter.next(), Some((55, Width(2))));
         assert_eq!(iter.next(), Some((57, Width(4))));
@@ -903,7 +916,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn iter_at_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let mut bytes = rope.iter_at_width(rope.width());
+        let mut bytes = rope.iter_at_measure(rope.measure(), usize::cmp);
         // Iterating at the end, when there are zero width elements, always yields them.
         assert_eq!(bytes.next(), Some((2700, Width(0))));
         assert_eq!(bytes.next(), None);
@@ -913,7 +926,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn iter_at_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let mut iter_1 = rope.iter_at_width(rope.width());
+        let mut iter_1 = rope.iter_at_measure(rope.measure(), usize::cmp);
         let width_vec = pseudo_random();
         // Skip the last element, since it's zero width.
         let mut iter_2 = width_vec.iter().take(1399).copied();
@@ -927,7 +940,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn exact_size_iter_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(34..75);
+        let slice = rope.measure_slice(34..75, usize::cmp);
 
         let mut len = slice.len();
         let mut iter = slice.iter();
@@ -953,10 +966,10 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn exact_size_iter_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(34..300);
+        let slice = rope.measure_slice(34..300, usize::cmp);
 
         let mut len = 0;
-        let mut iter = slice.iter_at(slice.width());
+        let mut iter = slice.iter_at(slice.measure(), usize::cmp);
 
         assert_eq!(len, iter.len());
 
@@ -981,7 +994,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn exact_size_iter_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(34..34);
+        let slice = rope.measure_slice(34..34, usize::cmp);
         let mut iter = slice.iter();
 
         assert_eq!(iter.next(), Some((34, Width(0))));
@@ -1009,7 +1022,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn iter_reverse_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let mut iter = rope.iter_at_width(rope.len() / 3);
+        let mut iter = rope.iter_at_measure(rope.len() / 3, usize::cmp);
         let mut stack = Vec::new();
 
         for _ in 0..32 {
@@ -1090,7 +1103,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn chunks_at_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(34..301);
+        let slice = rope.measure_slice(34..301, usize::cmp);
 
         let (mut chunks, ..) = slice.chunks_at_index(slice.len());
         assert_eq!(chunks.next(), None);
@@ -1103,7 +1116,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn chunks_at_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(34..34);
+        let slice = rope.measure_slice(34..34, usize::cmp);
 
         let (mut chunks, ..) = slice.chunks_at_index(0);
         assert_eq!(chunks.next(), Some([Width(0)].as_slice()));
@@ -1133,7 +1146,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn chunks_reverse_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let mut iter = rope.chunks_at_width(rope.width() / 3).0;
+        let mut iter = rope.chunks_at_measure(rope.measure() / 3, usize::cmp).0;
         let mut stack = Vec::new();
 
         for _ in 0..8 {
@@ -1149,7 +1162,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn chunks_reverse_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let mut iter = rope.chunks_at_width(rope.width() / 3).0;
+        let mut iter = rope.chunks_at_measure(rope.measure() / 3, usize::cmp).0;
         let mut stack = Vec::new();
 
         iter.reverse();
@@ -1181,10 +1194,10 @@ mod tests {
 
         let slice_start = 34;
         let slice_end = 301;
-        let slice_start_byte = rope.start_width_to_index(slice_start);
-        let s_end_byte = rope.end_width_to_index(slice_end);
+        let slice_start_byte = rope.start_measure_to_index(slice_start, usize::cmp);
+        let s_end_byte = rope.end_measure_to_index(slice_end, usize::cmp);
 
-        let slice_1 = rope.width_slice(slice_start..slice_end);
+        let slice_1 = rope.measure_slice(slice_start..slice_end, usize::cmp);
         let slice_2 = &pseudo_random()[slice_start_byte..s_end_byte];
 
         let mut slice_1_iter = slice_1.iter();
@@ -1204,8 +1217,8 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     fn iter_at_sliced_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
-        let slice = rope.width_slice(34..300);
-        let mut iter = slice.iter_at(slice.width());
+        let slice = rope.measure_slice(34..300, usize::cmp);
+        let mut iter = slice.iter_at(slice.measure(), usize::cmp);
         // Yields None, since we're iterating in the middle of a Width(4) element.
         assert_eq!(iter.next(), None);
     }
@@ -1217,13 +1230,13 @@ mod tests {
 
         let slice_start = 34;
         let slice_end = 300;
-        let slice_start_byte = rope.start_width_to_index(slice_start);
-        let s_end_byte = rope.end_width_to_index(slice_end);
+        let slice_start_byte = rope.start_measure_to_index(slice_start, usize::cmp);
+        let s_end_byte = rope.end_measure_to_index(slice_end, usize::cmp);
 
-        let slice_1 = rope.width_slice(slice_start..slice_end);
+        let slice_1 = rope.measure_slice(slice_start..slice_end, usize::cmp);
         let slice_2 = &pseudo_random()[slice_start_byte..s_end_byte];
 
-        let mut bytes_1 = slice_1.iter_at(slice_1.width());
+        let mut bytes_1 = slice_1.iter_at(slice_1.measure(), usize::cmp);
         let mut bytes_2 = slice_2.iter().copied();
         while let Some(b) = bytes_2.next_back() {
             assert_eq!(bytes_1.prev().map(|(_, element)| element), Some(b));
@@ -1237,9 +1250,9 @@ mod tests {
 
         let slice_start = 34;
         let slice_end = 301;
-        let slice = rope.width_slice(slice_start..slice_end);
+        let slice = rope.measure_slice(slice_start..slice_end, usize::cmp);
 
-        let mut iter = slice.iter_at(slice.len() / 3);
+        let mut iter = slice.iter_at(slice.len() / 3, usize::cmp);
         let mut stack = Vec::new();
         for _ in 0..32 {
             stack.push(iter.next().unwrap());
@@ -1257,10 +1270,10 @@ mod tests {
 
         let slice_start = 34;
         let slice_end = 301;
-        let slice_start_index = rope.start_width_to_index(slice_start);
-        let slice_end_index = rope.end_width_to_index(slice_end);
+        let slice_start_index = rope.start_measure_to_index(slice_start, usize::cmp);
+        let slice_end_index = rope.end_measure_to_index(slice_end, usize::cmp);
 
-        let slice_1 = rope.width_slice(slice_start..slice_end);
+        let slice_1 = rope.measure_slice(slice_start..slice_end, usize::cmp);
         let slice_2 = &pseudo_random()[slice_start_index..slice_end_index];
 
         let mut index = 0;
@@ -1279,7 +1292,7 @@ mod tests {
 
         let slice_start = 34;
         let slice_end = 301;
-        let slice = rope.width_slice(slice_start..slice_end);
+        let slice = rope.measure_slice(slice_start..slice_end, usize::cmp);
 
         let mut iter = slice.chunks();
         let mut stack = Vec::new();

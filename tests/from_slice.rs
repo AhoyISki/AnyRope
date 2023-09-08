@@ -13,7 +13,7 @@ enum Lipsum {
 }
 
 impl Measurable for Lipsum {
-    fn width(&self) -> usize {
+    fn measure(&self) -> usize {
         match self {
             Lipsum::Lorem => 1,
             Lipsum::Ipsum => 2,
