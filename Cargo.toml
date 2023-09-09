@@ -1,6 +1,6 @@
 [package]
 name = "any-rope"
-version = "1.1.2"
+version = "1.2.0"
 authors = ["Mateus Yoshiaki <ahoyiski@gmail.com>"]
 description = "A fast and robust arbitrary rope for Rust. Based on Ropey."
 documentation = "https://docs.rs/any-rope"
@@ -13,7 +13,7 @@ exclude = ["/.github/*"]
 edition = "2021"
 
 [dependencies]
-smallvec = "1.10.0"
+smallvec = "^1.10.0"
 
 [dev-dependencies]
-rand = "0.8"
+rand = "^0.8"
