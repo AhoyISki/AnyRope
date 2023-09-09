@@ -427,13 +427,17 @@ where
         let mut accum = M::Measure::default();
         let mut index = 0;
 
+		println!("{:#?}", self.info());
         for info in self.info()[..self.info().len() - 1].iter() {
             let new_accum = accum + info.measure;
 
+
             if cmp(&measure, &new_accum).is_lt() {
+                println!("greater");
                 break;
             }
             accum = new_accum;
+    		println!("{:?}, {:?}", accum, measure);
             index += 1;
         }
 

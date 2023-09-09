@@ -56,6 +56,7 @@ fn shrink_to_fit() {
     // Do a bunch of random incoherent inserts
     for _ in 0..1000 {
         let measure = rope.measure().max(1);
+        println!("new insertion\n\n");
         rope.insert_slice(
             rng.gen::<usize>() % measure,
             random_slice(&mut rng).as_slice(),

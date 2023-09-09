@@ -92,9 +92,9 @@ where
             Option<(SliceInfo<M::Measure>, Arc<Node<M>>)>,
         ),
     {
-        match *self {
-            Node::Leaf(ref mut slice) => edit(measure, info, slice),
-            Node::Branch(ref mut children) => {
+        match self {
+            Node::Leaf(slice) => edit(measure, info, slice),
+            Node::Branch(children) => {
                 // Compact leaf children if we're very close to maximum leaf
                 // fragmentation. This basically guards against excessive memory
                 // ballooning when repeatedly appending to the end of a rope.
@@ -112,12 +112,12 @@ where
                 }
 
                 // Find the child we care about.
-                let (child_i, acc_width) = children.search_measure_only(measure, cmp);
+                let (child_i, acc_measure) = children.search_measure_only(measure, cmp);
                 let child_info = children.info()[child_i];
 
                 // Recurse into the child.
                 let (l_info, residual) = Arc::make_mut(&mut children.nodes_mut()[child_i])
-                    .edit_chunk_at_measure(measure - acc_width, cmp, info, edit);
+                    .edit_chunk_at_measure(measure - acc_measure, cmp, child_info, edit);
 
                 children.info_mut()[child_i] = l_info;
 
