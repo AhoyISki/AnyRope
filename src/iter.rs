@@ -158,13 +158,13 @@ where
         };
 
         let index = start_measure_to_index(cur_chunk, at_measure - chunk_start_measure, &cmp);
-        let width = index_to_measure(cur_chunk, index) + chunk_start_measure;
+        let measure = index_to_measure(cur_chunk, index) + chunk_start_measure;
 
         Iter {
             chunks,
             cur_chunk,
             index,
-            measure: width,
+            measure: measure,
             last_call_was_prev_impl: false,
             total_len: index_range.1 - index_range.0,
             remaining_len: index_range.1 - (index + chunk_start_index),
@@ -190,13 +190,13 @@ where
         };
 
         let index = start_measure_to_index(slice, measure, cmp);
-        let width = index_to_measure(slice, index);
+        let measure = index_to_measure(slice, index);
 
         Iter {
             chunks,
             cur_chunk,
             index,
-            measure: width,
+            measure: measure,
             last_call_was_prev_impl: false,
             total_len: slice.len(),
             remaining_len: slice.len() - index,
@@ -218,12 +218,13 @@ where
     /// This is useful when chaining iterator methods:
     ///
     /// ```rust
+    /// #![feature(generic_const_exprs)]
     /// # use any_rope::{Rope, Width};
     /// # let rope = Rope::from_slice(&[Width(1), Width(2), Width(5)]);
-    /// // Print the rope's elements and their widths in reverse.
-    /// for (width, element) in rope.iter_at_measure(rope.width(), usize::cmp).reversed() {
-    ///     println!("{} {:?}", width, element);
-    /// #   assert_eq!((width, element), rope.from_width(width));
+    /// // Print the rope's elements and their measures in reverse.
+    /// for (measure, element) in rope.iter_at_measure(rope.measure(), usize::cmp).reversed() {
+    ///     println!("{} {:?}", measure, element);
+    /// #   assert_eq!((measure, element), rope.from_measure(measure, usize::cmp));
     /// }
     #[inline]
     #[must_use]
@@ -292,9 +293,9 @@ where
         self.index += 1;
         self.remaining_len -= 1;
 
-        let old_width = self.measure;
+        let old_measure = self.measure;
         self.measure += element.measure();
-        return Some((old_width, element));
+        return Some((old_measure, element));
     }
 }
 
@@ -424,7 +425,7 @@ where
     /// Passing an `at_index` equal to the max of `index_range` creates an
     /// iterator at the end of forward iteration.
     ///
-    /// Returns the iterator and the index/width of its start relative
+    /// Returns the iterator and the index/measure of its start relative
     /// to the start of the node.
     pub(crate) fn new_with_range_at_index(
         node: &Arc<Node<M>>,
@@ -870,8 +871,8 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn iter_08() {
-        let width_vec = pseudo_random();
-        let mut iter = Iter::from_slice(width_vec.as_slice());
+        let measure_vec = pseudo_random();
+        let mut iter = Iter::from_slice(measure_vec.as_slice());
 
         assert_eq!(iter.next(), Some((0, Width(1))));
         assert_eq!(iter.next(), Some((1, Width(2))));
@@ -917,7 +918,7 @@ mod tests {
     fn iter_at_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut bytes = rope.iter_at_measure(rope.measure(), usize::cmp);
-        // Iterating at the end, when there are zero width elements, always yields them.
+        // Iterating at the end, when there are zero measure elements, always yields them.
         assert_eq!(bytes.next(), Some((2700, Width(0))));
         assert_eq!(bytes.next(), None);
     }
@@ -927,9 +928,9 @@ mod tests {
     fn iter_at_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut iter_1 = rope.iter_at_measure(rope.measure(), usize::cmp);
-        let width_vec = pseudo_random();
-        // Skip the last element, since it's zero width.
-        let mut iter_2 = width_vec.iter().take(1399).copied();
+        let measure_vec = pseudo_random();
+        // Skip the last element, since it's zero measure.
+        let mut iter_2 = measure_vec.iter().take(1399).copied();
 
         while let Some(b) = iter_2.next_back() {
             assert_eq!(iter_1.prev().map(|(_, element)| element), Some(b));
@@ -1090,11 +1091,11 @@ mod tests {
         let rope = Rope::from_slice(pseudo_random().as_slice());
 
         for i in 0..rope.len() {
-            let (chunk, index, width) = rope.chunk_at_index(i);
-            let (mut chunks, slice_index, slice_width) = rope.chunks_at_index(i);
+            let (chunk, index, measure) = rope.chunk_at_index(i);
+            let (mut chunks, slice_index, slice_measure) = rope.chunks_at_index(i);
 
             assert_eq!(index, slice_index);
-            assert_eq!(width, slice_width);
+            assert_eq!(measure, slice_measure);
             assert_eq!(Some(chunk), chunks.next());
         }
     }

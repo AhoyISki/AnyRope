@@ -383,9 +383,7 @@ where
                     info += acc_info;
 
                     node = &*children.nodes()[child_i];
-                    println!("\x1b[32mGOT HERE n 1\x1b[39m");
                     measure -= acc_info.measure;
-                    println!("\x1b[31mGOT HERE n 1\x1b[39m");
                 }
             }
         }
@@ -740,7 +738,7 @@ where
     let start_index = if incl_left {
         start_measure_to_index(slice, start, cmp)
     } else {
-        end_measure_to_index(slice, end, cmp)
+        end_measure_to_index(slice, start, cmp)
     };
     // In this circumstance, nothing needs to be done, since we're removing
     // in the middle of an element.

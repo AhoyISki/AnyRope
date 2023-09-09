@@ -39,8 +39,8 @@ use crate::{
 ///     Width(2),
 ///     Width(1),
 /// ]);
-/// rope.remove_inclusive(6..8);
-/// rope.insert(6, Width(5));
+/// rope.remove_inclusive(6..8, usize::cmp);
+/// rope.insert(6, Width(5), usize::cmp);
 ///
 /// assert_eq!(
 ///     rope,
@@ -55,7 +55,7 @@ use crate::{
 /// to a measure, or convert the measure at the start or end of an element to an
 /// index. For example:
 ///
-/// ```
+/// ```rust
 /// # use any_rope::{Rope, Width};
 /// let rope = Rope::from_slice(&[
 ///     Width(0),
@@ -70,13 +70,13 @@ use crate::{
 /// ]);
 ///
 /// // `start_measure_to_index()` will pick the first element that starts at the given index.
-/// assert_eq!(rope.start_measure_to_index(0), 0);
+/// assert_eq!(rope.start_measure_to_index(0, usize::cmp), 0);
 /// // `end_measure_to_index()` will pick the last element that still starts at the given index.
-/// assert_eq!(rope.end_measure_to_index(0), 2);
-/// assert_eq!(rope.start_measure_to_index(2), 4);
-/// assert_eq!(rope.start_measure_to_index(3), 4);
-/// assert_eq!(rope.start_measure_to_index(16), 5);
-/// assert_eq!(rope.start_measure_to_index(29), 6);
+/// assert_eq!(rope.end_measure_to_index(0, usize::cmp), 2);
+/// assert_eq!(rope.start_measure_to_index(2, usize::cmp), 4);
+/// assert_eq!(rope.start_measure_to_index(3, usize::cmp), 4);
+/// assert_eq!(rope.start_measure_to_index(16, usize::cmp), 5);
+/// assert_eq!(rope.start_measure_to_index(29, usize::cmp), 6);
 /// ```
 ///
 /// # Slicing
@@ -85,7 +85,7 @@ use crate::{
 /// [`measure_slice()`][Rope::measure_slice]
 /// or [`index_slice()`][Rope::index_slice]:
 ///
-/// ```
+/// ```rust
 /// # use any_rope::{Rope, Width};
 /// let mut rope = Rope::from_slice(&[
 ///     Width(1),
@@ -96,7 +96,7 @@ use crate::{
 ///     Width(2),
 ///     Width(1),
 /// ]);
-/// let measure_slice = rope.measure_slice(3..6);
+/// let measure_slice = rope.measure_slice(3..6, usize::cmp);
 /// let index_slice = rope.index_slice(2..5);
 ///
 /// assert_eq!(measure_slice, index_slice);
@@ -388,7 +388,7 @@ where
     /// let mut rope = Rope::from_slice(&array);
     ///
     /// // Removing in the middle of `Width(3)`.
-    /// rope.remove_inclusive(5..);
+    /// rope.remove_inclusive(5.., usize::cmp);
     ///
     /// assert_eq!(rope, [Width(1), Width(2)].as_slice());
     /// ```
@@ -406,7 +406,7 @@ where
     /// let mut rope = Rope::from_slice(&array);
     ///
     /// // End bound coincides with a 0 measure list.
-    /// rope.remove_inclusive(1..6);
+    /// rope.remove_inclusive(1..6, usize::cmp);
     ///
     /// assert_eq!(rope, [Width(1), Width(2), Width(1)].as_slice());
     /// ```
@@ -424,7 +424,7 @@ where
     /// let mut rope = Rope::from_slice(&array);
     ///
     /// // Empty range at the start of a 0 measure list.
-    /// rope.remove_inclusive(6..6);
+    /// rope.remove_inclusive(6..6, usize::cmp);
     ///
     /// // Inclusively removing an empty range does nothing.
     /// assert_eq!(
@@ -468,7 +468,7 @@ where
     /// let mut rope = Rope::from_slice(&array);
     ///
     /// // End bound coincides with a 0 measure list, which does not get removed.
-    /// rope.remove_exclusive(1..6);
+    /// rope.remove_exclusive(1..6, usize::cmp);
     ///
     /// assert_eq!(
     ///     rope,
@@ -489,7 +489,7 @@ where
     /// let mut rope = Rope::from_slice(&array);
     ///
     /// // Empty range at the start of a 0 measure list.
-    /// rope.remove_exclusive(6..6);
+    /// rope.remove_exclusive(6..6, usize::cmp);
     ///
     /// // Exclusively removing an empty range does nothing.
     /// assert_eq!(rope, array.as_slice());
@@ -508,7 +508,7 @@ where
     /// let mut rope = Rope::from_slice(&array);
     ///
     /// // Removing in the middle of `Width(3)`.
-    /// rope.remove_exclusive(5..6);
+    /// rope.remove_exclusive(5..6, usize::cmp);
     ///
     /// // Exclusively removing in the middle of an element does nothing.
     /// assert_eq!(rope, array.as_slice());
@@ -767,7 +767,7 @@ where
     ///
     /// # Example
     ///
-    /// ```
+    /// ```rust
     /// # use any_rope::{Rope, Width};
     /// let mut rope = Rope::from_slice(&[
     ///     Width(1),
@@ -778,7 +778,7 @@ where
     ///     Width(2),
     ///     Width(1),
     /// ]);
-    /// let slice = rope.measure_slice(..5);
+    /// let slice = rope.measure_slice(..5, usize::cmp);
     ///
     /// assert_eq!(slice, [Width(1), Width(2), Width(3)].as_slice());
     /// ```

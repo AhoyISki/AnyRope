@@ -7,12 +7,12 @@
 //! AnyRope is an arbitrary data rope for Rust.
 //!
 //! AnyRope's [`Rope<M>`] contains elements `M` that implement [`Measurable`], a
-//! trait that assigns an arbitrary "width" to each element, through the
-//! [`width()`][Measurable::width] function. AnyRope can then use these "widths"
-//! to retrieve and iterate over elements in any given "width" from the
+//! trait that assigns an arbitrary "measure" to each element, through the
+//! [`measure()`][Measurable::measure] function. AnyRope can then use these "measures"
+//! to retrieve and iterate over elements in any given "measure" from the
 //! beginning of the [`Rope<M>`].
 //!
-//! Keep in mind that the "width" does not correspond to the actual size of a
+//! Keep in mind that the "measure" does not correspond to the actual size of a
 //! type in bits or bytes, but is instead decided by the implementor, and can be
 //! whatever value they want.
 //!
@@ -30,13 +30,14 @@
 //! underline, or skip:
 //!
 //! ```rust
+//! #![feature(generic_const_exprs)]
 //! # use std::io::Result;
 //! use std::fs::File;
 //! use std::io::{BufReader, BufWriter};
 //! use any_rope::{Rope, Measurable};
 //!
 //! // A simple tag structure that our program can understand.
-//! #[derive(Clone, Copy)]
+//! #[derive(Clone, Copy, PartialEq, Eq)]
 //! enum Tag {
 //!     InRed,
 //!     UnderLine,
@@ -47,7 +48,9 @@
 //! }
 //!
 //! impl Measurable for Tag {
-//!     fn width(&self) -> usize {
+//!     type Measure = usize;
+//!
+//!     fn measure(&self) -> Self::Measure {
 //!         match self {
 //!             // The coloring tags are only meant to color, not to "move forward".
 //!             Tag::InRed | Tag::UnderLine | Tag::Normal => 0,
@@ -77,10 +80,10 @@
 //! for (cur_index, ch) in my_str.chars().enumerate() {
 //!     // The while let loop here is a useful way to activate all tags within the same
 //!     // character. Note the sequence of [.., InRed, UnderLine, ..], both of which have
-//!     // a width of 0. This means that both would be triggered before moving on to the next
+//!     // a measure of 0. This means that both would be triggered before moving on to the next
 //!     // character.
 //!     while let Some((index, tag)) = tags_iter.peek() {
-//!         // The returned index is always the width where an element began. In this
+//!         // The returned index is always the measure where an element began. In this
 //!         // case, `tags_iter.peek()` would return `Some((0, Skip(5)))`, and then
 //!         // `Some((5, InRed))`.
 //!         if *index == cur_index {
@@ -104,7 +107,7 @@
 //! code to efficiently work with a [`Rope<M>`]'s data and implement new
 //! functionality.  The most important of those API's are:
 //!
-//! - The [`chunk_at_*()`][Rope::chunk_at_width] chunk-fetching methods of
+//! - The [`chunk_at_*()`][Rope::chunk_at_measure] chunk-fetching methods of
 //!   [`Rope<M>`] and [`RopeSlice<M>`].
 //! - The [`Chunks`](iter::Chunks) iterator.
 //! - The functions in `slice_utils` for operating on [`&[M]`][Measurable]
@@ -166,19 +169,17 @@ pub trait Measurable: Clone + Copy + PartialEq + Eq {
         + Sub<Output = Self::Measure>
         + SubAssign;
 
-    /// The width of this element, it need not be the actual lenght in bytes,
+    /// The measure of this element, it need not be the actual lenght in bytes,
     /// but just a representative value, to be fed to the [`Rope<M>`].
     fn measure(&self) -> Self::Measure;
 }
 
 /// A struct meant for testing and exemplification
 ///
-/// Its [`width`][Measurable::width] is always equal to the number within.
-#[cfg(test)]
+/// Its [`measure`][Measurable::measure] is always equal to the number within.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Width(pub usize);
 
-#[cfg(test)]
 impl Measurable for Width {
     type Measure = usize;
 
@@ -210,9 +211,9 @@ pub enum Error<M: Measurable> {
     /// [`Rope<M>`]/[`RopeSlice<M>`], in that order.
     IndexOutOfBounds(usize, usize),
 
-    /// Indicates that the passed width was out of bounds.
+    /// Indicates that the passed measure was out of bounds.
     ///
-    /// Contains the index attempted and the actual width of the
+    /// Contains the index attempted and the actual measure of the
     /// [`Rope<M>`]/[`RopeSlice<M>`], in that order.
     MeasureOutOfBounds(M::Measure, M::Measure),
 
@@ -221,10 +222,10 @@ pub enum Error<M: Measurable> {
     /// Contains the [start, end) indices of the range, in that order.
     IndexRangeInvalid(usize, usize),
 
-    /// Indicates that a reversed width range (end < start) was
+    /// Indicates that a reversed measure range (end < start) was
     /// encountered.
     ///
-    /// Contains the [start, end) widths of the range, in that order.
+    /// Contains the [start, end) measures of the range, in that order.
     MeasureRangeInvalid(Option<M::Measure>, Option<M::Measure>),
 
     /// Indicates that the passed index range was partially or fully out of
@@ -236,7 +237,7 @@ pub enum Error<M: Measurable> {
     /// range.
     IndexRangeOutOfBounds(Option<usize>, Option<usize>, usize),
 
-    /// Indicates that the passed width range was partially or fully out of
+    /// Indicates that the passed measure range was partially or fully out of
     /// bounds.
     ///
     /// Contains the [start, end) measures of the range and the actual

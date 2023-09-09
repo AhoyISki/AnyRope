@@ -214,7 +214,7 @@ where
         self.len() == 0
     }
 
-    /// Sum of all widths of in [`RopeSlice<M>`].
+    /// Sum of all measures of in [`RopeSlice<M>`].
     ///
     /// Runs in O(1) time.
     #[inline]
@@ -232,7 +232,7 @@ where
     //-----------------------------------------------------------------------
     // Index conversion methods
 
-    /// Returns the width sum at the start of the given index.
+    /// Returns the measure sum at the start of the given index.
     ///
     /// Notes:
     ///
@@ -246,14 +246,14 @@ where
         self.try_index_to_measure(index).unwrap()
     }
 
-    /// Returns an index, given a starting width sum.
+    /// Returns an index, given a starting measure sum.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if the `width` is out of bounds (i.e. `width >
-    /// RopeSlice::width()`).
+    /// Panics if the `measure` is out of bounds (i.e. `measure >
+    /// RopeSlice::measure()`).
     #[inline]
     pub fn start_measure_to_index(
         &self,
@@ -263,14 +263,14 @@ where
         self.try_start_measure_to_index(measure, cmp).unwrap()
     }
 
-    /// Returns an index, given an ending width sum.
+    /// Returns an index, given an ending measure sum.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if the `width` is out of bounds (i.e. `width >
-    /// RopeSlice::width()`).
+    /// Panics if the `measure` is out of bounds (i.e. `measure >
+    /// RopeSlice::measure()`).
     #[inline]
     pub fn end_measure_to_index(
         &self,
@@ -283,7 +283,7 @@ where
     //-----------------------------------------------------------------------
     // Fetch methods
 
-    /// Returns the [`M`][Measurable] at `index` and the starting width sum of
+    /// Returns the [`M`][Measurable] at `index` and the starting measure sum of
     /// that element.
     ///
     /// Runs in O(log N) time.
@@ -306,15 +306,15 @@ where
         }
     }
 
-    /// Returns the [`M`][Measurable] at `width` and the starting width sum of
+    /// Returns the [`M`][Measurable] at `measure` and the starting measure sum of
     /// that element.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if the `width` is out of bounds (i.e. `width >
-    /// RopeSlice::width()`).
+    /// Panics if the `measure` is out of bounds (i.e. `measure >
+    /// RopeSlice::measure()`).
     #[inline]
     pub fn from_measure(
         &self,
@@ -334,12 +334,12 @@ where
 
     /// Returns the chunk containing the given index.
     ///
-    /// Also returns the index and width of the beginning of the chunk.
+    /// Also returns the index and measure of the beginning of the chunk.
     ///
     /// Note: for convenience, a one-past-the-end `index` returns the last
     /// chunk of the [`RopeSlice<M>`].
     ///
-    /// The return value is organized as `(chunk, chunk_index, chunk_width)`.
+    /// The return value is organized as `(chunk, chunk_index, chunk_measure)`.
     ///
     /// Runs in O(log N) time.
     ///
@@ -352,20 +352,20 @@ where
         self.try_chunk_at_index(index).unwrap()
     }
 
-    /// Returns the chunk containing the given width.
+    /// Returns the chunk containing the given measure.
     ///
-    /// Also returns the index and width of the beginning of the chunk.
+    /// Also returns the index and measure of the beginning of the chunk.
     ///
-    /// Note: for convenience, a one-past-the-end `width` returns the last
+    /// Note: for convenience, a one-past-the-end `measure` returns the last
     /// chunk of the [`RopeSlice<M>`].
     ///
-    /// The return value is organized as `(chunk, chunk_index, chunk_width)`.
+    /// The return value is organized as `(chunk, chunk_index, chunk_measure)`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if `width` is out of bounds (i.e. `width > RopeSlice::width()`).
+    /// Panics if `measure` is out of bounds (i.e. `measure > RopeSlice::measure()`).
     #[inline]
     pub fn chunk_at_measure(
         &self,
@@ -407,13 +407,13 @@ where
     //-----------------------------------------------------------------------
     // Slice creation
 
-    /// Gets an sub-slice of the [`RopeSlice<M>`], using a width range.
+    /// Gets an sub-slice of the [`RopeSlice<M>`], using a measure range.
     ///
     /// Uses range syntax, e.g. `2..7`, `2..`, etc.
     ///
     /// # Example
     ///
-    /// ```
+    /// ```rust
     /// # use any_rope::Rope;
     /// # use any_rope::Width;
     /// let mut rope = Rope::from_slice(&[
@@ -425,7 +425,7 @@ where
     ///     Width(2),
     ///     Width(1),
     /// ]);
-    /// let slice = rope.width_slice(..5);
+    /// let slice = rope.measure_slice(..5, usize::cmp);
     ///
     /// assert_eq!(slice, [Width(1), Width(2), Width(3)].as_slice());
     /// ```
@@ -435,7 +435,7 @@ where
     /// # Panics
     ///
     /// Panics if the start of the range is greater than the end, or if the
-    /// end is out of bounds (i.e. `end > RopeSlice::width()`).
+    /// end is out of bounds (i.e. `end > RopeSlice::measure()`).
     #[inline]
     pub fn measure_slice(
         &self,
@@ -489,7 +489,7 @@ where
     /// Creates an iterator over the [`RopeSlice<M>`].
     ///
     /// This iterator will return values of type [`Option<(usize, M)>`], where
-    /// the `usize` is the width sum where the given [`M`][Measurable]
+    /// the `usize` is the measure sum where the given [`M`][Measurable]
     /// starts.
     ///
     /// Runs in O(log N) time.
@@ -510,15 +510,15 @@ where
         }
     }
 
-    /// Creates an iterator over the [`RopeSlice<M>`], starting at `width`.
+    /// Creates an iterator over the [`RopeSlice<M>`], starting at `measure`.
     ///
     /// This iterator will return values of type [`Option<(usize, M)>`], where
-    /// the `usize` is the width where the given [`M`][Measurable] starts.
+    /// the `usize` is the measure where the given [`M`][Measurable] starts.
     /// Since one can iterate in between an [`M`][Measurable]s start and end
-    /// width sums. the first `usize` may not actually corelate to the
-    /// `width` given to the function.
+    /// measure sums. the first `usize` may not actually corelate to the
+    /// `measure` given to the function.
     ///
-    /// If `width == RopeSlice::width()` then an iterator at the end of the
+    /// If `measure == RopeSlice::measure()` then an iterator at the end of the
     /// [`RopeSlice<M>`] is created (i.e. [`next()`][crate::iter::Iter::next]
     /// will return [`None`]).
     ///
@@ -526,8 +526,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if the `width` is out of bounds (i.e. `width >
-    /// RopeSlice::width()`).
+    /// Panics if the `measure` is out of bounds (i.e. `measure >
+    /// RopeSlice::measure()`).
     #[inline]
     pub fn iter_at(
         &self,
@@ -567,14 +567,14 @@ where
     /// Creates an iterator over the chunks of the [`RopeSlice<M>`], with the
     /// iterator starting at the chunk containing the `index`.
     ///
-    /// Also returns the index and width of the beginning of the first
+    /// Also returns the index and measure of the beginning of the first
     /// chunk to be yielded.
     ///
     /// If `index == RopeSlice::len()` an iterator at the end of the
     /// [`RopeSlice<M>`] (yielding [`None`] on a call to
     /// [`next()`][crate::iter::Iter::next]) is created.
     ///
-    /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
+    /// The return value is organized as `(iterator, chunk_index, chunk_measure)`.
     ///
     /// Runs in O(log N) time.
     ///
@@ -596,23 +596,23 @@ where
     }
 
     /// Creates an iterator over the chunks of the [`RopeSlice<M>`], with the
-    /// iterator starting at the chunk containing the `width`.
+    /// iterator starting at the chunk containing the `measure`.
     ///
-    /// Also returns the index and width of the beginning of the first
+    /// Also returns the index and measure of the beginning of the first
     /// chunk to be yielded.
     ///
-    /// If `width == RopeSlice::width()` an iterator at the end of the
+    /// If `measure == RopeSlice::measure()` an iterator at the end of the
     /// [`RopeSlice<M>`] (yielding [`None`] on a call to
     /// [`next()`][crate::iter::Iter::next]) is created.
     ///
-    /// The return value is organized as `(iterator, chunk_index, chunk_width)`.
+    /// The return value is organized as `(iterator, chunk_index, chunk_measure)`.
     ///
     /// Runs in O(log N) time.
     ///
     /// # Panics
     ///
-    /// Panics if the `width` is out of bounds (i.e. `width >
-    /// RopeSlice::width()`).
+    /// Panics if the `measure` is out of bounds (i.e. `measure >
+    /// RopeSlice::measure()`).
     #[inline]
     pub fn chunks_at_measure(
         &self,
@@ -643,7 +643,7 @@ where
     [(); max_children::<M, M::Measure>()]: Sized,
 {
     /// Non-panicking version of
-    /// [`index_to_width()`][RopeSlice::index_to_width].
+    /// [`index_to_measure()`][RopeSlice::index_to_measure].
     #[inline]
     pub fn try_index_to_measure(&self, index: usize) -> Result<M::Measure, M> {
         // Bounds check
@@ -703,7 +703,7 @@ where
         }
     }
 
-    /// Non-panicking version of [`from_width()`][RopeSlice::from_width].
+    /// Non-panicking version of [`from_measure()`][RopeSlice::from_measure].
     #[inline]
     pub fn get_from_measure(
         &self,
@@ -712,10 +712,10 @@ where
     ) -> Option<(M::Measure, M)> {
         // Bounds check
         if cmp(&measure, &self.measure()).is_lt() {
-            let (chunk, _, chunk_width) = self.chunk_at_measure(measure, &cmp);
-            let index = start_measure_to_index(chunk, measure - chunk_width, cmp);
-            let width = index_to_measure(chunk, index);
-            Some((width + chunk_width, chunk[index]))
+            let (chunk, _, chunk_measure) = self.chunk_at_measure(measure, &cmp);
+            let index = start_measure_to_index(chunk, measure - chunk_measure, cmp);
+            let measure = index_to_measure(chunk, index);
+            Some((measure + chunk_measure, chunk[index]))
         } else {
             None
         }
@@ -757,7 +757,7 @@ where
     }
 
     /// Non-panicking version of
-    /// [`chunk_at_width()`][RopeSlice::chunk_at_width].
+    /// [`chunk_at_measure()`][RopeSlice::chunk_at_measure].
     #[inline]
     pub fn get_chunk_at_measure(
         &self,
@@ -772,9 +772,9 @@ where
                     start_info,
                     end_info,
                 }) => {
-                    let start_width = measure + start_info.measure;
+                    let start_measure = measure + start_info.measure;
                     let (chunk, chunk_start_info) =
-                        node.get_first_chunk_at_measure(start_width, &cmp);
+                        node.get_first_chunk_at_measure(start_measure, &cmp);
 
                     // Calculate clipped start/end indices within the chunk.
                     let chunk_start_index = start_info.len.saturating_sub(chunk_start_info.len);
@@ -795,7 +795,7 @@ where
         }
     }
 
-    /// Non-panicking version of [`width_slice()`][RopeSlice::width_slice].
+    /// Non-panicking version of [`measure_slice()`][RopeSlice::measure_slice].
     #[inline]
     pub fn get_measure_slice(
         &self,
@@ -975,7 +975,7 @@ where
     }
 
     /// Non-panicking version of
-    /// [`chunks_at_width()`][RopeSlice::chunks_at_width].
+    /// [`chunks_at_measure()`][RopeSlice::chunks_at_measure].
     #[inline]
     pub fn get_chunks_at_measure(
         &self,
@@ -1393,7 +1393,7 @@ mod tests {
         Rope, Width,
     };
 
-    /// 70 elements, total width of 135.
+    /// 70 elements, total measure of 135.
     fn pseudo_random() -> Vec<Width> {
         (0..70)
             .map(|num| match num % 14 {
@@ -1427,28 +1427,28 @@ mod tests {
     }
 
     #[test]
-    fn width_01() {
+    fn measure_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.measure_slice(7..30, usize::cmp);
         assert_eq!(slice.measure(), 23);
     }
 
     #[test]
-    fn width_02() {
+    fn measure_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.measure_slice(43..43, usize::cmp);
         assert_eq!(slice.measure(), 0);
     }
 
     #[test]
-    fn width_03() {
+    fn measure_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.measure_slice(6..30, usize::cmp);
         assert_eq!(slice.measure(), 24);
     }
 
     #[test]
-    fn index_to_width_01() {
+    fn index_to_measure_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.measure_slice(88.., usize::cmp);
 
@@ -1473,13 +1473,13 @@ mod tests {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.measure_slice(88..135, usize::cmp);
 
-        // NOTE: For some elements, it may seem like the amount of "widths"
-        // that correspond to their index may not match their actual width.
-        // For example, `Width("bye")` only lasts for 2 widths, even
-        // though its width is 3.
-        // This is because there are 0 width elements preceding it, and the
-        // width in `measure_to_index()` merely corresponds to the end of an
-        // element, and has no relation to the referred element's width.
+        // NOTE: For some elements, it may seem like the amount of "measures"
+        // that correspond to their index may not match their actual measure.
+        // For example, `Width("bye")` only lasts for 2 measures, even
+        // though its measure is 3.
+        // This is because there are 0 measure elements preceding it, and the
+        // measure in `measure_to_index()` merely corresponds to the end of an
+        // element, and has no relation to the referred element's measure.
         assert_eq!(slice.start_measure_to_index(0, usize::cmp), 0);
         assert_eq!(slice.start_measure_to_index(1, usize::cmp), 2);
         assert_eq!(slice.start_measure_to_index(4, usize::cmp), 2);
@@ -1529,7 +1529,7 @@ mod tests {
     }
 
     #[test]
-    fn from_width_01() {
+    fn from_measure_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.measure_slice(34..100, usize::cmp);
 
@@ -1543,7 +1543,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn from_width_02() {
+    fn from_measure_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.measure_slice(34..100, usize::cmp);
         slice.from_measure(66, usize::cmp);
@@ -1551,7 +1551,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn from_width_03() {
+    fn from_measure_03() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice = rope.measure_slice(43..43, usize::cmp);
         slice.from_measure(0, usize::cmp);
@@ -1568,27 +1568,27 @@ mod tests {
         let mut total = slice_2;
         let mut prev_chunk = [].as_slice();
         for i in 0..slice_1.len() {
-            let (chunk, index, width) = slice_1.chunk_at_index(i);
-            assert_eq!(width, index_to_measure(slice_2, index));
+            let (chunk, index, measure) = slice_1.chunk_at_index(i);
+            assert_eq!(measure, index_to_measure(slice_2, index));
             if chunk != prev_chunk {
                 assert_eq!(chunk, &total[..chunk.len()]);
                 total = &total[chunk.len()..];
                 prev_chunk = chunk;
             }
 
-            let width_1 = slice_2.get(i).unwrap();
-            let width_2 = {
+            let measure_1 = slice_2.get(i).unwrap();
+            let measure_2 = {
                 let i2 = i - index;
                 chunk.get(i2).unwrap()
             };
-            assert_eq!(width_1, width_2);
+            assert_eq!(measure_1, measure_2);
         }
 
         assert_eq!(total.len(), 0);
     }
 
     #[test]
-    fn chunk_at_width_01() {
+    fn chunk_at_measure_01() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice_1 = rope.measure_slice(34..96, usize::cmp);
         let slice_2 = &pseudo_random()[17..51];
@@ -1597,23 +1597,23 @@ mod tests {
         let mut prev_chunk = [].as_slice();
 
         for i in 0..slice_1.measure() {
-            let (chunk, _, width) = slice_1.chunk_at_measure(i, usize::cmp);
+            let (chunk, _, measure) = slice_1.chunk_at_measure(i, usize::cmp);
             if chunk != prev_chunk {
                 assert_eq!(chunk, &remainder[..chunk.len()]);
                 remainder = &remainder[chunk.len()..];
                 prev_chunk = chunk;
             }
 
-            let width_1 = {
+            let measure_1 = {
                 let index_1 = start_measure_to_index(slice_2, i, usize::cmp);
                 slice_2.get(index_1).unwrap()
             };
-            let width_2 = {
-                let index_2 = start_measure_to_index(chunk, i - width, usize::cmp);
+            let measure_2 = {
+                let index_2 = start_measure_to_index(chunk, i - measure, usize::cmp);
                 chunk.get(index_2)
             };
-            if let Some(width_2) = width_2 {
-                assert_eq!(width_1, width_2);
+            if let Some(measure_2) = measure_2 {
+                assert_eq!(measure_1, measure_2);
             }
         }
         assert_eq!(remainder.len(), 0);
@@ -1654,7 +1654,7 @@ mod tests {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let slice_1 = rope.measure_slice(5..43, usize::cmp);
 
-        // A range in the middle of a list of 0 width elements should capture all of
+        // A range in the middle of a list of 0 elements should capture all of
         // them.
         let slice_2 = slice_1.measure_slice(24..24, usize::cmp);
 
