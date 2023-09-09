@@ -8,9 +8,9 @@
 //!
 //! AnyRope's [`Rope<M>`] contains elements `M` that implement [`Measurable`], a
 //! trait that assigns an arbitrary "measure" to each element, through the
-//! [`measure()`][Measurable::measure] function. AnyRope can then use these "measures"
-//! to retrieve and iterate over elements in any given "measure" from the
-//! beginning of the [`Rope<M>`].
+//! [`measure()`][Measurable::measure] function. AnyRope can then use these
+//! "measures" to retrieve and iterate over elements in any given "measure" from
+//! the beginning of the [`Rope<M>`].
 //!
 //! Keep in mind that the "measure" does not correspond to the actual size of a
 //! type in bits or bytes, but is instead decided by the implementor, and can be
@@ -133,7 +133,7 @@ pub mod iter;
 
 use std::{
     fmt::Debug,
-    ops::{Add, AddAssign, Bound, Range, RangeFrom, RangeFull, RangeTo, Sub, SubAssign},
+    ops::{Add, Bound, Range, RangeFrom, RangeFull, RangeTo, Sub},
 };
 
 pub use crate::{
@@ -153,9 +153,56 @@ pub trait Measurable: Clone + Copy + PartialEq + Eq {
     /// `any-rope`, and needs to be malleable, such that it can be compared,
     /// added and subtracted at will by the rope.
     ///
-    /// Normally, if you wanted to query the measurable at a given place in the
-    /// rope, you'd use a comparator function, provided by the type itself. For
-    /// example
+    /// Normally, in order to query, iterate, or modify the rope, the various
+    /// methods take in a comparator function. This function offers flexibility
+    /// in how one searches within the rope, for example:
+    ///
+    /// ```rust
+    /// # use std::{
+    /// #     cmp::Ordering,
+    /// #     ops::{Add, Sub},
+    /// # };
+    /// # use any_rope::{Measurable, Rope};
+    /// #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    /// struct TwoWidths(usize, usize);
+    ///
+    /// impl TwoWidths {
+    ///     fn first_cmp(&self, other: &Self) -> Ordering {
+    ///         self.0.cmp(&other.0)
+    ///     }
+    ///
+    ///     fn second_cmp(&self, other: &Self) -> Ordering {
+    ///         self.1.cmp(&other.1)
+    ///     }
+    /// }
+    /// 
+    /// // ... Implementation `Add` and `Sub` for `TwoWidths`.
+    /// 
+    /// # impl Add for TwoWidths {
+    /// #     type Output = Self;
+    ///
+    /// #     fn add(self, other: Self) -> Self::Output {
+    /// #         Self(self.0 + other.0, self.1 + other.1)
+    /// #     }
+    /// # }
+    /// # impl Sub for TwoWidths {
+    /// #     type Output = Self;
+    ///
+    /// #     fn sub(self, other: Self) -> Self::Output {
+    /// #         Self(self.0 - other.0, self.1 - other.1)
+    /// #     }
+    /// # }
+    /// #[derive(Clone, Copy, PartialEq, Eq)]
+    /// struct MyStruct(TwoWidths);
+    ///
+    /// impl Measurable for MyStruct {
+    ///     type Measure = TwoWidths;
+    ///
+    ///     fn measure(&self) -> Self::Measure {
+    ///         self.0
+    ///     }
+    /// }
+    /// ```
     type Measure: Debug
         + Default
         + Clone
@@ -165,9 +212,7 @@ pub trait Measurable: Clone + Copy + PartialEq + Eq {
         + PartialOrd
         + Ord
         + Add<Output = Self::Measure>
-        + AddAssign
-        + Sub<Output = Self::Measure>
-        + SubAssign;
+        + Sub<Output = Self::Measure>;
 
     /// The measure of this element, it need not be the actual lenght in bytes,
     /// but just a representative value, to be fed to the [`Rope<M>`].

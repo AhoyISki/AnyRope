@@ -100,12 +100,12 @@ where
                         if cmp(&n_start, &start_measure).is_gt()
                             && cmp(&n_end, &(start_measure + info.measure)).is_lt()
                         {
-                            n_start -= start_measure;
-                            n_end -= start_measure;
+                            n_start = n_start - start_measure;
+                            n_end = n_end - start_measure;
                             node = &children.nodes()[i];
                             continue 'outer;
                         }
-                        start_measure += info.measure;
+                        start_measure = start_measure + info.measure;
                     }
                     break;
                 }

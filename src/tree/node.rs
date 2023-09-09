@@ -383,7 +383,7 @@ where
                     info += acc_info;
 
                     node = &*children.nodes()[child_i];
-                    measure -= acc_info.measure;
+                    measure = measure - acc_info.measure;
                 }
             }
         }
@@ -409,7 +409,7 @@ where
                     info += acc_info;
 
                     node = &*children.nodes()[child_i];
-                    measure -= acc_info.measure;
+                    measure = measure - acc_info.measure;
                 }
             }
         }

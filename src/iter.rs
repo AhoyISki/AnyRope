@@ -150,10 +150,13 @@ where
             let chunk = chunks.prev().unwrap();
             chunks.next();
             chunk_start_index -= chunk.len();
-            chunk_start_measure -= chunk
+
+            let accum_prev_measure = chunk
                 .iter()
                 .map(|m| m.measure())
                 .fold(M::Measure::default(), |accum, measure| accum + measure);
+            chunk_start_measure = chunk_start_measure - accum_prev_measure;
+
             chunk
         };
 
@@ -164,7 +167,7 @@ where
             chunks,
             cur_chunk,
             index,
-            measure: measure,
+            measure,
             last_call_was_prev_impl: false,
             total_len: index_range.1 - index_range.0,
             remaining_len: index_range.1 - (index + chunk_start_index),
@@ -196,7 +199,7 @@ where
             chunks,
             cur_chunk,
             index,
-            measure: measure,
+            measure,
             last_call_was_prev_impl: false,
             total_len: slice.len(),
             remaining_len: slice.len() - index,
@@ -266,7 +269,7 @@ where
         // Progress the byte counts and return the previous element.
         self.index -= 1;
         self.remaining_len += 1;
-        self.measure -= self.cur_chunk[self.index].measure();
+        self.measure = self.measure - self.cur_chunk[self.index].measure();
         return Some((self.measure, self.cur_chunk[self.index]));
     }
 
@@ -294,7 +297,7 @@ where
         self.remaining_len -= 1;
 
         let old_measure = self.measure;
-        self.measure += element.measure();
+        self.measure = self.measure + element.measure();
         return Some((old_measure, element));
     }
 }
@@ -918,7 +921,8 @@ mod tests {
     fn iter_at_02() {
         let rope = Rope::from_slice(pseudo_random().as_slice());
         let mut bytes = rope.iter_at_measure(rope.measure(), usize::cmp);
-        // Iterating at the end, when there are zero measure elements, always yields them.
+        // Iterating at the end, when there are zero measure elements, always yields
+        // them.
         assert_eq!(bytes.next(), Some((2700, Width(0))));
         assert_eq!(bytes.next(), None);
     }

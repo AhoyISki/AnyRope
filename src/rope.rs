@@ -1079,7 +1079,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Result<(), M> {
         // Bounds check
-        if measure <= self.measure() {
+        if cmp(&measure, &self.measure()).is_le() {
             self.insert_internal(measure, &[measurable], &cmp);
             Ok(())
         } else {
@@ -1143,7 +1143,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Result<Self, M> {
         // Bounds check
-        if measure <= self.measure() {
+        if cmp(&measure, &self.measure()).is_le() {
             if measure == M::Measure::default() {
                 // Special case 1
                 let mut new_rope = Rope::new();
@@ -1192,7 +1192,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Result<usize, M> {
         // Bounds check
-        if measure <= self.measure() {
+        if cmp(&measure, &self.measure()).is_le() {
             let (chunk, b, c) = self.chunk_at_measure(measure, &cmp);
             Ok(b + start_measure_to_index(chunk, measure - c, cmp))
         } else {
@@ -1209,7 +1209,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Result<usize, M> {
         // Bounds check
-        if measure <= self.measure() {
+        if cmp(&measure, &self.measure()).is_le() {
             let (chunk, b, c) = self.chunk_at_measure(measure, &cmp);
             Ok(b + end_measure_to_index(chunk, measure - c, cmp))
         } else {
@@ -1239,7 +1239,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Option<(M::Measure, M)> {
         // Bounds check
-        if measure <= self.measure() && !self.is_empty() {
+        if cmp(&measure, &self.measure()).is_le() && !self.is_empty() {
             let (chunk, _, chunk_measure) = self.chunk_at_measure(measure, &cmp);
             let index = start_measure_to_index(chunk, measure - chunk_measure, cmp);
             let measure = index_to_measure(chunk, index);
@@ -1305,10 +1305,10 @@ where
 
         // Bounds checks.
         match (start_range, end_range) {
-            (Some(s), Some(e)) => {
-                if s > e {
-                    return Err(Error::IndexRangeInvalid(s, e));
-                } else if e > self.len() {
+            (Some(start), Some(end)) => {
+                if start > end {
+                    return Err(Error::IndexRangeInvalid(start, end));
+                } else if end > self.len() {
                     return Err(Error::IndexRangeOutOfBounds(
                         start_range,
                         end_range,
@@ -1349,7 +1349,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Option<Iter<M>> {
         // Bounds check
-        if measure <= self.measure() {
+        if cmp(&measure, &self.measure()).is_le() {
             Some(Iter::new_with_range_at_measure(
                 &self.root,
                 measure,
@@ -1387,7 +1387,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Option<(Chunks<M>, usize, M::Measure)> {
         // Bounds check
-        if measure <= self.measure() {
+        if cmp(&measure, &self.measure()).is_le() {
             Some(Chunks::new_with_range_at_measure(
                 &self.root,
                 measure,

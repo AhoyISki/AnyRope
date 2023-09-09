@@ -24,7 +24,8 @@ struct Tag {
 
 use Tag::*;
 impl any_rope::Measurable for Tag {
-    fn width(&self) -> usize {
+	type Measure = usize
+    fn measure(&self) -> Self::Measure {
         match self {
             // The zero here represents the fact that multiple tags may be placed
             // in the same character.
@@ -47,13 +48,21 @@ let mut tags = any_rope::Rope::from_slice(&[Skip(5), PrintRed, Skip(4), Normal])
 // Do note that Tag::Skip only represents characters because we are also iterating
 // over a `Chars` iterator, and have chosen to do so.
 
-// An empty range, when used in an inclusive removal will remove all
-// 0 width elements in that specific width.
-// `Rope::remove_exclusive()` would keep them.
+// An empty range, when used in an inclusive removal
+// will remove all 0 width elements in that specific
+// width. `Rope::remove_exclusive()` would keep them.
 // In this case, that would be `Tag::PrintRed`
-tags.remove_inclusive(5..5);
+//
+// The reason why we need to pass in a comparison
+// function is because of the flexibility of the
+// `Measurable::Measure` type. By passing various
+// types of comparison functions, we can selectively
+// choose what we are looking for. This is similar to
+// what regular ropes do when searching within text,
+// the end user can search by byte, char, line, etc.
+tags.remove_inclusive(5..5, usize::cmp);
 // In place of that `Tag::PrintRed`, we will insert `Tag::Underline`.
-tags.insert(5, Underline);
+tags.insert(5, Underline, usize::cmp);
 
 // The AnyRope iterator not only returns the element in question, but also the width
 // where it starts.

@@ -65,7 +65,7 @@ pub fn end_measure_to_index<M: Measurable>(
             break;
         }
 
-        accum += measure;
+        accum = accum + measure;
         index += 1;
     }
 
