@@ -9,7 +9,7 @@ use crate::{
     slice_utils::{end_measure_to_index, index_to_measure, start_measure_to_index},
     start_bound_to_num,
     tree::{max_children, max_len, min_len, BranchChildren, Node, SliceInfo},
-    Error, Measurable, MeasureRange, Result, FallibleOrd,
+    Error, FallibleOrd, Measurable, MeasureRange, Result,
 };
 
 /// A rope of elements that are [`Measurable`].
@@ -1472,7 +1472,11 @@ where
                 }
 
                 // Chop off left end if needed
-                if start_info.measure.fallible_cmp(&M::Measure::default()).is_gt() {
+                if start_info
+                    .measure
+                    .fallible_cmp(&M::Measure::default())
+                    .is_gt()
+                {
                     {
                         let root = Arc::make_mut(&mut rope.root);
                         *root = root.start_split(start_info.measure, &M::Measure::fallible_cmp);
@@ -1665,7 +1669,8 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        self.measure_slice(.., M::Measure::fallible_cmp) == other.measure_slice(.., M::Measure::fallible_cmp)
+        self.measure_slice(.., M::Measure::fallible_cmp)
+            == other.measure_slice(.., M::Measure::fallible_cmp)
     }
 }
 

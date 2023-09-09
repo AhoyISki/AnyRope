@@ -15,7 +15,8 @@ for example, one may assossiate a rope of text with a rope of tags.
 
 ```rust
 // The tags that will be assossiated with a piece of text, that could be a rope.
-struct Tag {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Tag {
     PrintRed,
     Underline,
     Normal,
@@ -23,8 +24,10 @@ struct Tag {
 }
 
 use Tag::*;
+
 impl any_rope::Measurable for Tag {
-	type Measure = usize
+    type Measure = usize;
+
     fn measure(&self) -> Self::Measure {
         match self {
             // The zero here represents the fact that multiple tags may be placed

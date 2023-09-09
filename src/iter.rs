@@ -72,9 +72,10 @@
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::{
+    fallible_max,
     slice_utils::{index_to_measure, measure_of, start_measure_to_index},
     tree::{max_children, max_len, Node, SliceInfo},
-    FallibleOrd, Measurable, fallible_max,
+    FallibleOrd, Measurable,
 };
 
 //==========================================================
