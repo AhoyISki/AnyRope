@@ -9,7 +9,7 @@ use crate::{
     slice_utils::{end_measure_to_index, index_to_measure, start_measure_to_index},
     start_bound_to_num,
     tree::{max_children, max_len, min_len, BranchChildren, Node, SliceInfo},
-    Error, Measurable, MeasureRange, Result,
+    Error, Measurable, MeasureRange, Result, FallibleOrd,
 };
 
 /// A rope of elements that are [`Measurable`].
@@ -554,7 +554,7 @@ where
         if self.measure() == M::Measure::default() {
             // Special case
             std::mem::swap(self, &mut other);
-        } else if other.measure() > M::Measure::default() {
+        } else if other.measure().fallible_cmp(&M::Measure::default()).is_gt() {
             let left_info = self.root.info();
             let right_info = other.root.info();
 
@@ -588,7 +588,7 @@ where
             if (left_info.len as usize) < min_len::<M, M::Measure>()
                 || (right_info.len as usize) < min_len::<M, M::Measure>()
             {
-                root.fix_tree_seam(left_info.measure, &M::Measure::cmp);
+                root.fix_tree_seam(left_info.measure, &M::Measure::fallible_cmp);
             }
             self.pull_up_singular_nodes();
         }
@@ -1462,20 +1462,20 @@ where
                 };
 
                 // Chop off right end if needed
-                if end_info.measure < node.info().measure {
+                if end_info.measure.fallible_cmp(&node.info().measure).is_lt() {
                     {
                         let root = Arc::make_mut(&mut rope.root);
-                        root.end_split(end_info.measure, &M::Measure::cmp);
+                        root.end_split(end_info.measure, &M::Measure::fallible_cmp);
                         root.zip_fix_right();
                     }
                     rope.pull_up_singular_nodes();
                 }
 
                 // Chop off left end if needed
-                if start_info.measure > M::Measure::default() {
+                if start_info.measure.fallible_cmp(&M::Measure::default()).is_gt() {
                     {
                         let root = Arc::make_mut(&mut rope.root);
-                        *root = root.start_split(start_info.measure, &M::Measure::cmp);
+                        *root = root.start_split(start_info.measure, &M::Measure::fallible_cmp);
                         root.zip_fix_left();
                     }
                     rope.pull_up_singular_nodes();
@@ -1665,7 +1665,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        self.measure_slice(.., M::Measure::cmp) == other.measure_slice(.., M::Measure::cmp)
+        self.measure_slice(.., M::Measure::fallible_cmp) == other.measure_slice(.., M::Measure::fallible_cmp)
     }
 }
 
@@ -1677,7 +1677,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &&'a [M]) -> bool {
-        self.measure_slice(.., M::Measure::cmp) == *other
+        self.measure_slice(.., M::Measure::fallible_cmp) == *other
     }
 }
 
@@ -1689,7 +1689,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        *self == other.measure_slice(.., M::Measure::cmp)
+        *self == other.measure_slice(.., M::Measure::fallible_cmp)
     }
 }
 
@@ -1701,7 +1701,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &[M]) -> bool {
-        self.measure_slice(.., M::Measure::cmp) == other
+        self.measure_slice(.., M::Measure::fallible_cmp) == other
     }
 }
 
@@ -1713,7 +1713,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        self == other.measure_slice(.., M::Measure::cmp)
+        self == other.measure_slice(.., M::Measure::fallible_cmp)
     }
 }
 
@@ -1725,7 +1725,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Vec<M>) -> bool {
-        self.measure_slice(.., M::Measure::cmp) == other.as_slice()
+        self.measure_slice(.., M::Measure::fallible_cmp) == other.as_slice()
     }
 }
 
@@ -1737,7 +1737,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        self.as_slice() == other.measure_slice(.., M::Measure::cmp)
+        self.as_slice() == other.measure_slice(.., M::Measure::fallible_cmp)
     }
 }
 
@@ -1749,7 +1749,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &std::borrow::Cow<'a, [M]>) -> bool {
-        self.measure_slice(.., M::Measure::cmp) == **other
+        self.measure_slice(.., M::Measure::fallible_cmp) == **other
     }
 }
 
@@ -1761,7 +1761,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        **self == other.measure_slice(.., M::Measure::cmp)
+        **self == other.measure_slice(.., M::Measure::fallible_cmp)
     }
 }
 
@@ -1773,8 +1773,8 @@ where
 {
     #[inline]
     fn cmp(&self, other: &Rope<M>) -> std::cmp::Ordering {
-        self.measure_slice(.., M::Measure::cmp)
-            .cmp(&other.measure_slice(.., M::Measure::cmp))
+        self.measure_slice(.., M::Measure::fallible_cmp)
+            .cmp(&other.measure_slice(.., M::Measure::fallible_cmp))
     }
 }
 

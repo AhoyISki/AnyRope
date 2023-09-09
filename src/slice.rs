@@ -1,15 +1,14 @@
 use std::{cmp::Ordering, ops::RangeBounds, sync::Arc};
 
 use crate::{
-    end_bound_to_num,
+    end_bound_to_num, fallible_saturating_sub,
     iter::{Chunks, Iter},
     measures_from_range,
     rope::Rope,
-    saturating_sub,
     slice_utils::{end_measure_to_index, index_to_measure, measure_of, start_measure_to_index},
     start_bound_to_num,
     tree::{max_children, max_len, Count, Node, SliceInfo},
-    Error, Measurable, MeasureRange, Result,
+    Error, FallibleOrd, Measurable, MeasureRange, Result,
 };
 
 /// An immutable view into part of a [`Rope<M>`].
@@ -306,8 +305,8 @@ where
         }
     }
 
-    /// Returns the [`M`][Measurable] at `measure` and the starting measure sum of
-    /// that element.
+    /// Returns the [`M`][Measurable] at `measure` and the starting measure sum
+    /// of that element.
     ///
     /// Runs in O(log N) time.
     ///
@@ -365,7 +364,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if `measure` is out of bounds (i.e. `measure > RopeSlice::measure()`).
+    /// Panics if `measure` is out of bounds (i.e. `measure >
+    /// RopeSlice::measure()`).
     #[inline]
     pub fn chunk_at_measure(
         &self,
@@ -504,7 +504,7 @@ where
                 node,
                 (start_info.len as usize, end_info.len as usize),
                 (start_info.measure, end_info.measure),
-                M::Measure::cmp,
+                M::Measure::fallible_cmp,
             ),
             RopeSlice(RSEnum::Light { slice, .. }) => Iter::from_slice(slice),
         }
@@ -574,7 +574,8 @@ where
     /// [`RopeSlice<M>`] (yielding [`None`] on a call to
     /// [`next()`][crate::iter::Iter::next]) is created.
     ///
-    /// The return value is organized as `(iterator, chunk_index, chunk_measure)`.
+    /// The return value is organized as `(iterator, chunk_index,
+    /// chunk_measure)`.
     ///
     /// Runs in O(log N) time.
     ///
@@ -605,7 +606,8 @@ where
     /// [`RopeSlice<M>`] (yielding [`None`] on a call to
     /// [`next()`][crate::iter::Iter::next]) is created.
     ///
-    /// The return value is organized as `(iterator, chunk_index, chunk_measure)`.
+    /// The return value is organized as `(iterator, chunk_index,
+    /// chunk_measure)`.
     ///
     /// Runs in O(log N) time.
     ///
@@ -746,7 +748,7 @@ where
                     Ok((
                         &chunk[chunk_start_index as usize..chunk_end_index as usize],
                         chunk_start_info.len.saturating_sub(start_info.len) as usize,
-                        saturating_sub(chunk_start_info.measure, start_info.measure),
+                        fallible_saturating_sub(chunk_start_info.measure, start_info.measure),
                     ))
                 }
                 RopeSlice(RSEnum::Light { slice, .. }) => Ok((slice, 0, M::Measure::default())),
@@ -785,7 +787,7 @@ where
                     Some((
                         &chunk[chunk_start_index as usize..chunk_end_index as usize],
                         chunk_start_info.len.saturating_sub(start_info.len) as usize,
-                        saturating_sub(chunk_start_info.measure, start_info.measure),
+                        fallible_saturating_sub(chunk_start_info.measure, start_info.measure),
                     ))
                 }
                 RopeSlice(RSEnum::Light { slice, .. }) => Some((slice, 0, M::Measure::default())),
@@ -1303,7 +1305,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Rope<M>) -> bool {
-        *self == other.measure_slice(.., M::Measure::cmp)
+        *self == other.measure_slice(.., M::Measure::fallible_cmp)
     }
 }
 
@@ -1315,7 +1317,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &RopeSlice<'a, M>) -> bool {
-        self.measure_slice(.., M::Measure::cmp) == *other
+        self.measure_slice(.., M::Measure::fallible_cmp) == *other
     }
 }
 

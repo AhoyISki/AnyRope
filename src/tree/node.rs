@@ -1,6 +1,7 @@
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::{
+    fallible_min,
     slice_utils::{end_measure_to_index, index_to_measure, start_measure_to_index},
     tree::{
         max_children, max_len, min_children, min_len, BranchChildren, Count, LeafSlice, SliceInfo,
@@ -889,8 +890,8 @@ where
     // Recurse into child
     let child_measure = children.info()[child_i].measure;
     let (new_info, needs_fix) = Arc::make_mut(&mut children.nodes_mut()[child_i]).remove_range(
-        start_measure - accum.min(start_measure),
-        (end_measure - accum).min(child_measure),
+        start_measure - fallible_min(accum, start_measure),
+        fallible_min(end_measure - accum, child_measure),
         cmp,
         incl_left,
         incl_right,

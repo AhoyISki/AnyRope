@@ -74,7 +74,7 @@ use std::{cmp::Ordering, sync::Arc};
 use crate::{
     slice_utils::{index_to_measure, measure_of, start_measure_to_index},
     tree::{max_children, max_len, Node, SliceInfo},
-    Measurable,
+    FallibleOrd, Measurable, fallible_max,
 };
 
 //==========================================================
@@ -177,7 +177,7 @@ where
 
     #[inline(always)]
     pub(crate) fn from_slice(slice: &'a [M]) -> Self {
-        Iter::from_slice_at(slice, M::Measure::default(), M::Measure::cmp)
+        Iter::from_slice_at(slice, M::Measure::default(), M::Measure::fallible_cmp)
     }
 
     pub(crate) fn from_slice_at(
@@ -530,7 +530,7 @@ where
                 is_reversed: false,
             },
             (info.len as usize).max(start_index),
-            (info.measure).max(measure_range.0),
+            fallible_max(info.measure, measure_range.0),
         )
     }
 

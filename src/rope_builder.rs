@@ -5,7 +5,7 @@ use smallvec::SmallVec;
 use crate::{
     rope::Rope,
     tree::{max_children, max_len, min_len, BranchChildren, LeafSlice, Node},
-    Measurable,
+    FallibleOrd, Measurable,
 };
 
 /// An efficient incremental [`Rope<M>`] builder.
@@ -193,7 +193,7 @@ where
                 // Merge the last chunk if it was too small.
                 let index =
                     rope.measure() - rope.index_to_measure(rope.len() - self.last_chunk_len);
-                Arc::make_mut(&mut rope.root).fix_tree_seam(index, &M::Measure::cmp);
+                Arc::make_mut(&mut rope.root).fix_tree_seam(index, &M::Measure::fallible_cmp);
             }
             rope.pull_up_singular_nodes();
         }

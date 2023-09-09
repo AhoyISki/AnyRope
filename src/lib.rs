@@ -132,6 +132,7 @@ mod tree;
 pub mod iter;
 
 use std::{
+    cmp::Ordering,
     fmt::Debug,
     ops::{Add, Bound, Range, RangeFrom, RangeFull, RangeTo, Sub},
 };
@@ -142,6 +143,52 @@ pub use crate::{
     slice::RopeSlice,
     tree::{max_children, max_len},
 };
+
+/// A trait defining a comparison that must panic if there is ever ambiguity
+/// about the ordering in a given struct.
+pub trait FallibleOrd {
+    /// A comparison that can panic.
+    ///
+    /// This comparison should panic with the [`unreachable!`] macro, since the
+    /// panicking code is supposed to be unreachable from within `any-rope`.
+    ///
+    /// Here's an example of how this function should be implemented:
+    ///
+    /// ```rust
+    /// # use std::cmp::Ordering;
+    /// # use any_rope::FallibleOrd;
+    /// struct TwoUsizes(usize, usize);
+    ///
+    /// impl FallibleOrd for TwoUsizes {
+    ///     fn fallible_cmp(&self, other: &Self) -> Ordering {
+    ///         use Ordering::*;
+    ///         let cmp_0 = self.0.cmp(&other.0);
+    ///         let cmp_1 = self.1.cmp(&other.1);
+    ///
+    ///         match (cmp_0, cmp_1) {
+    ///             (Less, Less) => Less,
+    ///             (Less, Equal) => Less,
+    ///             (Equal, Less) => Less,
+    ///             (Equal, Equal) => Equal,
+    ///             (Equal, Greater) => Greater,
+    ///             (Greater, Equal) => Greater,
+    ///             (Greater, Greater) => todo!(),
+    ///             (Less, Greater) | (Greater, Less) => unreachable!(
+    ///                 "Ambiguous comparison, report this as a bug on the \
+    ///                  AnyRope crate"
+    ///             ),
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Note that, if all values are equal, then the comparison is equal. If at
+    /// least one value is greater or lesse, then the comparison follows that
+    /// value. But if there are greater and lesser values at the same time, then
+    /// something has failed within `any-rope` itself, and that should be
+    /// reported as a bug.
+    fn fallible_cmp(&self, other: &Self) -> Ordering;
+}
 
 /// A object that has a user defined size, that can be interpreted by a
 /// [`Rope<M>`].
@@ -162,8 +209,8 @@ pub trait Measurable: Clone + Copy + PartialEq + Eq {
     /// #     cmp::Ordering,
     /// #     ops::{Add, Sub},
     /// # };
-    /// # use any_rope::{Measurable, Rope};
-    /// #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    /// # use any_rope::{FallibleOrd, Measurable, Rope};
+    /// #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
     /// struct TwoWidths(usize, usize);
     ///
     /// impl TwoWidths {
@@ -175,9 +222,31 @@ pub trait Measurable: Clone + Copy + PartialEq + Eq {
     ///         self.1.cmp(&other.1)
     ///     }
     /// }
-    /// 
-    /// // ... Implementation `Add` and `Sub` for `TwoWidths`.
-    /// 
+    ///
+    /// impl FallibleOrd for TwoWidths {
+    ///     fn fallible_cmp(&self, other: &Self) -> Ordering {
+    ///         use Ordering::*;
+    ///         let cmp_0 = self.0.cmp(&other.0);
+    ///         let cmp_1 = self.1.cmp(&other.1);
+    ///
+    ///         match (cmp_0, cmp_1) {
+    ///             (Less, Less) => Less,
+    ///             (Less, Equal) => Less,
+    ///             (Equal, Less) => Less,
+    ///             (Equal, Equal) => Equal,
+    ///             (Equal, Greater) => Greater,
+    ///             (Greater, Equal) => Greater,
+    ///             (Greater, Greater) => todo!(),
+    ///             (Less, Greater) | (Greater, Less) => unreachable!(
+    ///                 "Ambiguous comparison, report this as a bug on the \
+    ///                  AnyRope crate"
+    ///             ),
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// // ... Implementation of `Add` and `Sub` for `TwoWidths`.
+    ///
     /// # impl Add for TwoWidths {
     /// #     type Output = Self;
     ///
@@ -203,16 +272,24 @@ pub trait Measurable: Clone + Copy + PartialEq + Eq {
     ///     }
     /// }
     /// ```
+    ///
+    /// With the `TwoWidths::first_cmp` and `TwoWidths::second_cmp`, you can
+    /// search with two different variables within the rope, similarly to how
+    /// regular ropes let you search by byte, char, or line.
+    ///
+    /// Note, however, that this type also requires `PartialOrd` and `Ord`. That
+    /// is because, internally, `any-rope` needs those comparison functions to
+    /// sort itself out. These implementations also cannot be derived by Rust,
+    /// and need to be
     type Measure: Debug
         + Default
         + Clone
         + Copy
         + PartialEq
         + Eq
-        + PartialOrd
-        + Ord
         + Add<Output = Self::Measure>
-        + Sub<Output = Self::Measure>;
+        + Sub<Output = Self::Measure>
+        + FallibleOrd;
 
     /// The measure of this element, it need not be the actual lenght in bytes,
     /// but just a representative value, to be fed to the [`Rope<M>`].
@@ -222,8 +299,26 @@ pub trait Measurable: Clone + Copy + PartialEq + Eq {
 /// A struct meant for testing and exemplification
 ///
 /// Its [`measure`][Measurable::measure] is always equal to the number within.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Width(pub usize);
+
+impl PartialOrd for Width {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Width {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.fallible_cmp(&other.0)
+    }
+}
+
+impl FallibleOrd for usize {
+    fn fallible_cmp(&self, other: &Self) -> Ordering {
+        self.cmp(other)
+    }
+}
 
 impl Measurable for Width {
     type Measure = usize;
@@ -231,13 +326,6 @@ impl Measurable for Width {
     fn measure(&self) -> Self::Measure {
         self.0
     }
-}
-
-fn saturating_sub<T>(lhs: T, rhs: T) -> T
-where
-    T: Default + PartialOrd + Sub<Output = T>,
-{
-    if rhs > lhs { T::default() } else { lhs - rhs }
 }
 
 //==============================================================
@@ -455,14 +543,14 @@ fn measures_from_range<M: Measurable>(
     match (range.start_bound(), range.end_bound()) {
         (None, None) => Ok((M::Measure::default(), limit)),
         (None, Some(end)) => {
-            if *end > limit {
+            if end.fallible_cmp(&limit).is_gt() {
                 Err(Error::MeasureRangeOutOfBounds(None, Some(*end), limit))
             } else {
                 Ok((M::Measure::default(), *end))
             }
         }
         (Some(start), None) => {
-            if *start > limit {
+            if start.fallible_cmp(&limit).is_gt() {
                 Err(Error::MeasureRangeOutOfBounds(Some(*start), None, limit))
             } else {
                 Ok((*start, limit))
@@ -470,9 +558,9 @@ fn measures_from_range<M: Measurable>(
         }
 
         (Some(start), Some(end)) => {
-            if start > end {
+            if start.fallible_cmp(end).is_gt() {
                 Err(Error::MeasureRangeInvalid(Some(*start), Some(*end)))
-            } else if *end > limit || *start > limit {
+            } else if end.fallible_cmp(&limit).is_gt() || start.fallible_cmp(&limit).is_gt() {
                 Err(Error::MeasureRangeOutOfBounds(
                     Some(*start),
                     Some(*end),
@@ -485,12 +573,42 @@ fn measures_from_range<M: Measurable>(
     }
 }
 
+//==============================================================
+// Other utilities.
+
 fn assert_default_is_lowest<M: Measurable>(cmp: &M::Measure) {
     assert!(
-        M::Measure::default() <= *cmp,
+        M::Measure::default().fallible_cmp(cmp).is_le(),
         "{:?} (Measure::default()) is supposed to be the smallest possible value for \
          Measurable::Measure, and yet {:?} is smaller",
         M::Measure::default(),
         cmp
     )
+}
+
+fn fallible_saturating_sub<T>(lhs: T, rhs: T) -> T
+where
+    T: Default + FallibleOrd + Sub<Output = T>,
+{
+    if lhs.fallible_cmp(&rhs).is_le() {
+        T::default()
+    } else {
+        lhs - rhs
+    }
+}
+
+fn fallible_min<T: FallibleOrd>(lhs: T, rhs: T) -> T {
+    if lhs.fallible_cmp(&rhs).is_le() {
+        lhs
+    } else {
+        rhs
+    }
+}
+
+fn fallible_max<T: FallibleOrd>(lhs: T, rhs: T) -> T {
+    if lhs.fallible_cmp(&rhs).is_ge() {
+        lhs
+    } else {
+        rhs
+    }
 }
