@@ -445,7 +445,7 @@ where
         let (start, end) = measures_from_range(&range, self.measure()).unwrap();
 
         if cmp(&start, &M::Measure::default()).is_eq() && cmp(&end, &self.measure()).is_eq() {
-            return *self;
+            return self.clone();
         }
 
         match *self {
@@ -699,7 +699,7 @@ where
             let (chunk, chunk_index, chunk_measure) = self.chunk_at_index(index);
             let chunk_rel_index = index - chunk_index;
             let measure = index_to_measure(chunk, chunk_rel_index);
-            Some((measure + chunk_measure, chunk[chunk_rel_index]))
+            Some((measure + chunk_measure, chunk[chunk_rel_index].clone()))
         } else {
             None
         }
@@ -717,7 +717,7 @@ where
             let (chunk, _, chunk_measure) = self.chunk_at_measure(measure, &cmp);
             let index = start_measure_to_index(chunk, measure - chunk_measure, cmp);
             let measure = index_to_measure(chunk, index);
-            Some((measure + chunk_measure, chunk[index]))
+            Some((measure + chunk_measure, chunk[index].clone()))
         } else {
             None
         }
@@ -807,7 +807,7 @@ where
         let (start, end) = measures_from_range(&range, self.measure()).unwrap();
 
         if cmp(&start, &M::Measure::default()).is_eq() && cmp(&end, &self.measure()).is_eq() {
-            return Some(*self);
+            return Some(self.clone());
         }
 
         // Bounds check
@@ -853,7 +853,7 @@ where
         match (start_range, end_range) {
             (None, None) => {
                 // Early-out shortcut for taking a slice of the full thing.
-                return Ok(*self);
+                return Ok(self.clone());
             }
             (Some(s), Some(e)) => {
                 if s > e {
@@ -1061,7 +1061,7 @@ where
     #[inline]
     fn from(s: RopeSlice<'a, M>) -> Self {
         let mut vec = Vec::with_capacity(s.len());
-        vec.extend(s.chunks().flat_map(|chunk| chunk.iter()).copied());
+        vec.extend(s.chunks().flat_map(|chunk| chunk.iter()).cloned());
         vec
     }
 }

@@ -1225,7 +1225,7 @@ where
             let (chunk, chunk_index, chunk_measure) = self.chunk_at_index(index);
             let index = index - chunk_index;
             let measure = index_to_measure(chunk, index);
-            Some((measure + chunk_measure, chunk[index]))
+            Some((measure + chunk_measure, chunk[index].clone()))
         } else {
             None
         }
@@ -1243,7 +1243,7 @@ where
             let (chunk, _, chunk_measure) = self.chunk_at_measure(measure, &cmp);
             let index = start_measure_to_index(chunk, measure - chunk_measure, cmp);
             let measure = index_to_measure(chunk, index);
-            Some((measure + chunk_measure, chunk[index.min(chunk.len() - 1)]))
+            Some((measure + chunk_measure, chunk[index.min(chunk.len() - 1)].clone()))
         } else {
             None
         }
@@ -1514,7 +1514,7 @@ where
     #[inline]
     fn from(r: &'a Rope<M>) -> Self {
         let mut vec = Vec::with_capacity(r.len());
-        vec.extend(r.chunks().flat_map(|chunk| chunk.iter()).copied());
+        vec.extend(r.chunks().flat_map(|chunk| chunk.iter()).cloned());
         vec
     }
 }

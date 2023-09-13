@@ -192,7 +192,7 @@ pub trait FallibleOrd {
 
 /// A object that has a user defined size, that can be interpreted by a
 /// [`Rope<M>`].
-pub trait Measurable: Clone + Copy + PartialEq + Eq {
+pub trait Measurable: Clone {
     /// This type is what will be used to query, iterate, modify, and slice up
     /// the [`Rope`].
     ///

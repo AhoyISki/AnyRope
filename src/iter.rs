@@ -271,7 +271,7 @@ where
         self.index -= 1;
         self.remaining_len += 1;
         self.measure = self.measure - self.cur_chunk[self.index].measure();
-        return Some((self.measure, self.cur_chunk[self.index]));
+        return Some((self.measure, self.cur_chunk[self.index].clone()));
     }
 
     #[inline]
@@ -293,7 +293,7 @@ where
         }
 
         // Progress the byte counts and return the next element.
-        let element = self.cur_chunk[self.index];
+        let element = self.cur_chunk[self.index].clone();
         self.index += 1;
         self.remaining_len -= 1;
 

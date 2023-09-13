@@ -271,7 +271,7 @@ mod inner {
         #[inline(always)]
         pub fn insert_slice(&mut self, index: usize, slice: &[M]) {
             // Copy the `slice` into the appropriate space in the buffer.
-            self.buffer.insert_from_slice(index, slice);
+            self.buffer.insert_many(index, slice.iter().cloned());
         }
 
         /// Removes text in range `[start_index, end_index)`
@@ -280,12 +280,7 @@ mod inner {
             assert!(start_index <= end_index);
             // Already checked by copy_within/is_char_boundary.
             debug_assert!(end_index <= self.len());
-            let len = self.len();
-            let amt = end_index - start_index;
-
-            self.buffer.copy_within(end_index..len, start_index);
-
-            self.buffer.truncate(len - amt);
+            self.buffer.drain(start_index..end_index);
         }
 
         /// Removes text after `index`.
@@ -303,8 +298,7 @@ mod inner {
             debug_assert!(index <= self.len());
             let len = self.len();
             let mut other = LeafSmallVec::with_capacity(len - index);
-            other.buffer.extend_from_slice(&self.buffer[index..]);
-            self.buffer.truncate(index);
+            other.buffer.extend(self.buffer.drain(index..len));
             other
         }
 
