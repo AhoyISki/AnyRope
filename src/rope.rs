@@ -551,10 +551,7 @@ where
     /// Runs in O(log N) time.
     #[inline]
     pub fn append(&mut self, mut other: Self) {
-        if self.measure() == M::Measure::default() {
-            // Special case
-            std::mem::swap(self, &mut other);
-        } else if other.measure().fallible_cmp(&M::Measure::default()).is_gt() {
+        if other.measure().fallible_cmp(&M::Measure::default()).is_gt() {
             let left_info = self.root.info();
             let right_info = other.root.info();
 

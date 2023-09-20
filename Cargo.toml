@@ -1,6 +1,6 @@
 [package]
 name = "any-rope"
-version = "1.2.2"
+version = "1.2.3"
 authors = ["Mateus Yoshiaki <ahoyiski@gmail.com>"]
 description = "A fast and robust arbitrary rope for Rust. Based on Ropey."
 documentation = "https://docs.rs/any-rope"
