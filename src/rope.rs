@@ -1236,7 +1236,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Option<(M::Measure, M)> {
         // Bounds check
-        if cmp(&measure, &self.measure()).is_le() && !self.is_empty() {
+        if cmp(&measure, &self.measure()).is_lt() && !self.is_empty() {
             let (chunk, _, chunk_measure) = self.chunk_at_measure(measure, &cmp);
             let index = start_measure_to_index(chunk, measure - chunk_measure, cmp);
             let measure = index_to_measure(chunk, index);
@@ -1266,7 +1266,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Option<(&[M], usize, M::Measure)> {
         // Bounds check
-        if cmp(&measure, &self.measure()).is_le() && !self.is_empty() {
+        if cmp(&measure, &self.measure()).is_lt() && !self.is_empty() {
             let (chunk, info) = self.root.get_first_chunk_at_measure(measure, &cmp);
             Some((chunk, info.len as usize, info.measure))
         } else {

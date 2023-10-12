@@ -767,7 +767,7 @@ where
         cmp: impl Fn(&M::Measure, &M::Measure) -> Ordering,
     ) -> Option<(&'a [M], usize, M::Measure)> {
         // Bounds check
-        if cmp(&measure, &self.measure()).is_le() {
+        if cmp(&measure, &self.measure()).is_lt() {
             match *self {
                 RopeSlice(RSEnum::Full {
                     node,
