@@ -550,7 +550,7 @@ where
     ///
     /// Runs in O(log N) time.
     #[inline]
-    pub fn append(&mut self, mut other: Self) {
+    pub fn append(&mut self, other: Self) {
         if other.measure().fallible_cmp(&M::Measure::default()).is_gt() {
             let left_info = self.root.info();
             let right_info = other.root.info();
